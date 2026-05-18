@@ -267,6 +267,7 @@ const sections: Record<SectionKey, Section> = {
       { to: '/audit',           label: 'Audit trail', icon: 'ti-timeline' },
       { to: '/audit/reports',   label: 'Reports',     icon: 'ti-file-description' },
       { to: '/audit/manifests', label: 'Manifests',   icon: 'ti-file-certificate' },
+      { to: '/audit/prepacket', label: 'Pre-packet',  icon: 'ti-file-zip' },
     ],
   },
   settings: {
