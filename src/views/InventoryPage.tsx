@@ -102,7 +102,14 @@ export function InventoryPage() {
     setError(null)
     setLoading(true)
     try {
-      const response = await apiFetch('/inventory/assets')
+      // Default backend limit is 500; pilot inventories regularly
+      // exceed that once cross-source emissions land (VMs from both
+      // vCenter and PowerStore, hosts, volumes, clusters, etc.).
+      // Without a higher cap the page silently drops rows — e.g.
+      // entire clusters disappear because they sort after VMs by
+      // asset_id. 5000 is the next reasonable ceiling for pilot-
+      // scale tenants; tenants beyond that need a paginated view.
+      const response = await apiFetch('/inventory/assets?limit=5000')
       if (!response.ok) {
         const body = await response.json().catch(() => ({}))
         throw new Error(body?.detail || body?.error || `${response.status} ${response.statusText}`)
