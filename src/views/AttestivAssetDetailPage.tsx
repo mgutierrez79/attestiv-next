@@ -43,6 +43,33 @@ type AppSummary = {
   criticality_tier?: string
   gxp?: { validated?: boolean }
   components?: Array<{ vm_name?: string }>
+  dependencies?: Array<{ application_id?: string; dependency_type?: string; criticality?: string }>
+}
+
+type DependentApp = {
+  application_id: string
+  display_name?: string
+  dependency_type?: string
+  criticality?: string
+}
+
+type GuestInfo = {
+  os_name?: string
+  os_full_name?: string
+  os_family?: string
+  hostname?: string
+  primary_ip?: string
+  ip_addresses?: string[]
+  mac_addresses?: string[]
+  power_state?: any
+  dns?: { servers?: string[]; search_domains?: string[] }
+}
+
+type HardwareInfo = {
+  cpu?: { count?: number; cores_per_socket?: number; hot_add_enabled?: boolean }
+  memory?: { size_MiB?: number; hot_add_enabled?: boolean }
+  disks?: Array<{ capacity?: number; backing?: { datastore?: string } }>
+  datastores?: string[]
 }
 
 type FrameworkSummary = {
@@ -75,6 +102,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const { t } = useI18n()
   const [asset, setAsset] = useState<InventoryAsset | null>(null)
   const [parentApp, setParentApp] = useState<AppSummary | null>(null)
+  const [dependents, setDependents] = useState<DependentApp[]>([])
   const [scopeResult, setScopeResult] = useState<ScopeResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [evaluating, setEvaluating] = useState(false)
@@ -100,13 +128,49 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
           if (!cancelled && Array.isArray(appsBody?.items)) {
             const name = String(body.name ?? '').toLowerCase()
             const id = String(body.asset_id ?? '').toLowerCase()
-            const match = (appsBody.items as AppSummary[]).find((app) =>
+            // Each app summary from /v1/apps is shallow — we need
+            // dependencies + components, which only come back from
+            // the detail endpoint. Fetch detail in parallel for any
+            // app that might be relevant (the parent + any potential
+            // dependents). Pilot has at most a handful of apps so
+            // the fan-out is bounded.
+            const apps = appsBody.items as AppSummary[]
+            const details = await Promise.all(
+              apps.map((a) =>
+                apiFetch(`/apps/${encodeURIComponent(a.application_id)}`)
+                  .then((r) => r.ok ? r.json() : null)
+                  .catch(() => null),
+              ),
+            )
+            const fullApps: AppSummary[] = details
+              .filter((d): d is AppSummary => d && typeof d === 'object' && 'application_id' in d)
+            const parent = fullApps.find((app) =>
               (app.components ?? []).some((c) => {
                 const cn = String(c.vm_name ?? '').toLowerCase()
                 return cn === name || cn === id
               }),
-            )
-            setParentApp(match ?? null)
+            ) ?? null
+            setParentApp(parent)
+            // Dependent apps: any other app whose dependencies list
+            // references the parent app. Surfaces blast-radius — if
+            // this VM goes down, what else fails?
+            if (parent) {
+              const deps = fullApps
+                .filter((a) => a.application_id !== parent.application_id)
+                .filter((a) => (a.dependencies ?? []).some((d) => d.application_id === parent.application_id))
+                .map<DependentApp>((a) => {
+                  const link = (a.dependencies ?? []).find((d) => d.application_id === parent.application_id)
+                  return {
+                    application_id: a.application_id,
+                    display_name: a.display_name,
+                    dependency_type: link?.dependency_type,
+                    criticality: link?.criticality,
+                  }
+                })
+              setDependents(deps)
+            } else {
+              setDependents([])
+            }
           }
         } catch {
           // Apps unreachable / no apps registered — fine.
@@ -150,6 +214,12 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     return [...scopeResult.results].sort((a, b) => a.framework_id.localeCompare(b.framework_id))
   }, [scopeResult])
 
+  const guest = (asset?.metadata?.['guest'] as GuestInfo | undefined) ?? undefined
+  const hardware = (asset?.metadata?.['hardware'] as HardwareInfo | undefined) ?? undefined
+  const powerState = String(asset?.metadata?.['power_state'] ?? '')
+  const vcenterHost = String(asset?.metadata?.['vcenter_host'] ?? '')
+  const vcenterCluster = String(asset?.metadata?.['vcenter_cluster'] ?? '')
+
   return (
     <>
       <Topbar title={asset?.name ?? assetID} />
@@ -188,6 +258,106 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </div>
             </Card>
 
+            {asset.asset_type === 'vm' && (guest || hardware || powerState || vcenterHost) ? (
+              <Card>
+                <CardTitle>{t('VM details', 'VM details')}</CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+                  {powerState ? <Stat label={t('Power state', 'Power state')} value={powerState} /> : null}
+                  {guest?.hostname ? <Stat label={t('Guest hostname', 'Guest hostname')} value={guest.hostname} mono /> : null}
+                  {guest?.primary_ip ? <Stat label={t('Primary IP', 'Primary IP')} value={guest.primary_ip} mono /> : null}
+                  {guest?.os_full_name || guest?.os_name ? (
+                    <Stat label={t('Guest OS', 'Guest OS')} value={guest.os_full_name ?? guest.os_name ?? '—'} />
+                  ) : null}
+                  {guest?.os_family ? <Stat label={t('OS family', 'OS family')} value={guest.os_family} /> : null}
+                  {hardware?.cpu?.count ? <Stat label={t('vCPUs', 'vCPUs')} value={String(hardware.cpu.count)} /> : null}
+                  {hardware?.memory?.size_MiB ? (
+                    <Stat
+                      label={t('Memory', 'Memory')}
+                      value={`${Math.round((hardware.memory.size_MiB ?? 0) / 1024)} GiB`}
+                    />
+                  ) : null}
+                  {hardware?.disks?.length ? (
+                    <Stat
+                      label={t('Disks', 'Disks')}
+                      value={`${hardware.disks.length} (${Math.round(hardware.disks.reduce((s, d) => s + (Number(d.capacity) || 0), 0) / 1024 ** 3)} GiB)`}
+                    />
+                  ) : null}
+                  {vcenterHost ? <Stat label={t('vCenter host', 'vCenter host')} value={vcenterHost} mono /> : null}
+                  {vcenterCluster ? <Stat label={t('vCenter cluster', 'vCenter cluster')} value={vcenterCluster} mono /> : null}
+                </div>
+                {(guest?.ip_addresses && guest.ip_addresses.length > 0) || (guest?.mac_addresses && guest.mac_addresses.length > 0) ? (
+                  <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+                    {guest?.ip_addresses && guest.ip_addresses.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {t('IP addresses', 'IP addresses')}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {guest.ip_addresses.map((ip) => (
+                            <code
+                              key={ip}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 6px',
+                                background: 'var(--color-background-secondary)',
+                                borderRadius: 'var(--border-radius-sm)',
+                              }}
+                            >
+                              {ip}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {guest?.mac_addresses && guest.mac_addresses.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {t('MAC addresses', 'MAC addresses')}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {guest.mac_addresses.map((mac) => (
+                            <code
+                              key={mac}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 6px',
+                                background: 'var(--color-background-secondary)',
+                                borderRadius: 'var(--border-radius-sm)',
+                              }}
+                            >
+                              {mac}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {hardware?.datastores && hardware.datastores.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {t('Datastores', 'Datastores')}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {hardware.datastores.map((ds) => (
+                            <code
+                              key={ds}
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 6px',
+                                background: 'var(--color-background-secondary)',
+                                borderRadius: 'var(--border-radius-sm)',
+                              }}
+                            >
+                              {ds}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </Card>
+            ) : null}
+
             <Card>
               <CardTitle>{t('Parent application', 'Parent application')}</CardTitle>
               {parentApp ? (
@@ -215,6 +385,44 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                 </p>
               )}
             </Card>
+
+            {parentApp && dependents.length > 0 ? (
+              <Card>
+                <CardTitle>{t('Apps that depend on this VM', 'Apps that depend on this VM')}</CardTitle>
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  {t(
+                    'Through {app}: if this VM goes down, the apps below lose a declared dependency.',
+                    'Through {app}: if this VM goes down, the apps below lose a declared dependency.',
+                    { app: parentApp.display_name },
+                  )}
+                </p>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 8 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <th style={{ padding: '6px 10px 6px 0' }}>{t('Application', 'Application')}</th>
+                      <th style={{ padding: '6px 10px' }}>{t('Dependency type', 'Dependency type')}</th>
+                      <th style={{ padding: '6px 0 6px 10px' }}>{t('Criticality', 'Criticality')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dependents.map((d) => (
+                      <tr key={d.application_id} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                        <td style={{ padding: '8px 10px 8px 0' }}>
+                          <a href={`/apps/${d.application_id}`} style={{ fontWeight: 500 }}>
+                            {d.display_name ?? d.application_id}
+                          </a>
+                          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{d.application_id}</div>
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>{d.dependency_type ?? '—'}</td>
+                        <td style={{ padding: '8px 0 8px 10px' }}>
+                          {d.criticality ? <Badge tone={d.criticality === 'critical' ? 'red' : d.criticality === 'high' ? 'amber' : 'gray'}>{d.criticality}</Badge> : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            ) : null}
 
             <Card>
               <CardTitle
