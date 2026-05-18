@@ -187,9 +187,14 @@ const sections: Record<SectionKey, Section> = {
     key: 'inventory',
     navLabel: 'Inventory',
     items: [
-      { to: '/inventory',                        label: 'All assets',  icon: 'ti-database' },
-      { to: '/inventory?asset_type=firewall',    label: 'Firewalls',   icon: 'ti-shield-half-filled' },
-      { to: '/inventory?asset_type=server',      label: 'Servers',     icon: 'ti-server' },
+      { to: '/inventory',                              label: 'All assets',      icon: 'ti-database' },
+      { to: '/inventory?asset_type=vm',                label: 'Virtual machines', icon: 'ti-device-desktop' },
+      { to: '/inventory?asset_type=host',              label: 'Hypervisor hosts', icon: 'ti-server-2' },
+      { to: '/inventory?asset_type=cluster',           label: 'Clusters',         icon: 'ti-grid-pattern' },
+      { to: '/inventory?asset_type=storage_array',     label: 'Storage arrays',   icon: 'ti-database' },
+      { to: '/inventory?asset_type=storage_volume',    label: 'Storage volumes',  icon: 'ti-stack-2' },
+      { to: '/inventory?asset_type=server',            label: 'Servers',          icon: 'ti-server' },
+      { to: '/inventory?asset_type=firewall',          label: 'Firewalls',        icon: 'ti-shield-half-filled' },
     ],
   },
   risks: {
