@@ -152,9 +152,10 @@ const sections: Record<SectionKey, Section> = {
     key: 'evidence',
     navLabel: 'Evidence',
     items: [
-      { to: '/evidence',        label: 'Live stream',       icon: 'ti-player-play' },
-      { to: '/evidence/search', label: 'Search',            icon: 'ti-search' },
-      { to: '/evidence/verify', label: 'Verify signature',  icon: 'ti-check' },
+      { to: '/evidence',            label: 'Live stream',       icon: 'ti-player-play' },
+      { to: '/evidence/search',     label: 'Search',            icon: 'ti-search' },
+      { to: '/evidence/cve-scans',  label: 'CVE scans',         icon: 'ti-bug' },
+      { to: '/evidence/verify',     label: 'Verify signature',  icon: 'ti-check' },
     ],
   },
   frameworks: {
