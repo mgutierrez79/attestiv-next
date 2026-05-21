@@ -14,6 +14,7 @@ export type AuthConfig = {
   oidc_scope: string
   idp_name: string
   default_tenant: string
+  single_tenant: boolean
   auth_enabled: boolean
   dev_mode: boolean
 }

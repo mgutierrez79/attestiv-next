@@ -286,23 +286,25 @@ export function AttestivLoginPage() {
           {info ? <Banner tone="blue" mt={8}>{info}</Banner> : null}
         </Card>
 
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--color-text-tertiary)',
-            textAlign: 'center',
-            marginTop: 14,
-            lineHeight: 1.5,
-          }}
-        >
-          {t('New tenant?', 'New tenant?')}{' '}
-          <a
-            href="/onboarding"
-            style={{ color: 'var(--color-brand-blue)', textDecoration: 'none', fontWeight: 500 }}
+        {config && !config.single_tenant ? (
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--color-text-tertiary)',
+              textAlign: 'center',
+              marginTop: 14,
+              lineHeight: 1.5,
+            }}
           >
-            {t('Run first-time setup', 'Run first-time setup')}
-          </a>.
-        </div>
+            {t('New tenant?', 'New tenant?')}{' '}
+            <a
+              href="/onboarding"
+              style={{ color: 'var(--color-brand-blue)', textDecoration: 'none', fontWeight: 500 }}
+            >
+              {t('Run first-time setup', 'Run first-time setup')}
+            </a>.
+          </div>
+        ) : null}
       </div>
     </div>
   )
