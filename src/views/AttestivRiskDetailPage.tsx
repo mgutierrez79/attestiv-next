@@ -57,9 +57,31 @@ type HistoryEntry = {
   new_value?: Record<string, unknown>
 }
 
+type Expectation = {
+  tag: string
+  evidence?: string
+  criteria?: string
+  freshness?: string
+  frequency?: string
+  mandatory?: boolean
+  sources?: string[]
+}
+
+type Guidance = {
+  framework_id?: string
+  framework_name?: string
+  control_id?: string
+  control_name?: string
+  control_area?: string
+  why?: string
+  expectations?: Expectation[]
+  remediation?: string[]
+}
+
 type DetailResponse = {
   risk: Risk
   history: HistoryEntry[]
+  guidance?: Guidance
 }
 
 const STATUS_TONE: Record<string, 'amber' | 'green' | 'gray' | 'navy' | 'red'> = {
@@ -180,6 +202,7 @@ export function AttestivRiskDetailPage() {
   }
 
   const { risk } = data
+  const guidance = data.guidance
   const isAuto = (risk.source || '').startsWith('auto_')
   const tone = STATUS_TONE[status.toLowerCase()] ?? 'gray'
 
@@ -232,6 +255,8 @@ export function AttestivRiskDetailPage() {
             </p>
           ) : null}
         </Card>
+
+        {guidance ? <GuidanceSection guidance={guidance} /> : null}
 
         <Card style={{ marginTop: 12 }}>
           <CardTitle>{t('Treatment', 'Treatment')}</CardTitle>
@@ -295,6 +320,84 @@ export function AttestivRiskDetailPage() {
       </div>
     </>
   );
+}
+
+function GuidanceSection({ guidance }: { guidance: Guidance }) {
+  const { t } = useI18n()
+  const expectations = guidance.expectations ?? []
+  const remediation = guidance.remediation ?? []
+
+  return (
+    <>
+      <Card style={{ marginTop: 12 }}>
+        <CardTitle
+          right={
+            guidance.control_id ? (
+              <code style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                {guidance.framework_id}/{guidance.control_id}
+              </code>
+            ) : undefined
+          }
+        >
+          {t('Why this risk is open', 'Why this risk is open')}
+        </CardTitle>
+        {guidance.why ? (
+          <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, whiteSpace: 'pre-wrap' }}>
+            {guidance.why}
+          </p>
+        ) : null}
+      </Card>
+
+      {expectations.length > 0 ? (
+        <Card style={{ marginTop: 12 }}>
+          <CardTitle>{t('What this control expects', 'What this control expects')}</CardTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {expectations.map((exp, index) => (
+              <div
+                key={`${exp.tag}-${index}`}
+                style={{
+                  padding: '10px 0',
+                  borderBottom: index < expectations.length - 1 ? '0.5px solid var(--color-border-tertiary)' : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{exp.evidence || exp.tag}</span>
+                  {exp.mandatory ? <Badge tone="red">{t('mandatory', 'mandatory')}</Badge> : <Badge tone="gray">{t('contributes', 'contributes')}</Badge>}
+                  <code style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{exp.tag}</code>
+                </div>
+                {exp.criteria ? (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    <i className="ti ti-target-arrow" aria-hidden="true" style={{ marginRight: 4 }} />
+                    {t('Passing criteria:', 'Passing criteria:')} <strong>{exp.criteria}</strong>
+                  </div>
+                ) : null}
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  {exp.freshness ? <span><i className="ti ti-clock" aria-hidden="true" /> {exp.freshness}</span> : null}
+                  {exp.frequency ? <span><i className="ti ti-repeat" aria-hidden="true" /> {exp.frequency}</span> : null}
+                  {exp.sources && exp.sources.length > 0 ? (
+                    <span><i className="ti ti-plug" aria-hidden="true" /> {exp.sources.join(', ')}</span>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {remediation.length > 0 ? (
+        <Card style={{ marginTop: 12 }}>
+          <CardTitle>{t('How to remediate', 'How to remediate')}</CardTitle>
+          <ol style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {remediation.map((step, index) => (
+              <li key={index} style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </Card>
+      ) : null}
+    </>
+  )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
