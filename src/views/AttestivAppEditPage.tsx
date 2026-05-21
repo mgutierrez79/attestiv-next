@@ -23,6 +23,7 @@ import {
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { useRoles } from '../lib/roles'
 
 const CRITICALITY_TIERS = ['tier_1', 'tier_2', 'tier_3'] as const
 
@@ -84,6 +85,7 @@ export function AttestivAppEditPage() {
   const [gxpQualityOwner, setGxpQualityOwner] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
+  const { canWrite } = useRoles()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -396,9 +398,11 @@ export function AttestivAppEditPage() {
             <GhostButton onClick={() => router.push('/apps')} type="button">
               {t('Cancel', 'Cancel')}
             </GhostButton>
-            <PrimaryButton type="submit" disabled={submitting}>
-              {submitting ? t('Saving…', 'Saving…') : t('Save changes', 'Save changes')}
-            </PrimaryButton>
+            {canWrite ? (
+              <PrimaryButton type="submit" disabled={submitting}>
+                {submitting ? t('Saving…', 'Saving…') : t('Save changes', 'Save changes')}
+              </PrimaryButton>
+            ) : null}
           </div>
         </form>
       </div>

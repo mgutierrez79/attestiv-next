@@ -24,6 +24,7 @@ import {
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { useRoles } from '../lib/roles'
 
 const CRITICALITY_TIERS = ['tier_1', 'tier_2', 'tier_3'] as const
 
@@ -62,6 +63,7 @@ export function AttestivAppCreatePage() {
   const [gxpQualityOwner, setGxpQualityOwner] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
+  const { canWrite } = useRoles()
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
@@ -351,9 +353,11 @@ export function AttestivAppCreatePage() {
             <GhostButton onClick={() => router.push('/apps')} type="button">
               {t('Cancel', 'Cancel')}
             </GhostButton>
-            <PrimaryButton type="submit" disabled={submitting}>
-              {submitting ? t('Creating…', 'Creating…') : t('Create application', 'Create application')}
-            </PrimaryButton>
+            {canWrite ? (
+              <PrimaryButton type="submit" disabled={submitting}>
+                {submitting ? t('Creating…', 'Creating…') : t('Create application', 'Create application')}
+              </PrimaryButton>
+            ) : null}
           </div>
         </form>
       </div>

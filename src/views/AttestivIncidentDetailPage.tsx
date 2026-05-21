@@ -26,6 +26,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type Incident = {
   id: string
@@ -93,6 +94,7 @@ export function AttestivIncidentDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const { canWrite } = useRoles()
 
   const [classifySig, setClassifySig] = useState<'true' | 'false'>('true')
   const [category, setCategory] = useState<typeof CATEGORIES[number]>('outage')
@@ -306,9 +308,11 @@ export function AttestivIncidentDetailPage() {
             </FormRow>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <PrimaryButton onClick={classify} disabled={busy}>
-              {busy ? 'Saving…' : sigSet ? 'Update classification' : 'Classify'}
-            </PrimaryButton>
+            {canWrite ? (
+              <PrimaryButton onClick={classify} disabled={busy}>
+                {busy ? 'Saving…' : sigSet ? 'Update classification' : 'Classify'}
+              </PrimaryButton>
+            ) : null}
           </div>
         </Card>
 
@@ -335,6 +339,7 @@ export function AttestivIncidentDetailPage() {
                     notification={existing}
                     incidentID={id}
                     busy={busy}
+                    canWrite={canWrite}
                     onBuildDraft={() => buildDraft(nt.key)}
                     onMarkSubmitted={(refNum) => existing && markSubmitted(existing.id, refNum)}
                   />
@@ -354,6 +359,7 @@ function NotificationBlock({
   notification,
   incidentID,
   busy,
+  canWrite,
   onBuildDraft,
   onMarkSubmitted,
 }: {
@@ -362,6 +368,7 @@ function NotificationBlock({
   notification?: Notification
   incidentID: string
   busy: boolean
+  canWrite: boolean
   onBuildDraft: () => void
   onMarkSubmitted: (referenceNumber: string) => void
 }) {
@@ -454,9 +461,11 @@ function NotificationBlock({
                     fontFamily: 'inherit',
                   }}
                 />
-                <PrimaryButton onClick={() => onMarkSubmitted(refNumber)} disabled={busy || !refNumber.trim()}>
-                  <i className="ti ti-check" aria-hidden="true" /> {t('Mark submitted', 'Mark submitted')}
-                </PrimaryButton>
+                {canWrite ? (
+                  <PrimaryButton onClick={() => onMarkSubmitted(refNumber)} disabled={busy || !refNumber.trim()}>
+                    <i className="ti ti-check" aria-hidden="true" /> {t('Mark submitted', 'Mark submitted')}
+                  </PrimaryButton>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -478,9 +487,11 @@ function NotificationBlock({
           ) : null}
         </>
       ) : (
+        canWrite ? (
         <PrimaryButton onClick={onBuildDraft} disabled={busy}>
           <i className="ti ti-file-export" aria-hidden="true" /> {t('Build draft', 'Build draft')}
         </PrimaryButton>
+        ) : null
       )}
     </div>
   );

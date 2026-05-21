@@ -29,6 +29,7 @@ import { apiFetch } from '../lib/api'
 import { isDemoMode } from '../lib/demoMode'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type DLQEntry = {
   queue_id: string
@@ -206,6 +207,7 @@ function DLQRow({
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
 
   return (
     <div
@@ -235,10 +237,12 @@ function DLQRow({
             <i className="ti ti-eye" aria-hidden="true" />
             {t('View', 'View')}
           </GhostButton>
-          <PrimaryButton onClick={onRetry} disabled={retrying}>
-            <i className="ti ti-refresh" aria-hidden="true" />
-            {retrying ? 'Retrying…' : 'Retry'}
-          </PrimaryButton>
+          {canWrite ? (
+            <PrimaryButton onClick={onRetry} disabled={retrying}>
+              <i className="ti ti-refresh" aria-hidden="true" />
+              {retrying ? 'Retrying…' : 'Retry'}
+            </PrimaryButton>
+          ) : null}
         </span>
       </div>
       {entry.message ? <SignatureBox label={t('Error', 'Error')} value={entry.message} mono={false} /> : null}
