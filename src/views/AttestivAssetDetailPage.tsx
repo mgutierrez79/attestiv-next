@@ -72,6 +72,23 @@ type HardwareInfo = {
   datastores?: string[]
 }
 
+type LastBackup = {
+  observed_at?: string
+  status?: string
+  job_name?: string
+  source?: string
+  days_since?: number
+}
+
+type Replication = {
+  state?: string
+  mode?: string
+  role?: string
+  volume?: string
+  last_sync?: string
+  source?: string
+}
+
 type FrameworkSummary = {
   framework_id: string
   framework_name?: string
@@ -219,6 +236,8 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const powerState = String(asset?.metadata?.['power_state'] ?? '')
   const vcenterHost = String(asset?.metadata?.['vcenter_host'] ?? '')
   const vcenterCluster = String(asset?.metadata?.['vcenter_cluster'] ?? '')
+  const lastBackup = (asset?.metadata?.['last_backup'] as LastBackup | undefined) ?? undefined
+  const replication = (asset?.metadata?.['replication'] as Replication | undefined) ?? undefined
 
   return (
     <>
@@ -355,6 +374,78 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                     ) : null}
                   </div>
                 ) : null}
+              </Card>
+            ) : null}
+
+            {asset.asset_type === 'vm' && (lastBackup || replication) ? (
+              <Card>
+                <CardTitle>{t('Protection', 'Protection')}</CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginTop: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {t('Last backup', 'Last backup')}
+                    </div>
+                    {lastBackup ? (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Badge tone={backupTone(lastBackup.days_since)}>
+                            {typeof lastBackup.days_since === 'number'
+                              ? lastBackup.days_since === 0
+                                ? t('Today', 'Today')
+                                : t('{n}d ago', '{n}d ago', { n: lastBackup.days_since })
+                              : (lastBackup.status ?? '—')}
+                          </Badge>
+                          {lastBackup.observed_at ? (
+                            <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                              {new Date(lastBackup.observed_at).toLocaleString()}
+                            </span>
+                          ) : null}
+                        </div>
+                        {lastBackup.job_name ? (
+                          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                            {t('Job', 'Job')}: {lastBackup.job_name}
+                          </div>
+                        ) : null}
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                          {t('Source', 'Source')}: {lastBackup.source ?? 'veeam_enterprise_manager'}
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+                        {t('No successful backup recorded.', 'No successful backup recorded.')}
+                      </span>
+                    )}
+                  </div>
+
+                  {replication ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {t('Storage replication', 'Storage replication')}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Badge tone={replication.state === 'replicated' ? 'green' : 'gray'}>
+                          {replication.state === 'replicated'
+                            ? t('Replicated', 'Replicated')
+                            : t('Not replicated', 'Not replicated')}
+                        </Badge>
+                        {replication.mode ? (
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{replication.mode}</span>
+                        ) : null}
+                        {replication.role ? (
+                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({replication.role})</span>
+                        ) : null}
+                      </div>
+                      {replication.volume ? (
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                          {replication.volume}
+                        </div>
+                      ) : null}
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {t('Source', 'Source')}: {replication.source ?? 'powerstore'}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </Card>
             ) : null}
 
@@ -510,6 +601,13 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
       </div>
     </>
   )
+}
+
+function backupTone(daysSince?: number): 'green' | 'amber' | 'red' | 'gray' {
+  if (typeof daysSince !== 'number') return 'gray'
+  if (daysSince <= 1) return 'green'
+  if (daysSince <= 7) return 'amber'
+  return 'red'
 }
 
 function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
