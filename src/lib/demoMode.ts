@@ -26,8 +26,39 @@
 //      Centralising the guard prevents copy-paste mistakes.
 
 const PROFILE_KEY = 'compliantly.tenant.profile'
+// Server-authoritative demo flag, cached from /v1/public/auth-config
+// (COMPLIANCE_PROFILE=demo). When the server has spoken, it overrides the
+// per-browser tenant profile — so a production deployment can never be
+// flipped into showing fabricated data by a stray localStorage value.
+const SERVER_DEMO_KEY = 'compliantly.server.demo'
 
 export type TenantEnvironment = 'demo' | 'pilot' | 'production'
+
+// setServerDemo records the server's demo posture (called once
+// auth-config loads). Persisted so the gate is correct on the next
+// render before auth-config re-fetches. SSR-safe.
+export function setServerDemo(demo: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SERVER_DEMO_KEY, demo ? '1' : '0')
+  } catch {
+    // ignore storage failures (private mode, quota)
+  }
+}
+
+// readServerDemo returns the cached server demo flag, or null when the
+// server hasn't been heard from yet (SSR, or before first auth-config).
+function readServerDemo(): boolean | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(SERVER_DEMO_KEY)
+    if (raw === '1') return true
+    if (raw === '0') return false
+    return null
+  } catch {
+    return null
+  }
+}
 
 // readEnvironment returns the persisted environment string or the
 // safe default ('pilot') when:
@@ -57,8 +88,14 @@ export function readEnvironment(): TenantEnvironment {
 
 // isDemoMode is the predicate every page should call before
 // populating a DEMO_X fixture or flipping a `usingDemo` flag.
-// Returns true only when the tenant has explicitly set the
-// environment to 'demo'.
+//
+// Server-authoritative: when the backend has declared its demo posture
+// (COMPLIANCE_PROFILE=demo, surfaced via auth-config), that wins — a
+// production server forces demo OFF regardless of any local profile, and
+// a demo server forces it ON. Only when the server hasn't been heard
+// from do we fall back to the per-browser tenant profile.
 export function isDemoMode(): boolean {
+  const server = readServerDemo()
+  if (server !== null) return server
   return readEnvironment() === 'demo'
 }

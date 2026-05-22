@@ -1,5 +1,6 @@
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 import { loadSettings } from './settings'
+import { setServerDemo } from './demoMode'
 
 // Auth configuration is OWNED BY THE SERVER, not the browser. The login
 // page and the OIDC client read it from /v1/public/auth-config instead
@@ -17,6 +18,10 @@ export type AuthConfig = {
   single_tenant: boolean
   auth_enabled: boolean
   dev_mode: boolean
+  // profile: named deployment posture (dev / demo / production / "").
+  profile: string
+  // demo: server-authoritative demo-data switch (Profile=demo).
+  demo: boolean
 }
 
 function apiBase(): string {
@@ -36,7 +41,12 @@ export async function fetchAuthConfig(force = false): Promise<AuthConfig> {
       credentials: 'include',
     })
     if (!res.ok) throw new Error(`auth-config request failed: ${res.status}`)
-    return (await res.json()) as AuthConfig
+    const cfg = (await res.json()) as AuthConfig
+    // Make the demo-data gate server-authoritative: cache the backend's
+    // demo posture so isDemoMode() reflects COMPLIANCE_PROFILE, not a
+    // per-browser localStorage value.
+    setServerDemo(Boolean(cfg.demo))
+    return cfg
   })()
   return _configPromise
 }

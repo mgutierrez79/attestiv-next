@@ -57,6 +57,8 @@ type Posture = {
     healthy: boolean
     flows: Flow[]
   }
+  profile?: string
+  demo?: boolean
   healthy: boolean
 }
 
@@ -116,6 +118,32 @@ export function AttestivAuthPosturePage() {
           </div>
         ) : (
           <>
+            <Card style={{ marginTop: 10 }}>
+              <CardTitle
+                right={
+                  <Badge tone={posture.demo ? 'amber' : posture.profile === 'production' ? 'green' : 'gray'}>
+                    {posture.profile ? posture.profile : t('unset', 'unset')}
+                  </Badge>
+                }
+              >
+                {t('Deployment profile', 'Deployment profile')}
+              </CardTitle>
+              <p style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', marginTop: 4 }}>
+                {t(
+                  'COMPLIANCE_PROFILE sets the auth + demo posture coherently (dev = no auth; demo = real auth + fabricated demo data; production = real auth, real data). Individual env vars override it. "unset" means each flag uses its own default.',
+                  'COMPLIANCE_PROFILE sets the auth + demo posture coherently (dev = no auth; demo = real auth + fabricated demo data; production = real auth, real data). Individual env vars override it. "unset" means each flag uses its own default.',
+                )}
+              </p>
+              {posture.demo ? (
+                <Banner tone="warning">
+                  {t(
+                    'Demo data is ON — the UI may fabricate sample findings/rows. Never run a real customer in demo profile.',
+                    'Demo data is ON — the UI may fabricate sample findings/rows. Never run a real customer in demo profile.',
+                  )}
+                </Banner>
+              ) : null}
+            </Card>
+
             <Card style={{ marginTop: 10 }}>
               <CardTitle
                 right={
