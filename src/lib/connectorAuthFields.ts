@@ -69,7 +69,7 @@ export const AUTH_FIELD_DESCRIPTORS: Record<string, AuthFieldDescriptor> = {
   },
   customer: {
     label: 'Customer perimeter',
-    hint: 'Your mySOC perimeter slug, e.g. gieauxia.',
+    hint: 'Your mySOC perimeter slug — the first path segment of the mySOC API URL.',
   },
 }
 

@@ -193,7 +193,7 @@ const CONNECTORS: ConnectorKind[] = [
     category: 'Security',
     endpointHint: 'https://api.mysoc.io',
     fields: [
-      { key: 'customer', label: 'Customer perimeter', required: true, hint: 'Your mySOC perimeter slug, e.g. gieauxia.' },
+      { key: 'customer', label: 'Customer perimeter', required: true, hint: 'Your mySOC perimeter slug — the first path segment of the mySOC API URL.' },
       { key: 'api_token', label: 'API token', type: 'password', required: true, hint: 'mySOC Bearer token (portal → Authorize → Bearer).' },
     ],
     pollDefault: 21600,
