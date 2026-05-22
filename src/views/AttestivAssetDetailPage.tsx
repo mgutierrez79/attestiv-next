@@ -89,6 +89,14 @@ type Replication = {
   source?: string
 }
 
+type LastRestore = {
+  observed_at?: string
+  status?: string
+  restore_type?: string
+  source?: string
+  days_since?: number
+}
+
 type FrameworkSummary = {
   framework_id: string
   framework_name?: string
@@ -238,6 +246,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const vcenterCluster = String(asset?.metadata?.['vcenter_cluster'] ?? '')
   const lastBackup = (asset?.metadata?.['last_backup'] as LastBackup | undefined) ?? undefined
   const replication = (asset?.metadata?.['replication'] as Replication | undefined) ?? undefined
+  const lastRestore = (asset?.metadata?.['last_restore'] as LastRestore | undefined) ?? undefined
 
   return (
     <>
@@ -377,7 +386,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </Card>
             ) : null}
 
-            {asset.asset_type === 'vm' && (lastBackup || replication) ? (
+            {asset.asset_type === 'vm' && (lastBackup || replication || lastRestore) ? (
               <Card>
                 <CardTitle>{t('Protection', 'Protection')}</CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginTop: 8 }}>
@@ -442,6 +451,39 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       ) : null}
                       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
                         {t('Source', 'Source')}: {replication.source ?? 'powerstore'}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {lastRestore ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {t('Last restore', 'Last restore')}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Badge tone={restoreTone(lastRestore.status)}>
+                          {typeof lastRestore.days_since === 'number'
+                            ? lastRestore.days_since === 0
+                              ? t('Today', 'Today')
+                              : t('{n}d ago', '{n}d ago', { n: lastRestore.days_since })
+                            : (lastRestore.status ?? '—')}
+                        </Badge>
+                        {lastRestore.observed_at ? (
+                          <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                            {new Date(lastRestore.observed_at).toLocaleString()}
+                          </span>
+                        ) : null}
+                      </div>
+                      {lastRestore.restore_type ? (
+                        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                          {t('Type', 'Type')}: {lastRestore.restore_type}
+                          {lastRestore.status && lastRestore.status !== 'healthy' && lastRestore.status !== 'ok'
+                            ? ` · ${lastRestore.status}`
+                            : ''}
+                        </div>
+                      ) : null}
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {t('Source', 'Source')}: {lastRestore.source ?? 'veeam_enterprise_manager'}
                       </div>
                     </div>
                   ) : null}
@@ -608,6 +650,16 @@ function backupTone(daysSince?: number): 'green' | 'amber' | 'red' | 'gray' {
   if (daysSince <= 1) return 'green'
   if (daysSince <= 7) return 'amber'
   return 'red'
+}
+
+// A restore's tone is driven by outcome, not recency: a successful
+// recovery is green however long ago it ran; a failed one is red.
+function restoreTone(status?: string): 'green' | 'amber' | 'red' | 'gray' {
+  const s = (status ?? '').toLowerCase()
+  if (s === 'healthy' || s === 'ok' || s === 'success') return 'green'
+  if (s === 'warning') return 'amber'
+  if (s === 'failure' || s === 'failed' || s === 'error') return 'red'
+  return 'gray'
 }
 
 function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
