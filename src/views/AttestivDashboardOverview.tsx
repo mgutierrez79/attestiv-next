@@ -22,6 +22,7 @@ import {
   FrameworkBar,
   GhostButton,
   MetricCard,
+  PaginatedList,
   PipelineStep,
   Pulse,
   SourceRow,
@@ -233,43 +234,40 @@ export function AttestivDashboardOverview() {
     }
   }, [])
 
-  const connectorRows = useMemo(() => {
-    return connectors.slice(0, 4).map((connector) => {
-      const brandHex = connectorBrandHex(connector.name)
-      const lastSeen = connector.last_success || connector.last_run
-      const isStale = (() => {
-        if (!lastSeen) return true
-        const interval = (connector.poll_interval_seconds ||
-          (connector.delivery_mode === 'stream' ? 60 : 21600)) * 2 * 1000
-        return Date.now() - new Date(lastSeen).getTime() > interval
-      })()
-      // last_status reflects the current attempt; failure_count is a
-      // lifetime counter and goes positive after one bad poll even
-      // when the connector has since recovered.
-      const lastStatus = ((connector as any).last_status ?? '').toLowerCase()
-      const currentlyErroring = lastStatus === 'error' || lastStatus === 'failed'
-      const status: 'OK' | 'Warn' | 'Down' = currentlyErroring || isStale ? 'Warn' : 'OK'
-      const bar = status === 'OK' ? 92 : 45
-      const barColor = status === 'OK'
-        ? 'var(--color-status-green-mid)'
-        : 'var(--color-status-amber-mid)'
-      const subtitle = connector.delivery_mode === 'stream'
-        ? `Streaming · last: ${relativeTime(lastSeen)}`
-        : `Polling · last: ${relativeTime(lastSeen)}`
-      return (
-        <SourceRow
-          key={connector.name}
-          logo={<ConnectorLogo name={connector.name} size={16} />}
-          iconBg={brandHex ? `${brandHex}1A` : 'var(--color-background-tertiary)'}
-          name={connector.label || connector.name}
-          sub={subtitle}
-          bar={bar}
-          barColor={barColor}
-          badge={<Badge tone={status === 'OK' ? 'green' : 'amber'}>{status}</Badge>}
-        />
-      )
-    })
-  }, [connectors])
+  const renderConnectorRow = (connector: ConnectorStatus) => {
+    const brandHex = connectorBrandHex(connector.name)
+    const lastSeen = connector.last_success || connector.last_run
+    const isStale = (() => {
+      if (!lastSeen) return true
+      const interval = (connector.poll_interval_seconds ||
+        (connector.delivery_mode === 'stream' ? 60 : 21600)) * 2 * 1000
+      return Date.now() - new Date(lastSeen).getTime() > interval
+    })()
+    // last_status reflects the current attempt; failure_count is a
+    // lifetime counter and goes positive after one bad poll even
+    // when the connector has since recovered.
+    const lastStatus = ((connector as any).last_status ?? '').toLowerCase()
+    const currentlyErroring = lastStatus === 'error' || lastStatus === 'failed'
+    const status: 'OK' | 'Warn' | 'Down' = currentlyErroring || isStale ? 'Warn' : 'OK'
+    const bar = status === 'OK' ? 92 : 45
+    const barColor = status === 'OK'
+      ? 'var(--color-status-green-mid)'
+      : 'var(--color-status-amber-mid)'
+    const subtitle = connector.delivery_mode === 'stream'
+      ? `Streaming · last: ${relativeTime(lastSeen)}`
+      : `Polling · last: ${relativeTime(lastSeen)}`
+    return (
+      <SourceRow
+        logo={<ConnectorLogo name={connector.name} size={16} />}
+        iconBg={brandHex ? `${brandHex}1A` : 'var(--color-background-tertiary)'}
+        name={connector.label || connector.name}
+        sub={subtitle}
+        bar={bar}
+        barColor={barColor}
+        badge={<Badge tone={status === 'OK' ? 'green' : 'amber'}>{status}</Badge>}
+      />
+    )
+  }
 
   const frameworkRows = useMemo(() => {
     const scores = summary?.framework_scores || {}
@@ -451,11 +449,18 @@ export function AttestivDashboardOverview() {
             <CardTitle right={<Badge tone="gray">{connectors.length} sources</Badge>}>
               {t('Source health', 'Source health')}
             </CardTitle>
-            {connectorRows.length ? connectorRows : (
-              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-                {t('No connectors configured yet.', 'No connectors configured yet.')}
-              </div>
-            )}
+            <PaginatedList
+              items={connectors}
+              itemKey={(c) => c.name}
+              renderItem={renderConnectorRow}
+              maxHeight={320}
+              label={t('Sources', 'Sources')}
+              empty={
+                <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+                  {t('No connectors configured yet.', 'No connectors configured yet.')}
+                </div>
+              }
+            />
           </Card>
           <Card>
             <CardTitle>{t('Framework posture', 'Framework posture')}</CardTitle>
