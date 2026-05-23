@@ -91,7 +91,7 @@ export function InventoryPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(20)
 
   // URL drives the filter so a sidebar link like
   // /inventory?asset_type=firewall lands on the right slice without
@@ -572,6 +572,7 @@ export function InventoryPage() {
               }
             />
           ) : (
+            <div style={{ maxHeight: 560, overflowY: 'auto' }}>
             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
               <thead>
                 <tr
@@ -581,6 +582,10 @@ export function InventoryPage() {
                     letterSpacing: '0.04em',
                     color: 'var(--color-text-tertiary)',
                     textAlign: 'left',
+                    position: 'sticky',
+                    top: 0,
+                    background: 'var(--color-background-primary)',
+                    zIndex: 1,
                   }}
                 >
                   <th style={{ padding: '6px 4px 6px 0', width: 24 }}>
@@ -632,6 +637,7 @@ export function InventoryPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           {filtered.length > 0 ? (
             <div style={{ marginTop: 8 }}>

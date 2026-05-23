@@ -78,7 +78,7 @@ export function AttestivReportsPage() {
   const [info, setInfo] = useState<string | null>(null)
   const [busyRow, setBusyRow] = useState<string | null>(null)
   const [page, setPage] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(20)
 
   // downloadReport fetches the per-run PDF (or md) and triggers a
   // client-side download. apiFetch carries the session cookie so the
@@ -245,6 +245,7 @@ export function AttestivReportsPage() {
           ) : filtered.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('No reports match.', 'No reports match.')}</div>
           ) : (
+            <div style={{ maxHeight: 560, overflowY: 'auto' }}>
             <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
               <thead>
                 <tr
@@ -254,6 +255,10 @@ export function AttestivReportsPage() {
                     letterSpacing: '0.04em',
                     color: 'var(--color-text-tertiary)',
                     textAlign: 'left',
+                    position: 'sticky',
+                    top: 0,
+                    background: 'var(--color-background-primary)',
+                    zIndex: 1,
                   }}
                 >
                   <th style={{ padding: '6px 10px 6px 0' }}>{t('Framework', 'Framework')}</th>
@@ -305,6 +310,7 @@ export function AttestivReportsPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
           {filtered.length > 0 ? (
             <div style={{ marginTop: 8 }}>

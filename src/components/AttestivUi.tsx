@@ -1172,7 +1172,7 @@ export function PaginatedList<T>({
   items,
   renderItem,
   itemKey,
-  defaultPageSize = 50,
+  defaultPageSize = 20,
   pageSizes = [10, 20, 50, 100],
   maxHeight = 560,
   empty,
