@@ -22,6 +22,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -209,15 +210,17 @@ export function AttestivIncidentsPage() {
               }
             />
           ) : (
-            <div>
-              {incidents.map((i) => (
+            <PaginatedList
+              items={incidents}
+              itemKey={(i) => i.id}
+              renderItem={(i) => (
                 <IncidentRow
-                  key={i.id}
                   incident={i}
                   onOpen={() => router.push(`/incidents/${encodeURIComponent(i.id)}`)}
                 />
-              ))}
-            </div>
+              )}
+              label={t('Incidents', 'Incidents')}
+            />
           )}
         </Card>
 

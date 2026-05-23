@@ -21,6 +21,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -269,11 +270,14 @@ export function AttestivRemediationPage() {
               }
             />
           ) : (
-            <div>
-              {tasks.map((t) => (
-                <TaskRow key={t.id} task={t} onPatch={(updates) => patchTask(t.id, updates)} />
-              ))}
-            </div>
+            <PaginatedList
+              items={tasks}
+              itemKey={(task) => task.id}
+              renderItem={(task) => (
+                <TaskRow task={task} onPatch={(updates) => patchTask(task.id, updates)} />
+              )}
+              label={t('Tasks', 'Tasks')}
+            />
           )}
         </Card>
       </div>

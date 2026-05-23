@@ -18,6 +18,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -243,15 +244,17 @@ export function AttestivThirdPartiesPage() {
               }
             />
           ) : (
-            <div>
-              {providers.map((p) => (
+            <PaginatedList
+              items={providers}
+              itemKey={(p) => p.id}
+              renderItem={(p) => (
                 <ProviderRow
-                  key={p.id}
                   provider={p}
                   onOpen={() => router.push(`/third-parties/${encodeURIComponent(p.id)}`)}
                 />
-              ))}
-            </div>
+              )}
+              label={t('Providers', 'Providers')}
+            />
           )}
         </Card>
       </div>

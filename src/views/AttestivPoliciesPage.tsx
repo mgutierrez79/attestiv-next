@@ -19,6 +19,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -211,15 +212,17 @@ export function AttestivPoliciesPage() {
               }
             />
           ) : (
-            <div>
-              {policies.map((p) => (
+            <PaginatedList
+              items={policies}
+              itemKey={(p) => p.id}
+              renderItem={(p) => (
                 <PolicyRow
-                  key={p.id}
                   policy={p}
                   onOpen={() => router.push(`/policies/${encodeURIComponent(p.id)}`)}
                 />
-              ))}
-            </div>
+              )}
+              label={t('Policies', 'Policies')}
+            />
           )}
         </Card>
       </div>

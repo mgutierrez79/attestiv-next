@@ -7,7 +7,7 @@
 // artifact an auditor downloads via /v1/public/reports/latest/pdf
 // without needing to authenticate.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   Badge,
@@ -15,6 +15,7 @@ import {
   Card,
   CardTitle,
   GhostButton,
+  Pagination,
   PrimaryButton,
   Topbar,
 } from '../components/AttestivUi'
@@ -76,6 +77,8 @@ export function AttestivReportsPage() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [busyRow, setBusyRow] = useState<string | null>(null)
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
 
   // downloadReport fetches the per-run PDF (or md) and triggers a
   // client-side download. apiFetch carries the session cookie so the
@@ -195,6 +198,18 @@ export function AttestivReportsPage() {
       )
     : reports
 
+  // Reset to the first page when the filter (or page size) changes —
+  // but NOT on a plain data refresh.
+  useEffect(() => {
+    setPage(0)
+  }, [filter, pageSize])
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const paged = useMemo(
+    () => filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize),
+    [filtered, currentPage, pageSize],
+  )
+
   return (
     <>
       <Topbar
@@ -250,7 +265,7 @@ export function AttestivReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(report => {
+                {paged.map(report => {
                   const {
                     t
                   } = useI18n();
@@ -272,7 +287,7 @@ export function AttestivReportsPage() {
                       </td>
                       <td style={{ padding: '10px 0 10px 10px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                          <GhostButton onClick={() => copyAuditorLink(report.run_id ?? report.id, filtered.indexOf(report) === 0)}>
+                          <GhostButton onClick={() => copyAuditorLink(report.run_id ?? report.id, filtered[0] === report)}>
                             <i className="ti ti-link" aria-hidden="true" />
                             {t('Auditor link', 'Auditor link')}
                           </GhostButton>
@@ -291,6 +306,21 @@ export function AttestivReportsPage() {
               </tbody>
             </table>
           )}
+          {filtered.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                total={filtered.length}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s)
+                  setPage(0)
+                }}
+                label={t('Reports', 'Reports')}
+              />
+            </div>
+          ) : null}
         </Card>
 
         <Card style={{ marginTop: 12 }}>

@@ -21,6 +21,7 @@ import {
   Card,
   CardTitle,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   SignatureBox,
   Topbar,
@@ -205,11 +206,12 @@ export function AttestivAuditTrailPage() {
                 {t('No entries match.', 'No entries match.')}
               </div>
             ) : (
-              <div>
-                {filtered.map((entry, index) => (
-                  <AuditRow key={`${entry.timestamp}-${index}`} entry={entry} />
-                ))}
-              </div>
+              <PaginatedList
+                items={filtered}
+                itemKey={(entry, index) => `${entry.timestamp}-${index}`}
+                renderItem={(entry) => <AuditRow entry={entry} />}
+                label={t('Audit trail', 'Audit trail')}
+              />
             )}
           </Card>
 

@@ -20,6 +20,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  PaginatedList,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -210,15 +211,17 @@ export function AttestivRisksPage() {
               )}
             />
           ) : (
-            <div>
-              {risks.map((risk) => (
+            <PaginatedList
+              items={risks}
+              itemKey={(risk) => risk.risk_id}
+              renderItem={(risk) => (
                 <RiskRow
-                  key={risk.risk_id}
                   risk={risk}
                   onOpen={() => router.push(`/risks/${encodeURIComponent(risk.risk_id)}`)}
                 />
-              ))}
-            </div>
+              )}
+              label={t('Risks', 'Risks')}
+            />
           )}
         </Card>
       </div>

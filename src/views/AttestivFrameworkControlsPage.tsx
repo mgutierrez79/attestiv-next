@@ -21,6 +21,7 @@ import {
   Card,
   CardTitle,
   FrameworkBar,
+  Pagination,
   Topbar,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
@@ -80,6 +81,8 @@ export function AttestivFrameworkControlsPage() {
   const [usingDemo, setUsingDemo] = useState(false)
   const [filter, setFilter] = useState('')
   const [framework, setFramework] = useState('')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
 
   useEffect(() => {
     let cancelled = false
@@ -192,6 +195,18 @@ export function AttestivFrameworkControlsPage() {
     return true
   })
 
+  // Reset to the first page when the filter criteria (or page size)
+  // change — but NOT on a plain data refresh.
+  useEffect(() => {
+    setPage(0)
+  }, [filter, framework, pageSize])
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const paged = useMemo(
+    () => filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize),
+    [filtered, currentPage, pageSize],
+  )
+
   return (
     <>
       <Topbar
@@ -271,7 +286,7 @@ export function AttestivFrameworkControlsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((control) => {
+                {paged.map((control) => {
                   const k = keyFor(control.framework, control.control_id)
                   const taskCount = tasksByControl.get(k) ?? 0
                   const exceptions = exceptionsByControl.get(k) ?? []
@@ -332,6 +347,21 @@ export function AttestivFrameworkControlsPage() {
               </tbody>
             </table>
           )}
+          {filtered.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                total={filtered.length}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s)
+                  setPage(0)
+                }}
+                label={t('Controls', 'Controls')}
+              />
+            </div>
+          ) : null}
         </Card>
       </div>
     </>
