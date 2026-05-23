@@ -30,6 +30,7 @@ import {
   CardTitle,
   EmptyState,
   GhostButton,
+  Pagination,
   PrimaryButton,
   Skeleton,
   Topbar,
@@ -89,6 +90,8 @@ export function InventoryPage() {
   // scope (PCI CDE segmentation, GxP scope rules etc.).
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
 
   // URL drives the filter so a sidebar link like
   // /inventory?asset_type=firewall lands on the right slice without
@@ -370,6 +373,20 @@ export function InventoryPage() {
     })
   }, [assets, assetTypeFilter, sourceFilter, criticalityFilter, search])
 
+  // Reset to the first page when the filter criteria (or page size)
+  // change — but NOT on a plain data refresh, so a scope toggle doesn't
+  // bounce the operator back to page 1.
+  useEffect(() => {
+    setPage(0)
+  }, [assetTypeFilter, sourceFilter, criticalityFilter, search, pageSize])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const paged = useMemo(
+    () => filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize),
+    [filtered, currentPage, pageSize],
+  )
+
   const counts = useMemo(() => {
     const byType: Record<string, number> = {}
     for (const asset of assets) {
@@ -570,19 +587,19 @@ export function InventoryPage() {
                     <input
                       type="checkbox"
                       title={t('Select all visible', 'Select all visible')}
-                      checked={filtered.length > 0 && filtered.every((a) => selected.has(a.asset_id))}
+                      checked={paged.length > 0 && paged.every((a) => selected.has(a.asset_id))}
                       ref={(el) => {
                         if (!el) return
-                        const allSelected = filtered.length > 0 && filtered.every((a) => selected.has(a.asset_id))
-                        const someSelected = filtered.some((a) => selected.has(a.asset_id))
+                        const allSelected = paged.length > 0 && paged.every((a) => selected.has(a.asset_id))
+                        const someSelected = paged.some((a) => selected.has(a.asset_id))
                         el.indeterminate = someSelected && !allSelected
                       }}
                       onChange={(e) => {
                         const next = new Set(selected)
                         if (e.target.checked) {
-                          filtered.forEach((a) => next.add(a.asset_id))
+                          paged.forEach((a) => next.add(a.asset_id))
                         } else {
-                          filtered.forEach((a) => next.delete(a.asset_id))
+                          paged.forEach((a) => next.delete(a.asset_id))
                         }
                         setSelected(next)
                       }}
@@ -597,7 +614,7 @@ export function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((asset) => (
+                {paged.map((asset) => (
                   <AssetRow
                     key={asset.asset_id}
                     asset={asset}
@@ -616,6 +633,21 @@ export function InventoryPage() {
               </tbody>
             </table>
           )}
+          {filtered.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                total={filtered.length}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s)
+                  setPage(0)
+                }}
+                label={t('Inventory', 'Inventory')}
+              />
+            </div>
+          ) : null}
         </Card>
       </div>
     </>
