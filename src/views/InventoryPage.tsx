@@ -105,21 +105,31 @@ export function InventoryPage() {
     setError(null)
     setLoading(true)
     try {
-      // Default backend limit is 500; pilot inventories regularly
-      // exceed that once cross-source emissions land (VMs from both
-      // vCenter and PowerStore, hosts, volumes, clusters, etc.).
-      // Without a higher cap the page silently drops rows — e.g.
-      // entire clusters disappear because they sort after VMs by
-      // asset_id. 5000 is the next reasonable ceiling for pilot-
-      // scale tenants; tenants beyond that need a paginated view.
-      const response = await apiFetch('/inventory/assets?limit=5000')
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}))
-        throw new Error(body?.detail || body?.error || `${response.status} ${response.statusText}`)
+      // The backend caps each response at 1000 rows, so a single fetch
+      // silently drops everything past 1000 once a fleet gets large
+      // (switches + firewalls + CMDB CIs easily exceed that, and rows
+      // that sort later — clusters, hosts — fall off the page). Walk
+      // ALL pages via offset until we've pulled the full count, so the
+      // view never hides assets. Hard stop at 50k as a runaway guard.
+      const PAGE = 1000
+      const MAX = 50000
+      const all: InventoryAsset[] = []
+      let offset = 0
+      let total = Infinity
+      while (offset < total && offset < MAX) {
+        const response = await apiFetch(`/inventory/assets?limit=${PAGE}&offset=${offset}`)
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}))
+          throw new Error(body?.detail || body?.error || `${response.status} ${response.statusText}`)
+        }
+        const body = await response.json()
+        const items: InventoryAsset[] = Array.isArray(body?.items) ? body.items : []
+        all.push(...items)
+        total = typeof body?.count === 'number' ? body.count : all.length
+        if (items.length === 0) break // safety: server returned nothing
+        offset += items.length
       }
-      const body = await response.json()
-      const items: InventoryAsset[] = Array.isArray(body?.items) ? body.items : []
-      setAssets(items)
+      setAssets(all)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load inventory')
       setAssets([])
