@@ -204,6 +204,17 @@ const CONNECTORS: ConnectorKind[] = [
     pollDefault: 21600,
   },
   {
+    value: 'active_directory',
+    label: 'Active Directory',
+    category: 'Identity',
+    endpointHint: 'ldaps://dc01.corp.example.com',
+    fields: [
+      { key: 'username', label: 'Bind DN or UPN', required: true, hint: 'Service account used for the LDAP bind, e.g. CN=svc-compliance,OU=Service,DC=corp,DC=example,DC=com or svc-compliance@corp.example.com.' },
+      { key: 'base_dn', label: 'Base DN', hint: 'Search root, e.g. DC=corp,DC=example,DC=com. Leave blank to auto-detect from RootDSE.' },
+    ],
+    pollDefault: 21600,
+  },
+  {
     value: 'microsoft_graph',
     label: 'Microsoft Graph (Entra)',
     category: 'Identity',

@@ -84,6 +84,10 @@ export const AUTH_FIELD_DESCRIPTORS: Record<string, AuthFieldDescriptor> = {
     type: 'password',
     hint: 'Bearer token for the Log Analytics API. Azure tokens are short-lived (~1h) — fine for a test, but use the app method for unattended polling.',
   },
+  base_dn: {
+    label: 'Base DN',
+    hint: 'LDAP search root, e.g. DC=corp,DC=example,DC=com. Leave blank to auto-detect from the directory (RootDSE defaultNamingContext).',
+  },
 }
 
 export function describeAuthField(key: string): AuthFieldDescriptor {
@@ -130,7 +134,7 @@ export type AuthMethod = {
 // pulled out of the auth list into a separate "common fields" bucket
 // so they don't get mistaken for mutually-exclusive auth methods (which
 // would render a method picker and hide them behind a tab).
-const NON_AUTH_FIELDS: ReadonlySet<string> = new Set(['serial', 'customer', 'perimeter', 'workspace_id'])
+const NON_AUTH_FIELDS: ReadonlySet<string> = new Set(['serial', 'customer', 'perimeter', 'workspace_id', 'base_dn'])
 
 type AuthMethodDef = {
   key: string
