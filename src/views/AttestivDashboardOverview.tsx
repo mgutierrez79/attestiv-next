@@ -178,6 +178,73 @@ const EMPTY_GRC: GRCMetrics = {
   policiesOverdue: null,
 }
 
+// StatPill — compact stat used inside the hero posture band. Smaller
+// than MetricCard, tuned to sit four-up next to the big posture number.
+function StatPill({
+  label,
+  value,
+  sub,
+  valueColor,
+}: {
+  label: string
+  value: string
+  sub?: string
+  valueColor?: string
+}) {
+  return (
+    <div
+      style={{
+        background: 'var(--color-background-secondary)',
+        borderRadius: 'var(--border-radius-md)',
+        padding: '12px 14px',
+        boxShadow: '0 0 0 0.5px rgba(0, 0, 0, 0.04)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--color-text-tertiary)',
+          marginBottom: 6,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 600,
+          lineHeight: 1,
+          letterSpacing: '-0.01em',
+          fontVariantNumeric: 'tabular-nums',
+          color: valueColor,
+        }}
+      >
+        {value}
+      </div>
+      {sub ? (
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--color-text-tertiary)',
+            marginTop: 5,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {sub}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function AttestivDashboardOverview() {
   const {
     t
@@ -342,6 +409,33 @@ export function AttestivDashboardOverview() {
     }
   })()
 
+  // Overall posture = mean of the per-framework scores. An honest
+  // single-number headline for the trust-grade hero; clearly labelled
+  // "average across N frameworks" so it's never mistaken for a single
+  // framework's score. "—" when nothing has scored yet.
+  const overall = (() => {
+    const scores = summary?.framework_scores || {}
+    const entries = Object.entries(scores)
+    if (!entries.length) return { value: '—', percent: 0, count: 0 }
+    const pcts = entries.map(([, s]) =>
+      Math.max(0, Math.min(100, Math.round((s?.score ?? s?.controls_score ?? 0) * 100) / 100)),
+    )
+    const avg = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+    return { value: `${avg}%`, percent: avg, count: entries.length }
+  })()
+  const postureColor =
+    overall.percent >= 85
+      ? 'var(--color-status-green-deep)'
+      : overall.percent >= 60
+        ? 'var(--color-status-amber-text)'
+        : 'var(--color-status-red-deep)'
+  const postureFill =
+    overall.percent >= 85
+      ? 'var(--color-status-green-mid)'
+      : overall.percent >= 60
+        ? 'var(--color-status-amber-mid)'
+        : 'var(--color-status-red-mid)'
+
   return (
     <>
       <Topbar
@@ -367,51 +461,129 @@ export function AttestivDashboardOverview() {
           </Card>
         ) : null}
 
+        {/* Hero posture band — the trust-grade headline: overall
+            compliance posture as one big number, with the four
+            highest-signal stats alongside it. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(280px, 1.3fr) 1fr',
+            gap: 28,
+            background: 'var(--color-background-primary)',
+            borderRadius: 'var(--border-radius-lg)',
+            boxShadow: 'var(--shadow-card)',
+            padding: '28px 32px',
+            marginBottom: 20,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--color-text-tertiary)',
+                marginBottom: 12,
+              }}
+            >
+              {t('Overall posture', 'Overall posture')}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
+              <span
+                style={{
+                  fontSize: 56,
+                  fontWeight: 600,
+                  lineHeight: 1,
+                  letterSpacing: '-0.03em',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: postureColor,
+                }}
+              >
+                {overall.value}
+              </span>
+              {overall.value !== '—' ? (
+                <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
+                  {t('average across', 'average across')} {overall.count}{' '}
+                  {t('frameworks', 'frameworks')}
+                </span>
+              ) : (
+                <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
+                  {t('No scoring run yet', 'No scoring run yet')}
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                background: 'var(--color-background-tertiary)',
+                overflow: 'hidden',
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${overall.percent}%`,
+                  borderRadius: 999,
+                  background: postureFill,
+                  transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+              {t('Last evidence', 'Last evidence')} {lastEvidence} · {connectors.length}{' '}
+              {t('sources connected', 'sources connected')}
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 12,
+              alignContent: 'center',
+            }}
+          >
+            <StatPill
+              label={t('Top framework', 'Top framework')}
+              value={topFramework.value}
+              sub={topFramework.label !== '—' ? topFramework.label : topFramework.sub}
+              valueColor={topFramework.value !== '—' ? 'var(--color-brand-blue)' : undefined}
+            />
+            <StatPill
+              label={t('Controls passing', 'Controls passing')}
+              value={metricControlsPassing.value}
+              sub={metricControlsPassing.sub}
+              valueColor="var(--color-status-green-deep)"
+            />
+            <StatPill
+              label={t('Evidence collected', 'Evidence collected')}
+              value={metricEvidenceCollected}
+              sub={summary?.generated_at ? `${t('as of', 'as of')} ${relativeTime(summary.generated_at)}` : undefined}
+            />
+            <StatPill
+              label={t('Open risks', 'Open risks')}
+              value={grc.risksOpenCriticalAndHigh != null ? String(grc.risksOpenCriticalAndHigh) : '—'}
+              sub={t('critical + high', 'critical + high')}
+              valueColor={grc.risksOpenCriticalAndHigh && grc.risksOpenCriticalAndHigh > 0 ? 'var(--color-status-amber-mid)' : undefined}
+            />
+          </div>
+        </div>
+
+        {/* Operational metrics row */}
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 10,
-            marginBottom: 14,
+            gap: 16,
+            marginBottom: 20,
           }}
         >
-          <MetricCard
-            label={t('Evidence collected', 'Evidence collected')}
-            value={metricEvidenceCollected}
-            sub={summary?.generated_at ? `${t('as of', 'as of')} ${relativeTime(summary.generated_at)}` : null}
-          />
-          <MetricCard
-            label={t('Controls passing', 'Controls passing')}
-            value={metricControlsPassing.value}
-            sub={metricControlsPassing.sub}
-            valueColor="var(--color-status-green-deep)"
-          />
           <MetricCard
             label={t('Active connectors', 'Active connectors')}
             value={metricActiveConnectors}
             sub={metricConnectorWarning ? `${metricConnectorWarning} ${t('warning', 'warning')}` : t('all healthy', 'all healthy')}
-          />
-          <MetricCard
-            label={t('Top framework', 'Top framework')}
-            value={topFramework.value}
-            sub={topFramework.label !== '—' ? `${topFramework.label} · ${topFramework.sub}` : topFramework.sub}
-            valueColor={topFramework.value !== '—' ? 'var(--color-brand-blue)' : undefined}
-          />
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 10,
-            marginBottom: 14,
-          }}
-        >
-          <MetricCard
-            label={t('Open risks', 'Open risks')}
-            value={grc.risksOpenCriticalAndHigh != null ? String(grc.risksOpenCriticalAndHigh) : '—'}
-            sub={t('critical + high', 'critical + high')}
-            valueColor={grc.risksOpenCriticalAndHigh && grc.risksOpenCriticalAndHigh > 0 ? 'var(--color-status-amber-mid)' : undefined}
           />
           <MetricCard
             label={t('Active exceptions', 'Active exceptions')}
@@ -441,8 +613,8 @@ export function AttestivDashboardOverview() {
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
-            gap: 12,
-            marginBottom: 12,
+            gap: 20,
+            marginBottom: 20,
           }}
         >
           <Card>
