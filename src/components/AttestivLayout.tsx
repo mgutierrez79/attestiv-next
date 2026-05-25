@@ -116,7 +116,7 @@ const railTop: RailItem[] = [
   { key: 'inventory',  label: 'Inventory',  icon: 'ti-database',         prefix: '/inventory' },
   { key: 'risks',      label: 'Risk',       icon: 'ti-alert-octagon',    prefix: '/risks' },
   { key: 'policies',   label: 'Policies',   icon: 'ti-file-text',        prefix: '/policies' },
-  { key: 'exceptions', label: 'Exceptions', icon: 'ti-shield-half-filled', prefix: '/exceptions' },
+  { key: 'exceptions', label: 'Exceptions', icon: 'ti-shield-off', prefix: '/exceptions' },
   { key: 'remediation', label: 'Remediation', icon: 'ti-checklist',       prefix: '/remediation' },
   { key: 'incidents',  label: 'Incidents',  icon: 'ti-radar-2',          prefix: '/incidents' },
   { key: 'thirdparties', label: 'Third parties', icon: 'ti-building',    prefix: '/third-parties' },
@@ -197,7 +197,7 @@ const sections: Record<SectionKey, Section> = {
       { to: '/inventory?asset_type=storage_array',     label: 'Storage arrays',   icon: 'ti-database' },
       { to: '/inventory?asset_type=storage_volume',    label: 'Storage volumes',  icon: 'ti-stack-2' },
       { to: '/inventory?asset_type=server',            label: 'Servers',          icon: 'ti-server' },
-      { to: '/inventory?asset_type=firewall',          label: 'Firewalls',        icon: 'ti-shield-half-filled' },
+      { to: '/inventory?asset_type=firewall',          label: 'Firewalls',        icon: 'ti-wall' },
     ],
   },
   risks: {
@@ -223,7 +223,7 @@ const sections: Record<SectionKey, Section> = {
     key: 'exceptions',
     navLabel: 'Exceptions',
     items: [
-      { to: '/exceptions',                  label: 'Register',       icon: 'ti-shield-half-filled' },
+      { to: '/exceptions',                  label: 'Register',       icon: 'ti-shield-off' },
       { to: '/exceptions?status=active',    label: 'Active',         icon: 'ti-clock' },
       { to: '/exceptions?status=expired',   label: 'Expired',        icon: 'ti-circle-x' },
     ],

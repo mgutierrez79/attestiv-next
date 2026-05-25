@@ -336,7 +336,7 @@ export function AttestivFrameworkControlsPage() {
                       </td>
                       <td style={{ padding: '10px' }}>
                         {hasException ? (
-                          <Badge tone="navy" icon="ti-shield-half-filled">
+                          <Badge tone="navy" icon="ti-shield-off">
                             {expiryDays !== null ? (expiryDays < 0 ? 'expired' : `${expiryDays}d`) : 'active'}
                           </Badge>
                         ) : (

@@ -163,7 +163,7 @@ export function AttestivExceptionDetailPage() {
       <>
         <Topbar title={t('Exception', 'Exception')} />
         <div className="attestiv-content">
-          <EmptyState icon="ti-shield-half-filled" title={t('Exception not found', 'Exception not found')} description={t(
+          <EmptyState icon="ti-shield-off" title={t('Exception not found', 'Exception not found')} description={t(
             'The exception may have been deleted or you may not have access.',
             'The exception may have been deleted or you may not have access.'
           )} />

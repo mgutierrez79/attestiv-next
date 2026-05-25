@@ -180,7 +180,7 @@ export function AttestivExceptionsPage() {
             gap: 10,
           }}
         >
-          <SummaryCard label={t('Active', 'Active')} value={summary.active} tone="amber" icon="ti-shield-half-filled" />
+          <SummaryCard label={t('Active', 'Active')} value={summary.active} tone="amber" icon="ti-shield-off" />
           <SummaryCard label={t('Expiring ≤ 14d', 'Expiring ≤ 14d')} value={expiring.length} tone="red" icon="ti-clock-exclamation" />
           <SummaryCard label={t('Expired', 'Expired')} value={summary.expired} tone="red" icon="ti-circle-x" />
           <SummaryCard label={t('Resolved', 'Resolved')} value={summary.resolved} tone="green" icon="ti-circle-check" />
@@ -192,7 +192,7 @@ export function AttestivExceptionsPage() {
             <Skeleton lines={5} height={42} />
           ) : items.length === 0 ? (
             <EmptyState
-              icon="ti-shield-half-filled"
+              icon="ti-shield-off"
               title={t('No exceptions', 'No exceptions')}
               description={t(
                 'Create an exception when a control is failing and the risk has been formally accepted. Every exception requires an expiry date — no indefinite acceptances.',

@@ -283,14 +283,14 @@ export function AttestivConnectorRegistry() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 10,
+              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+              gap: 14,
             }}
           >
             {Array.from({ length: 6 }).map((_, i) => (
               <Card key={i}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Skeleton width={36} height={36} rounded={6} />
+                  <Skeleton width={44} height={44} rounded={10} />
                   <Skeleton width={50} height={18} rounded={9} />
                 </div>
                 <Skeleton width="70%" height={14} />
@@ -307,8 +307,8 @@ export function AttestivConnectorRegistry() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 10,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+            gap: 14,
           }}
         >
           {visibleConnectors.map((connector) => {
@@ -324,10 +324,12 @@ export function AttestivConnectorRegistry() {
               <div
                 key={connector.name}
                 style={{
-                  border: `0.5px solid ${state.border}`,
+                  border: 'none',
+                  borderLeft: `3px solid ${state.border}`,
                   borderRadius: 'var(--border-radius-lg)',
-                  padding: '12px 14px',
+                  padding: '16px 18px',
                   background: 'var(--color-background-primary)',
+                  boxShadow: 'var(--shadow-card)',
                   opacity: isDisabled ? 0.7 : 1,
                 }}
               >
@@ -336,25 +338,25 @@ export function AttestivConnectorRegistry() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
-                    marginBottom: 8,
+                    marginBottom: 12,
                   }}
                 >
                   <div
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 6,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 10,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: brandHex ? `${brandHex}1A` : 'var(--color-background-tertiary)',
+                      background: brandHex ? `${brandHex}14` : 'var(--color-background-tertiary)',
                     }}
                   >
-                    <ConnectorLogo name={connector.name} size={22} />
+                    <ConnectorLogo name={connector.name} size={28} />
                   </div>
                   <Badge tone={state.badge.tone}>{state.badge.label}</Badge>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
                   {connector.label || connector.name}
                 </div>
                 <div

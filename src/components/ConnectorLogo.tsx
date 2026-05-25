@@ -21,22 +21,29 @@ import {
 
 type LogoSpec = {
   hex: string
+  // Full-color brand watermark served from /public/connectors. When
+  // present it wins over the monochrome SVG path — these are the real
+  // vendor marks shipped with the design system.
+  png?: string
   // Either an SVG path (24×24 viewBox) or arbitrary inline SVG content.
   path?: string
   inline?: 'zabbix' | 'glpi'
 }
 
 // One entry per registered connector name (must match the backend
-// `connector.name` values surfaced by /v1/connectors).
+// `connector.name` values surfaced by /v1/connectors). `png` is the
+// full-color brand mark (preferred); `path`/`inline` are the monochrome
+// fallbacks used when no PNG ships for that vendor.
 const LOGOS: Record<string, LogoSpec> = {
-  palo_alto:                { hex: siPaloaltonetworks.hex, path: siPaloaltonetworks.path },
-  vcenter:                  { hex: siVmware.hex,           path: siVmware.path },
-  powerstore:               { hex: siDell.hex,             path: siDell.path },
-  dell_datadomain:          { hex: siDell.hex,             path: siDell.path },
-  veeam_enterprise_manager: { hex: siVeeam.hex,            path: siVeeam.path },
+  palo_alto:                { hex: siPaloaltonetworks.hex, png: 'palo-alto.png', path: siPaloaltonetworks.path },
+  vcenter:                  { hex: siVmware.hex,           png: 'vcenter.png',   path: siVmware.path },
+  powerstore:               { hex: siDell.hex,             png: 'dell.png',      path: siDell.path },
+  dell_datadomain:          { hex: siDell.hex,             png: 'dell.png',      path: siDell.path },
+  veeam_enterprise_manager: { hex: siVeeam.hex,            png: 'veeam.png',     path: siVeeam.path },
   dynatrace:                { hex: siDynatrace.hex,        path: siDynatrace.path },
   zabbix:                   { hex: 'D40000',               inline: 'zabbix' },
-  glpi:                     { hex: 'F77B0F',               inline: 'glpi' },
+  glpi:                     { hex: 'F77B0F',               png: 'glpi.png',      inline: 'glpi' },
+  advens_mysoc:             { hex: '1A1A18',               png: 'mysoc.png' },
 }
 
 // Aliases for keys that appear in other call sites (wizard form values,
@@ -48,6 +55,7 @@ const ALIASES: Record<string, string> = {
   dell_powerstore: 'powerstore',
   vmware_vcenter: 'vcenter',
   veeam_em: 'veeam_enterprise_manager',
+  mysoc: 'advens_mysoc',
 }
 
 function canonical(name: string): string {
@@ -81,6 +89,20 @@ export function ConnectorLogo({
     )
   }
   const fill = `#${spec.hex}`
+  // Full-color brand watermark wins when one ships for this vendor.
+  if (spec.png) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`/connectors/${spec.png}`}
+        alt=""
+        width={size}
+        height={size}
+        aria-hidden="true"
+        style={{ display: 'block', objectFit: 'contain' }}
+      />
+    )
+  }
   return (
     <svg
       width={size}
