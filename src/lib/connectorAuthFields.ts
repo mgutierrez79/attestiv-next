@@ -79,6 +79,11 @@ export const AUTH_FIELD_DESCRIPTORS: Record<string, AuthFieldDescriptor> = {
     label: 'Log Analytics workspace ID',
     hint: 'GUID of the Sentinel / Log Analytics workspace the queries run against (Sentinel → Settings → Workspace settings → Workspace ID). Not the workspace name.',
   },
+  access_token: {
+    label: 'Access token',
+    type: 'password',
+    hint: 'Bearer token for the Log Analytics API. Azure tokens are short-lived (~1h) — fine for a test, but use the app method for unattended polling.',
+  },
 }
 
 export function describeAuthField(key: string): AuthFieldDescriptor {
@@ -125,7 +130,7 @@ export type AuthMethod = {
 // pulled out of the auth list into a separate "common fields" bucket
 // so they don't get mistaken for mutually-exclusive auth methods (which
 // would render a method picker and hide them behind a tab).
-const NON_AUTH_FIELDS: ReadonlySet<string> = new Set(['serial', 'customer', 'perimeter'])
+const NON_AUTH_FIELDS: ReadonlySet<string> = new Set(['serial', 'customer', 'perimeter', 'workspace_id'])
 
 type AuthMethodDef = {
   key: string
@@ -144,8 +149,17 @@ const AUTH_METHOD_DEFINITIONS: AuthMethodDef[] = [
   {
     key: 'oauth_client',
     label: 'OAuth (client ID + secret)',
-    hint: 'OAuth 2.0 client credentials grant.',
-    match: (keys) => (keys.has('client_id') && keys.has('client_secret') ? ['client_id', 'client_secret'] : null),
+    hint: 'OAuth 2.0 client credentials grant; the connector auto-refreshes the token.',
+    // tenant_id belongs to this method when present (Azure/Entra apps),
+    // so it renders WITH the client id/secret instead of being orphaned
+    // into its own bogus single-field method.
+    match: (keys) => {
+      if (!keys.has('client_id') || !keys.has('client_secret')) return null
+      const fields: string[] = []
+      if (keys.has('tenant_id')) fields.push('tenant_id')
+      fields.push('client_id', 'client_secret')
+      return fields
+    },
   },
   {
     key: 'aws_keys',
@@ -175,6 +189,12 @@ const AUTH_METHOD_DEFINITIONS: AuthMethodDef[] = [
     label: 'API token',
     hint: 'Generated from the vendor admin console with the required scopes.',
     match: (keys) => (keys.has('api_token') ? ['api_token'] : null),
+  },
+  {
+    key: 'access_token',
+    label: 'Access token',
+    hint: 'Paste a bearer token for the API. Azure tokens are short-lived (~1h) — prefer the app method for unattended polling.',
+    match: (keys) => (keys.has('access_token') ? ['access_token'] : null),
   },
   {
     key: 'token',
