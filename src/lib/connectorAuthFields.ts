@@ -71,6 +71,14 @@ export const AUTH_FIELD_DESCRIPTORS: Record<string, AuthFieldDescriptor> = {
     label: 'Customer perimeter',
     hint: 'Your mySOC perimeter slug — the first path segment of the mySOC API URL.',
   },
+  tenant_id: {
+    label: 'Directory (tenant) ID',
+    hint: 'Azure AD / Entra tenant GUID (Entra admin center → Overview).',
+  },
+  workspace_id: {
+    label: 'Log Analytics workspace ID',
+    hint: 'GUID of the Sentinel / Log Analytics workspace the queries run against (Sentinel → Settings → Workspace settings → Workspace ID). Not the workspace name.',
+  },
 }
 
 export function describeAuthField(key: string): AuthFieldDescriptor {
