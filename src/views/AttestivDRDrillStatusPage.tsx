@@ -41,6 +41,25 @@ type Record = {
   notes?: string
 }
 
+type TriggerJob = {
+  job_id: string
+  status: 'running' | 'completed' | 'failed'
+  started_at: string
+  completed_at?: string
+  started_by?: string
+  result?: {
+    timestamp?: string
+    backup_id?: string
+    sub_dir?: string
+    postgres_dump_bytes?: number
+    history_archive_bytes?: number
+    signing_key_copied?: boolean
+    duration_seconds?: number
+    warnings?: string[]
+  }
+  error?: string
+}
+
 type Summary = {
   total: number
   last_backup_at?: string
@@ -70,6 +89,11 @@ export function AttestivDRDrillStatusPage() {
   const [recNotes, setRecNotes] = useState('')
   const [recFailure, setRecFailure] = useState('')
   const [posting, setPosting] = useState(false)
+
+  // W1-6 Phase 2 — operator-triggered backup. Holds the in-flight
+  // job_id so the button can poll status without a page reload.
+  const [triggerBusy, setTriggerBusy] = useState(false)
+  const [triggerJob, setTriggerJob] = useState<TriggerJob | null>(null)
 
   async function refresh() {
     try {
@@ -120,6 +144,72 @@ export function AttestivDRDrillStatusPage() {
     }
   }
 
+  // W1-6 Phase 2: trigger the in-container backup runner. Async job
+  // pattern — POST returns immediately with a job_id, we poll the
+  // status endpoint at 2s intervals until completion. On success we
+  // refresh the drill-status summary so the new backup_verified row
+  // (auto-recorded by the backend) shows up in the records table.
+  async function triggerBackup() {
+    if (triggerBusy) return
+    setError(null)
+    setSuccess(null)
+    setTriggerBusy(true)
+    try {
+      const r = await apiFetch('/admin/backup/trigger', { method: 'POST' })
+      if (!r.ok) {
+        const text = await r.text().catch(() => '')
+        throw new Error(text || `${r.status} ${r.statusText}`)
+      }
+      const job = (await r.json()) as TriggerJob
+      setTriggerJob(job)
+      await pollBackupJob(job.job_id)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Backup trigger failed')
+      setTriggerBusy(false)
+    }
+  }
+
+  async function pollBackupJob(jobID: string) {
+    const POLL_MS = 2000
+    const MAX_MS = 30 * 60 * 1000 // 30 min cap — bigger DBs take a while
+    const startedAt = Date.now()
+    while (true) {
+      if (Date.now() - startedAt > MAX_MS) {
+        setError(t('Backup exceeded 30 min — check /v1/admin/backup/jobs/{id} for state', 'Backup exceeded 30 min — check /v1/admin/backup/jobs/{id} for state'))
+        setTriggerBusy(false)
+        return
+      }
+      await new Promise((res) => setTimeout(res, POLL_MS))
+      try {
+        const r = await apiFetch(`/admin/backup/jobs/${encodeURIComponent(jobID)}`)
+        if (!r.ok) {
+          throw new Error(`${r.status} ${r.statusText}`)
+        }
+        const job = (await r.json()) as TriggerJob
+        setTriggerJob(job)
+        if (job.status === 'completed') {
+          const mb = job.result?.postgres_dump_bytes
+            ? (job.result.postgres_dump_bytes / 1024 / 1024).toFixed(1)
+            : '?'
+          setSuccess(t('Backup complete', 'Backup complete') + ' — ' + (job.result?.backup_id || '') + ' (pg ' + mb + ' MB)')
+          setTriggerBusy(false)
+          await refresh()
+          return
+        }
+        if (job.status === 'failed') {
+          setError(t('Backup failed', 'Backup failed') + ': ' + (job.error || ''))
+          setTriggerBusy(false)
+          await refresh()
+          return
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Poll failed')
+        setTriggerBusy(false)
+        return
+      }
+    }
+  }
+
   const records = summary?.records ?? []
 
   return (
@@ -136,9 +226,25 @@ export function AttestivDRDrillStatusPage() {
           ) : null
         }
         right={
-          <PrimaryButton onClick={() => setShowRecord((v) => !v)}>
-            <i className="ti ti-plus" aria-hidden="true" /> {t('Record drill', 'Record drill')}
-          </PrimaryButton>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PrimaryButton onClick={triggerBackup} disabled={triggerBusy}>
+              {triggerBusy ? (
+                <>
+                  <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
+                  {triggerJob?.status === 'running'
+                    ? t('Backup running…', 'Backup running…')
+                    : t('Starting…', 'Starting…')}
+                </>
+              ) : (
+                <>
+                  <i className="ti ti-database-export" aria-hidden="true" /> {t('Run backup now', 'Run backup now')}
+                </>
+              )}
+            </PrimaryButton>
+            <GhostButton onClick={() => setShowRecord((v) => !v)} disabled={triggerBusy}>
+              <i className="ti ti-plus" aria-hidden="true" /> {t('Record drill', 'Record drill')}
+            </GhostButton>
+          </div>
         }
       />
       <div className="attestiv-content">
