@@ -3,7 +3,13 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# `npm install` (not `npm ci`) so the Linux build can resolve
+# platform-specific optional binaries (e.g. @emnapi/* pulled by
+# @tailwindcss/oxide-wasm32-wasi) that a Windows-host `npm install`
+# leaves out of the lock. The lock stays authoritative for declared
+# dependencies; `npm install` only fills in resolvable platform gaps.
+# Adds --no-audit --no-fund to keep build output clean.
+RUN npm install --no-audit --no-fund
 
 FROM node:24-alpine AS builder
 WORKDIR /app
