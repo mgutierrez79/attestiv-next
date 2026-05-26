@@ -210,16 +210,12 @@ export function AttestivTenantSettingsPage() {
         >
           <Card>
             <CardTitle>{t('Identity', 'Identity')}</CardTitle>
-            <FormField label={t('Tenant slug', 'Tenant slug')} hint={t(
-              'Lower-case, used in audit records and API URLs.',
-              'Lower-case, used in audit records and API URLs.'
-            )}>
-              <TextInput
-                value={profile.tenant_id}
-                onChange={(event) => update('tenant_id', event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                placeholder="acme"
-              />
-            </FormField>
+            {/* Phase 2B multi-tenancy removal: the editable tenant
+                slug field is gone. The slug is pinned by the server
+                via COMPLIANCE_DEFAULT_TENANT and cannot be changed
+                from the UI — single-instance per customer means
+                there's nothing to choose. The slug value is still
+                in profile.tenant_id for legacy backwards-compat. */}
             <FormField label={t('Display name', 'Display name')}>
               <TextInput
                 value={profile.display_name}
@@ -322,9 +318,9 @@ export function AttestivTenantSettingsPage() {
             }}
           >
             <li>
-              <strong>{t('Tenant slug', 'Tenant slug')}</strong> {t('is added as', 'is added as')} <code>X-Tenant-ID</code> {t(
-                'on every API request and embedded in every audit-trail entry.',
-                'on every API request and embedded in every audit-trail entry.'
+              <strong>{t('Tenant slug', 'Tenant slug')}</strong> {t(
+                'is pinned by the server (COMPLIANCE_DEFAULT_TENANT) and embedded in every audit-trail entry. Not editable from this page in single-instance deployments.',
+                'is pinned by the server (COMPLIANCE_DEFAULT_TENANT) and embedded in every audit-trail entry. Not editable from this page in single-instance deployments.',
               )}
             </li>
             <li>

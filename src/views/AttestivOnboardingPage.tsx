@@ -1,12 +1,19 @@
 'use client';
 // Attestiv onboarding wizard.
 //
-// First-run experience for a fresh tenant: the user lands here after
-// signing in for the first time, walks through four steps, and ends on
-// the dashboard. The page is intentionally light on backend wiring —
-// it's a guided form whose final action persists settings and
-// optionally seeds a connector. Anything more involved (admin invites,
-// SCIM provisioning, OIDC bootstrap) is out of scope for the pilot.
+// First-run experience: the user lands here after signing in for the
+// first time, walks through three steps (Admin, First connector,
+// Done), and ends on the dashboard. The page is intentionally light
+// on backend wiring — it's a guided form whose final action persists
+// settings and optionally seeds a connector. Anything more involved
+// (admin invites, SCIM provisioning, OIDC bootstrap) is out of scope.
+//
+// Phase 2B multi-tenancy removal: the legacy "Tenant" step (slug +
+// name + region + environment) was removed — single-instance per
+// customer means there is no tenant for the user to name or pick a
+// region for. The platform's tenant slug comes from server config
+// (COMPLIANCE_DEFAULT_TENANT) and is no longer something the user
+// types here.
 //
 // We keep this outside the (console) layout so the rail and sidebar
 // don't show — onboarding feels different from the running console
@@ -25,18 +32,11 @@ import {
   Stepper,
   TextInput,
 } from '../components/AttestivUi'
-import { defaultSettings, loadSettings, saveSettings } from '../lib/settings'
+import { defaultSettings, loadSettings } from '../lib/settings'
 
 import { useI18n } from '../lib/i18n';
 
-const STEPS = ['Tenant', 'Admin', 'First connector', 'Done']
-
-const REGIONS = [
-  { value: 'us-east-1', label: 'us-east-1 (N. Virginia)' },
-  { value: 'us-west-2', label: 'us-west-2 (Oregon)' },
-  { value: 'eu-west-1', label: 'eu-west-1 (Ireland)' },
-  { value: 'eu-central-1', label: 'eu-central-1 (Frankfurt)' },
-]
+const STEPS = ['Admin', 'First connector', 'Done']
 
 const CONNECTOR_OPTIONS = [
   { value: '', label: 'Skip — I will add a connector later' },
@@ -64,10 +64,11 @@ export function AttestivOnboardingPage() {
     return loadSettings()
   }, [])
 
-  const [tenantId, setTenantId] = useState(initial.tenantId || '')
-  const [tenantName, setTenantName] = useState('')
-  const [environment, setEnvironment] = useState<'pilot' | 'production'>('pilot')
-  const [region, setRegion] = useState(REGIONS[0].value)
+  // tenantId still exists in the legacy settings type (Phase 2B
+  // hasn't ripped that out yet), but onboarding no longer asks for
+  // it — the server's COMPLIANCE_DEFAULT_TENANT is the authority.
+  // Surface whatever the loaded settings had for display only.
+  const tenantId = initial.tenantId || ''
 
   const [adminEmail, setAdminEmail] = useState('')
   const [adminName, setAdminName] = useState('')
@@ -75,32 +76,12 @@ export function AttestivOnboardingPage() {
   const [connectorKind, setConnectorKind] = useState('')
   const [connectorTarget, setConnectorTarget] = useState('')
 
-  const [persisting, setPersisting] = useState(false)
-  const [persistError, setPersistError] = useState<string | null>(null)
-
   function next() {
     setStep((current) => Math.min(current + 1, STEPS.length - 1))
   }
 
   function back() {
     setStep((current) => Math.max(current - 1, 0))
-  }
-
-  function persistAndContinue() {
-    setPersisting(true)
-    setPersistError(null)
-    try {
-      const current = loadSettings()
-      saveSettings({
-        ...current,
-        tenantId: tenantId.trim() || current.tenantId,
-      })
-      next()
-    } catch (err: any) {
-      setPersistError(err?.message ?? 'Failed to save tenant settings')
-    } finally {
-      setPersisting(false)
-    }
   }
 
   return (
@@ -154,18 +135,6 @@ export function AttestivOnboardingPage() {
 
         <Card style={{ padding: '20px 22px' }}>
           {step === 0 ? (
-            <TenantStep
-              tenantId={tenantId}
-              tenantName={tenantName}
-              environment={environment}
-              region={region}
-              setTenantId={setTenantId}
-              setTenantName={setTenantName}
-              setEnvironment={setEnvironment}
-              setRegion={setRegion}
-            />
-          ) : null}
-          {step === 1 ? (
             <AdminStep
               adminName={adminName}
               adminEmail={adminEmail}
@@ -173,7 +142,7 @@ export function AttestivOnboardingPage() {
               setAdminEmail={setAdminEmail}
             />
           ) : null}
-          {step === 2 ? (
+          {step === 1 ? (
             <ConnectorStep
               kind={connectorKind}
               target={connectorTarget}
@@ -181,7 +150,7 @@ export function AttestivOnboardingPage() {
               setTarget={setConnectorTarget}
             />
           ) : null}
-          {step === 3 ? (
+          {step === 2 ? (
             <DoneStep
               tenantId={tenantId}
               connectorKind={connectorKind}
@@ -190,22 +159,7 @@ export function AttestivOnboardingPage() {
             />
           ) : null}
 
-          {persistError ? (
-            <div
-              style={{
-                marginTop: 12,
-                fontSize: 12,
-                color: 'var(--color-status-red-deep)',
-                background: 'var(--color-status-red-bg)',
-                padding: '8px 10px',
-                borderRadius: 'var(--border-radius-md)',
-              }}
-            >
-              {persistError}
-            </div>
-          ) : null}
-
-          {step < 3 ? (
+          {step < 2 ? (
             <div
               style={{
                 display: 'flex',
@@ -220,10 +174,10 @@ export function AttestivOnboardingPage() {
                 {t('Back', 'Back')}
               </GhostButton>
               <PrimaryButton
-                disabled={persisting || !canAdvance(step, { tenantId, adminEmail })}
-                onClick={step === 0 ? persistAndContinue : next}
+                disabled={!canAdvance(step, { adminEmail })}
+                onClick={next}
               >
-                {step === 2 ? 'Finish setup' : 'Continue'}
+                {step === 1 ? 'Finish setup' : 'Continue'}
                 <i className="ti ti-arrow-right" aria-hidden="true" />
               </PrimaryButton>
             </div>
@@ -241,87 +195,18 @@ export function AttestivOnboardingPage() {
           {t(
             'You can change any of these settings later under',
             'You can change any of these settings later under'
-          )} <strong>{t('Settings → Tenant', 'Settings → Tenant')}</strong>.
+          )} <strong>{t('Settings', 'Settings')}</strong>.
                   </div>
       </div>
     </div>
   );
 }
 
-function canAdvance(step: number, values: { tenantId: string; adminEmail: string }): boolean {
+function canAdvance(step: number, values: { adminEmail: string }): boolean {
   if (step === 0) {
-    return values.tenantId.trim().length > 0
-  }
-  if (step === 1) {
     return values.adminEmail.trim().length > 0
   }
   return true
-}
-
-function TenantStep(props: {
-  tenantId: string
-  tenantName: string
-  environment: 'pilot' | 'production'
-  region: string
-  setTenantId: (v: string) => void
-  setTenantName: (v: string) => void
-  setEnvironment: (v: 'pilot' | 'production') => void
-  setRegion: (v: string) => void
-}) {
-  const {
-    t
-  } = useI18n();
-
-  return (
-    <>
-      <SectionHeader
-        title={t('Tenant identity', 'Tenant identity')}
-        sub={t(
-          'The slug is what every API request and audit record is scoped to. Pick a short, lower-case identifier that matches how your team refers to this account.',
-          'The slug is what every API request and audit record is scoped to. Pick a short, lower-case identifier that matches how your team refers to this account.'
-        )}
-      />
-      <FormField label={t('Tenant slug', 'Tenant slug')} hint={t(
-        'Lower-case, no spaces. Used in audit trails and URLs.',
-        'Lower-case, no spaces. Used in audit trails and URLs.'
-      )}>
-        <TextInput
-          value={props.tenantId}
-          onChange={(event) => props.setTenantId(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-          placeholder="acme"
-          autoFocus
-        />
-      </FormField>
-      <FormField label={t('Display name', 'Display name')} hint={t(
-        'Shown to operators in the console header.',
-        'Shown to operators in the console header.'
-      )}>
-        <TextInput
-          value={props.tenantName}
-          onChange={(event) => props.setTenantName(event.target.value)}
-          placeholder={t('Acme Corp', 'Acme Corp')}
-        />
-      </FormField>
-      <FormField label={t('Environment', 'Environment')}>
-        <Select
-          value={props.environment}
-          onChange={(event) => props.setEnvironment(event.target.value === 'production' ? 'production' : 'pilot')}
-        >
-          <option value="pilot">{t('Pilot', 'Pilot')}</option>
-          <option value="production">{t('Production', 'Production')}</option>
-        </Select>
-      </FormField>
-      <FormField label={t('Data residency', 'Data residency')}>
-        <Select value={props.region} onChange={(event) => props.setRegion(event.target.value)}>
-          {REGIONS.map((region) => (
-            <option key={region.value} value={region.value}>
-              {region.label}
-            </option>
-          ))}
-        </Select>
-      </FormField>
-    </>
-  );
 }
 
 function AdminStep(props: {
