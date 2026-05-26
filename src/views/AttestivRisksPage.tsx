@@ -157,11 +157,16 @@ export function AttestivRisksPage() {
         title={t('Risk register', 'Risk register')}
         left={<Badge tone="navy">{risks.length} entries</Badge>}
         right={
-          canWrite ? (
-            <PrimaryButton onClick={() => setShowCreate(true)}>
-              <i className="ti ti-plus" aria-hidden="true" /> {t('Add risk', 'Add risk')}
-            </PrimaryButton>
-          ) : null
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <GhostButton onClick={() => router.push('/risks/failure-register')}>
+              <i className="ti ti-history" aria-hidden="true" /> {t('Failure register', 'Failure register')}
+            </GhostButton>
+            {canWrite ? (
+              <PrimaryButton onClick={() => setShowCreate(true)}>
+                <i className="ti ti-plus" aria-hidden="true" /> {t('Add risk', 'Add risk')}
+              </PrimaryButton>
+            ) : null}
+          </div>
         }
       />
       <div className="attestiv-content">
