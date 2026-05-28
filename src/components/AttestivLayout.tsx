@@ -122,7 +122,9 @@ const railTop: RailItem[] = [
   { key: 'exceptions', label: 'Exceptions', icon: 'ti-shield-off', prefix: '/exceptions' },
   { key: 'remediation', label: 'Remediation', icon: 'ti-checklist',       prefix: '/remediation' },
   { key: 'incidents',  label: 'Incidents',  icon: 'ti-radar-2',          prefix: '/incidents' },
-  { key: 'thirdparties', label: 'Third parties', icon: 'ti-building',    prefix: '/third-parties' },
+  // Third parties moved INSIDE the Inventory section — vendors are
+  // managed objects like apps and sites, kept alongside them so the
+  // rail isn't crowded with parallel CMDB-ish entries.
   { key: 'dr',         label: 'DR Testing', icon: 'ti-refresh-alert',    prefix: '/dr' },
   { key: 'audit',      label: 'Audit',      icon: 'ti-file-certificate', prefix: '/audit' },
 ]
@@ -205,6 +207,12 @@ const sections: Record<SectionKey, Section> = {
       // Tab deep-links — same Inventory page, different tab.
       { to: '/inventory?tab=applications',             label: 'Applications',    icon: 'ti-apps' },
       { to: '/inventory?tab=sites',                    label: 'Sites',           icon: 'ti-building' },
+      // Third parties — vendor register lives in the same managed-
+      // objects family as apps and sites. Direct link, not a tab,
+      // because the third-party UX is materially different (CSV
+      // export, due-for-review filters) and doesn't fit cleanly into
+      // a tabbed inventory layout.
+      { to: '/third-parties',                          label: 'Third parties',   icon: 'ti-building-store' },
     ],
   },
   risks: {
@@ -386,12 +394,12 @@ function clearCachedRoles(): void {
 }
 
 function sectionFromPath(pathname: string): SectionKey {
-  // /apps and /sites no longer have their own rail entry — they
-  // live inside the Inventory page as tabs. Route them to the
-  // Inventory section so deep links to detail pages
-  // (/apps/{id}, /sites/{id}) still show the right sidebar.
+  // /apps, /sites, and /third-parties no longer have their own rail
+  // entry — they live inside the Inventory section. Route them so
+  // deep links to detail pages still show the right sidebar.
   if (pathname === '/apps' || pathname.startsWith('/apps/')) return 'inventory'
   if (pathname === '/sites' || pathname.startsWith('/sites/')) return 'inventory'
+  if (pathname === '/third-parties' || pathname.startsWith('/third-parties/')) return 'inventory'
   for (const item of [...railTop, ...railBottom]) {
     if (pathname === item.prefix || pathname.startsWith(`${item.prefix}/`)) {
       return item.key
