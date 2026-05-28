@@ -1417,6 +1417,7 @@ function RegistryTabs({
             type="button"
             onClick={() => onTab(c.key)}
             aria-pressed={active}
+            title={active ? undefined : t('Click to view', 'Click to view') + ' ' + c.label}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1426,6 +1427,11 @@ function RegistryTabs({
                 ? 'var(--color-status-blue-bg)'
                 : 'var(--color-background-primary)',
               border: `1px solid ${active ? 'var(--color-status-blue-mid)' : 'var(--color-border-soft, rgba(0,0,0,0.10))'}`,
+              // Tab-like underline on the active chip so the user can
+              // immediately see which view they're on.
+              borderBottom: active
+                ? `3px solid var(--color-status-blue-deep)`
+                : `1px solid var(--color-border-soft, rgba(0,0,0,0.10))`,
               borderRadius: 6,
               cursor: active ? 'default' : 'pointer',
               textAlign: 'left',
@@ -1476,6 +1482,28 @@ function RegistryTabs({
                 {c.sub}
               </div>
             </div>
+            {!active ? (
+              <i
+                className="ti ti-arrow-right"
+                aria-hidden="true"
+                style={{ fontSize: 14, color: 'var(--color-text-tertiary)' }}
+              />
+            ) : (
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  padding: '3px 7px',
+                  borderRadius: 4,
+                  background: 'var(--color-status-blue-deep)',
+                  color: '#fff',
+                }}
+              >
+                {t('Viewing', 'Viewing')}
+              </span>
+            )}
           </button>
         )
       })}
