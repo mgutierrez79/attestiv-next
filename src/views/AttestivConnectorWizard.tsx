@@ -275,7 +275,9 @@ const CONNECTORS: ConnectorKind[] = [
     endpointHint: 'Not required — uses apix.cisco.com',
     fields: [
       { key: 'client_id', label: 'PSIRT API client_id', required: true, hint: 'From apiconsole.cisco.com — Cisco PSIRT openVuln API entitlement.' },
-      { key: 'client_secret', label: 'PSIRT API client_secret', type: 'password', required: true },
+      { key: 'client_secret', label: 'PSIRT API client_secret', type: 'password', hint: 'Use this OR the certificate fields below — not both. Cisco uses one or the other depending on the app type you registered.' },
+      { key: 'client_cert', label: 'Client certificate (PEM)', type: 'password', hint: 'Paste the full PEM-encoded X.509 certificate Cisco issued when you chose mTLS. Begins with -----BEGIN CERTIFICATE-----.' },
+      { key: 'client_key', label: 'Client private key (PEM)', type: 'password', hint: 'Paste the full PEM-encoded private key paired with the certificate above. Begins with -----BEGIN PRIVATE KEY----- (or RSA PRIVATE KEY).' },
       { key: 'version', label: 'IOS-XE versions', required: true, hint: 'Comma-separated list of IOS-XE versions running across your fleet, e.g. 17.9.4, 17.6.5. Get them from Inventory → Network devices → metadata.software_version.' },
     ],
     pollDefault: 86400,
