@@ -64,6 +64,30 @@ type InventoryAsset = {
 
 type SiteOption = { site_id: string; display_name?: string }
 
+// AppTierLink is the per-asset tier projection from the unified
+// /v1/registry/items?kind=assets endpoint. An asset participates in
+// an app either via its declared application_id or via its name
+// matching a component's vm_name in the app registry.
+type AppTierLink = { app_id: string; app_name: string; app_tier: string; criticality: string }
+
+const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+  tier_1: 'red',
+  tier_2: 'amber',
+  tier_3: 'navy',
+}
+
+function tierLabel(tier: string): string {
+  switch (tier) {
+    case 'tier_1':
+      return 'Tier 1'
+    case 'tier_2':
+      return 'Tier 2'
+    case 'tier_3':
+      return 'Tier 3'
+  }
+  return tier
+}
+
 const CRITICALITY_TONE: Record<string, 'red' | 'amber' | 'green' | 'gray'> = {
   critical: 'red',
   high: 'amber',
@@ -78,6 +102,11 @@ export function InventoryPage() {
 
   const [assets, setAssets] = useState<InventoryAsset[]>([])
   const [sites, setSites] = useState<SiteOption[]>([])
+  // tierByAssetID is the per-asset application tier projection, fed
+  // by /v1/registry/items?kind=assets. Populated in parallel with
+  // /inventory/assets so the table can show a Tier column without
+  // blocking the primary asset fetch.
+  const [tierByAssetID, setTierByAssetID] = useState<Record<string, AppTierLink>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -100,6 +129,20 @@ export function InventoryPage() {
   const sourceFilter = (searchParams?.get('source') ?? '').toLowerCase()
   const criticalityFilter = (searchParams?.get('criticality') ?? '').toLowerCase()
   const search = (searchParams?.get('q') ?? '').toLowerCase()
+
+  // tab drives the registry view: 'assets' is the existing rich
+  // asset table; 'applications' and 'sites' surface the operator-
+  // declared registries that an auditor wants in the same place
+  // without forcing a sidebar trip. Default 'assets' preserves
+  // every existing bookmark/deep-link to /inventory.
+  const tab = ((searchParams?.get('tab') ?? 'assets').toLowerCase() as 'assets' | 'applications' | 'sites')
+  function pushTab(next: 'assets' | 'applications' | 'sites') {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    if (next === 'assets') params.delete('tab')
+    else params.set('tab', next)
+    const qs = params.toString()
+    router.push(qs ? `/inventory?${qs}` : '/inventory')
+  }
 
   const load = useCallback(async () => {
     setError(null)
@@ -141,6 +184,51 @@ export function InventoryPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Populate tier-by-asset map from the unified registry endpoint.
+  // Failure is silent — the Tier column degrades to "—" but the
+  // page is still usable. Pulled in parallel with the primary
+  // /inventory/assets fetch so neither blocks the other.
+  useEffect(() => {
+    let cancelled = false
+    const map: Record<string, AppTierLink> = {}
+    async function load() {
+      // The registry endpoint caps a single response at 500, so
+      // paginate until we've pulled the full asset list. Hard stop
+      // at 10k as a runaway guard.
+      const PAGE = 500
+      const MAX = 10000
+      let offset = 0
+      let total = Infinity
+      while (offset < total && offset < MAX) {
+        const response = await apiFetch(`/registry/items?kind=assets&limit=${PAGE}&offset=${offset}`)
+        if (!response.ok) return
+        const body = await response.json().catch(() => null)
+        if (!body) return
+        const items: any[] = Array.isArray(body?.items) ? body.items : []
+        for (const item of items) {
+          const tier = String(item?.app_tier ?? '').trim()
+          if (!tier) continue
+          map[String(item.id)] = {
+            app_id: String(item?.app_id ?? ''),
+            app_name: String(item?.app_name ?? item?.app_id ?? ''),
+            app_tier: tier,
+            criticality: String(item?.app_criticality ?? ''),
+          }
+        }
+        total = typeof body?.total === 'number' ? body.total : items.length
+        if (items.length === 0) break
+        offset += items.length
+      }
+      if (!cancelled) setTierByAssetID(map)
+    }
+    load().catch(() => {
+      // No-op: assets table still renders without the Tier column.
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Populate the per-row "Site" dropdown options from /v1/sites.
   // Failure is silent — the dropdown just stays empty and the
@@ -427,46 +515,54 @@ export function InventoryPage() {
       <Topbar
         title={t('Inventory', 'Inventory')}
         left={
-          <Badge tone="navy">
-            {t('{count} assets', '{count} assets', { count: assets.length })}
-          </Badge>
+          tab === 'assets' ? (
+            <Badge tone="navy">
+              {t('{count} assets', '{count} assets', { count: assets.length })}
+            </Badge>
+          ) : null
         }
         right={
-          <>
-            <FilterBar
-              assetTypeFilter={assetTypeFilter}
-              criticalityFilter={criticalityFilter}
-              sourceFilter={sourceFilter}
-              search={search}
-              assetTypes={assetTypes}
-              sources={sources}
-              onAssetType={(v) => pushFilter('asset_type', v)}
-              onCriticality={(v) => pushFilter('criticality', v)}
-              onSource={(v) => pushFilter('source', v)}
-              onSearch={pushSearch}
-            />
-            <PrimaryButton onClick={refreshFromConnectors} disabled={importing}>
-              {importing ? (
-                <>
-                  <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
-                  {t('Refreshing…', 'Refreshing…')}
-                </>
-              ) : (
-                <>
-                  <i className="ti ti-refresh" aria-hidden="true" />
-                  {t('Refresh from connectors', 'Refresh from connectors')}
-                </>
-              )}
-            </PrimaryButton>
-          </>
+          tab === 'assets' ? (
+            <>
+              <FilterBar
+                assetTypeFilter={assetTypeFilter}
+                criticalityFilter={criticalityFilter}
+                sourceFilter={sourceFilter}
+                search={search}
+                assetTypes={assetTypes}
+                sources={sources}
+                onAssetType={(v) => pushFilter('asset_type', v)}
+                onCriticality={(v) => pushFilter('criticality', v)}
+                onSource={(v) => pushFilter('source', v)}
+                onSearch={pushSearch}
+              />
+              <PrimaryButton onClick={refreshFromConnectors} disabled={importing}>
+                {importing ? (
+                  <>
+                    <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
+                    {t('Refreshing…', 'Refreshing…')}
+                  </>
+                ) : (
+                  <>
+                    <i className="ti ti-refresh" aria-hidden="true" />
+                    {t('Refresh from connectors', 'Refresh from connectors')}
+                  </>
+                )}
+              </PrimaryButton>
+            </>
+          ) : null
         }
       />
       <div className="attestiv-content">
         {error ? <Banner tone="error">{error}</Banner> : null}
         {info ? <Banner tone="success">{info}</Banner> : null}
 
-        <RegistryOverviewStrip router={router} />
+        <RegistryTabs tab={tab} onTab={pushTab} />
 
+        {tab === 'applications' ? <ApplicationsTab /> : null}
+        {tab === 'sites' ? <SitesTab /> : null}
+        {tab === 'assets' ? (
+          <>
         <div
           style={{
             display: 'grid',
@@ -625,6 +721,7 @@ export function InventoryPage() {
                   <th style={{ padding: '6px 10px 6px 0' }}>{t('Asset', 'Asset')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Type', 'Type')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Criticality', 'Criticality')}</th>
+                  <th style={{ padding: '6px 10px' }}>{t('App tier', 'App tier')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Source', 'Source')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Location', 'Location')}</th>
                   <th style={{ padding: '6px 0 6px 10px' }}>{t('Tags', 'Tags')}</th>
@@ -636,6 +733,7 @@ export function InventoryPage() {
                     key={asset.asset_id}
                     asset={asset}
                     sites={sites}
+                    tier={tierByAssetID[asset.asset_id]}
                     busy={assigningAssetId === asset.asset_id}
                     onAssign={(siteID) => void assignSite(asset, siteID)}
                     selected={selected.has(asset.asset_id)}
@@ -667,6 +765,8 @@ export function InventoryPage() {
             </div>
           ) : null}
         </Card>
+          </>
+        ) : null}
       </div>
     </>
   )
@@ -675,6 +775,7 @@ export function InventoryPage() {
 function AssetRow({
   asset,
   sites,
+  tier,
   busy,
   onAssign,
   selected,
@@ -682,6 +783,7 @@ function AssetRow({
 }: {
   asset: InventoryAsset
   sites: SiteOption[]
+  tier?: AppTierLink
   busy: boolean
   onAssign: (siteID: string) => void
   selected: boolean
@@ -787,6 +889,27 @@ function AssetRow({
       <td style={{ padding: '10px' }}>
         {criticality ? (
           <Badge tone={CRITICALITY_TONE[criticality] ?? 'gray'}>{criticalityLabel}</Badge>
+        ) : (
+          <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+        )}
+      </td>
+      <td style={{ padding: '10px' }}>
+        {tier ? (
+          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+            <Badge tone={TIER_TONE[tier.app_tier] ?? 'gray'}>{tierLabel(tier.app_tier)}</Badge>
+            <a
+              href={`/apps/${encodeURIComponent(tier.app_id)}`}
+              style={{
+                fontSize: 10,
+                color: 'var(--color-text-tertiary)',
+                textDecoration: 'none',
+                fontFamily: 'var(--font-mono)',
+              }}
+              title={t('Open application', 'Open application')}
+            >
+              {tier.app_name || tier.app_id}
+            </a>
+          </span>
         ) : (
           <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
         )}
@@ -1206,19 +1329,25 @@ function orderedAssetTypeTiles(counts: Record<string, number>): Array<[string, n
   return out.concat(rest)
 }
 
-// RegistryOverviewStrip — sits at the top of /inventory and gives the
-// auditor a one-glance view of EVERYTHING in scope: physical assets +
-// declared applications + declared sites. Each chip is clickable;
-// Assets stays on this page (we're already here), Applications jumps
-// to /apps, Sites to /sites. Counts come from the new
-// /v1/registry/overview endpoint.
+// RegistryTabs — sits at the top of /inventory and gives the auditor
+// a one-glance view of EVERYTHING in scope: physical assets +
+// declared applications + declared sites. Clicking a chip switches
+// the tab pane in-place (no route change) so the operator stays
+// anchored to the unified registry view. Counts come from
+// /v1/registry/overview.
 type RegistryOverview = {
   assets?: { count?: number; by_type?: Record<string, number> }
   applications?: { count?: number; gxp_validated?: number }
   sites?: { count?: number; with_dr?: number }
 }
 
-function RegistryOverviewStrip({ router }: { router: ReturnType<typeof useRouter> }) {
+function RegistryTabs({
+  tab,
+  onTab,
+}: {
+  tab: 'assets' | 'applications' | 'sites'
+  onTab: (next: 'assets' | 'applications' | 'sites') => void
+}) {
   const { t } = useI18n()
   const [overview, setOverview] = useState<RegistryOverview | null>(null)
   useEffect(() => {
@@ -1236,42 +1365,39 @@ function RegistryOverviewStrip({ router }: { router: ReturnType<typeof useRouter
       cancelled = true
     }
   }, [])
-  if (!overview) return null
   const chips: Array<{
+    key: 'assets' | 'applications' | 'sites'
     label: string
     count: number
     sub: string
     icon: string
-    onClick: () => void
-    active?: boolean
   }> = [
     {
+      key: 'assets',
       label: t('Assets', 'Assets'),
-      count: overview.assets?.count ?? 0,
+      count: overview?.assets?.count ?? 0,
       sub: t('Discovered by connectors', 'Discovered by connectors'),
       icon: 'ti-stack',
-      onClick: () => {},
-      active: true,
     },
     {
+      key: 'applications',
       label: t('Applications', 'Applications'),
-      count: overview.applications?.count ?? 0,
+      count: overview?.applications?.count ?? 0,
       sub:
-        (overview.applications?.gxp_validated ?? 0) > 0
-          ? t('{n} GxP-validated', '{n} GxP-validated', { n: overview.applications?.gxp_validated ?? 0 })
+        (overview?.applications?.gxp_validated ?? 0) > 0
+          ? t('{n} GxP-validated', '{n} GxP-validated', { n: overview?.applications?.gxp_validated ?? 0 })
           : t('Operator-declared', 'Operator-declared'),
       icon: 'ti-apps',
-      onClick: () => router.push('/apps'),
     },
     {
+      key: 'sites',
       label: t('Sites', 'Sites'),
-      count: overview.sites?.count ?? 0,
+      count: overview?.sites?.count ?? 0,
       sub:
-        (overview.sites?.with_dr ?? 0) > 0
-          ? t('{n} with DR pair', '{n} with DR pair', { n: overview.sites?.with_dr ?? 0 })
+        (overview?.sites?.with_dr ?? 0) > 0
+          ? t('{n} with DR pair', '{n} with DR pair', { n: overview?.sites?.with_dr ?? 0 })
           : t('Operator-declared', 'Operator-declared'),
       icon: 'ti-building',
-      onClick: () => router.push('/sites'),
     },
   ]
   return (
@@ -1283,85 +1409,366 @@ function RegistryOverviewStrip({ router }: { router: ReturnType<typeof useRouter
         marginBottom: 14,
       }}
     >
-      {chips.map((c) => (
-        <button
-          key={c.label}
-          type="button"
-          onClick={c.onClick}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '12px 16px',
-            background: c.active
-              ? 'var(--color-status-blue-bg)'
-              : 'var(--color-background-primary)',
-            border: `1px solid ${c.active ? 'var(--color-status-blue-mid)' : 'var(--color-border-soft, rgba(0,0,0,0.10))'}`,
-            borderRadius: 6,
-            cursor: c.active ? 'default' : 'pointer',
-            textAlign: 'left',
-            color: 'inherit',
-            fontFamily: 'inherit',
-            transition: 'background 0.12s',
-          }}
-        >
-          <i
-            className={`ti ${c.icon}`}
-            aria-hidden="true"
+      {chips.map((c) => {
+        const active = c.key === tab
+        return (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => onTab(c.key)}
+            aria-pressed={active}
             style={{
-              fontSize: 22,
-              color: c.active ? 'var(--color-status-blue-deep)' : 'var(--color-text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '12px 16px',
+              background: active
+                ? 'var(--color-status-blue-bg)'
+                : 'var(--color-background-primary)',
+              border: `1px solid ${active ? 'var(--color-status-blue-mid)' : 'var(--color-border-soft, rgba(0,0,0,0.10))'}`,
+              borderRadius: 6,
+              cursor: active ? 'default' : 'pointer',
+              textAlign: 'left',
+              color: 'inherit',
+              fontFamily: 'inherit',
+              transition: 'background 0.12s',
             }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
+          >
+            <i
+              className={`ti ${c.icon}`}
+              aria-hidden="true"
               style={{
-                display: 'flex',
-                alignItems: 'baseline',
-                gap: 8,
+                fontSize: 22,
+                color: active ? 'var(--color-status-blue-deep)' : 'var(--color-text-secondary)',
               }}
-            >
-              <span
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: 'var(--color-text-primary)',
+                    letterSpacing: '-0.01em',
+                  }}
+                >
+                  {c.count}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'var(--color-text-tertiary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {c.label}
+                </span>
+              </div>
+              <div
                 style={{
-                  fontSize: 18,
-                  fontWeight: 600,
-                  color: 'var(--color-text-primary)',
-                  letterSpacing: '-0.01em',
+                  fontSize: 10.5,
+                  color: 'var(--color-text-tertiary)',
+                  marginTop: 2,
                 }}
               >
-                {c.count}
-              </span>
-              <span
+                {c.sub}
+              </div>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// RegistryItem is the unified row shape returned by
+// /v1/registry/items. Each kind populates a kind-specific subset of
+// fields; we render only the columns relevant to the active tab.
+type RegistryItem = {
+  kind: string
+  id: string
+  name: string
+  criticality?: string
+  // application
+  app_tier?: string
+  owner_team?: string
+  owner_email?: string
+  gxp_validated?: boolean
+  component_count?: number
+  dependency_count?: number
+  // site
+  site_type?: string
+  city?: string
+  country?: string
+  dr_site?: string
+  ci_count?: number
+}
+
+function useRegistryItems(kind: 'applications' | 'sites') {
+  const [items, setItems] = useState<RegistryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const PAGE = 500
+        const MAX = 5000
+        const all: RegistryItem[] = []
+        let offset = 0
+        let total = Infinity
+        while (offset < total && offset < MAX) {
+          const response = await apiFetch(`/registry/items?kind=${kind}&limit=${PAGE}&offset=${offset}`)
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}))
+            throw new Error(body?.detail || body?.error || `${response.status} ${response.statusText}`)
+          }
+          const body = await response.json()
+          const got: RegistryItem[] = Array.isArray(body?.items) ? body.items : []
+          all.push(...got)
+          total = typeof body?.total === 'number' ? body.total : all.length
+          if (got.length === 0) break
+          offset += got.length
+        }
+        if (!cancelled) setItems(all)
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [kind])
+  return { items, loading, error }
+}
+
+function ApplicationsTab() {
+  const { t } = useI18n()
+  const router = useRouter()
+  const { items, loading, error } = useRegistryItems('applications')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize))
+  const current = Math.min(page, pageCount - 1)
+  const paged = items.slice(current * pageSize, current * pageSize + pageSize)
+  return (
+    <Card>
+      <CardTitle
+        right={
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+            {t('{count} applications', '{count} applications', { count: items.length })}
+          </span>
+        }
+      >
+        {t('Applications', 'Applications')}
+      </CardTitle>
+      {error ? <Banner tone="error">{error}</Banner> : null}
+      {loading ? (
+        <Skeleton lines={6} height={36} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon="ti-apps"
+          title={t('No applications declared', 'No applications declared')}
+          description={t(
+            'Applications live in policies/applications/*.yaml. Add one to model the blast radius of a service across its VMs and dependencies.',
+            'Applications live in policies/applications/*.yaml. Add one to model the blast radius of a service across its VMs and dependencies.',
+          )}
+        />
+      ) : (
+        <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr
                 style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: 'var(--color-text-tertiary)',
+                  fontSize: 10,
                   textTransform: 'uppercase',
                   letterSpacing: '0.04em',
+                  color: 'var(--color-text-tertiary)',
+                  textAlign: 'left',
+                  position: 'sticky',
+                  top: 0,
+                  background: 'var(--color-background-primary)',
+                  zIndex: 1,
                 }}
               >
-                {c.label}
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 10.5,
-                color: 'var(--color-text-tertiary)',
-                marginTop: 2,
-              }}
-            >
-              {c.sub}
-            </div>
-          </div>
-          {!c.active ? (
-            <i
-              className="ti ti-arrow-right"
-              aria-hidden="true"
-              style={{ fontSize: 14, color: 'var(--color-text-tertiary)' }}
-            />
-          ) : null}
-        </button>
-      ))}
-    </div>
+                <th style={{ padding: '6px 10px 6px 0' }}>{t('Application', 'Application')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Tier', 'Tier')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Owner', 'Owner')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Components', 'Components')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Dependencies', 'Dependencies')}</th>
+                <th style={{ padding: '6px 0 6px 10px' }}>{t('GxP', 'GxP')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((item) => (
+                <tr
+                  key={item.id}
+                  style={{ borderTop: '0.5px solid var(--color-border-tertiary)', cursor: 'pointer' }}
+                  onClick={() => router.push(`/apps/${encodeURIComponent(item.id)}`)}
+                >
+                  <td style={{ padding: '10px 10px 10px 0' }}>
+                    <div style={{ fontWeight: 500 }}>{item.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                      {item.id}
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    {item.app_tier ? (
+                      <Badge tone={TIER_TONE[item.app_tier] ?? 'gray'}>{tierLabel(item.app_tier)}</Badge>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px', color: 'var(--color-text-secondary)' }}>
+                    {item.owner_team || item.owner_email || '—'}
+                  </td>
+                  <td style={{ padding: '10px', color: 'var(--color-text-secondary)' }}>
+                    {item.component_count ?? 0}
+                  </td>
+                  <td style={{ padding: '10px', color: 'var(--color-text-secondary)' }}>
+                    {item.dependency_count ?? 0}
+                  </td>
+                  <td style={{ padding: '10px 0 10px 10px' }}>
+                    {item.gxp_validated ? (
+                      <Badge tone="green">validated</Badge>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {items.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          <Pagination
+            page={current}
+            pageSize={pageSize}
+            total={items.length}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s)
+              setPage(0)
+            }}
+            label={t('Applications', 'Applications')}
+          />
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+function SitesTab() {
+  const { t } = useI18n()
+  const router = useRouter()
+  const { items, loading, error } = useRegistryItems('sites')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize))
+  const current = Math.min(page, pageCount - 1)
+  const paged = items.slice(current * pageSize, current * pageSize + pageSize)
+  return (
+    <Card>
+      <CardTitle
+        right={
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+            {t('{count} sites', '{count} sites', { count: items.length })}
+          </span>
+        }
+      >
+        {t('Sites', 'Sites')}
+      </CardTitle>
+      {error ? <Banner tone="error">{error}</Banner> : null}
+      {loading ? (
+        <Skeleton lines={6} height={36} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon="ti-building"
+          title={t('No sites declared', 'No sites declared')}
+          description={t(
+            'Sites live in policies/sites/*.yaml. Declare them to map hosted CIs, DR pairs, and concentration-risk geography.',
+            'Sites live in policies/sites/*.yaml. Declare them to map hosted CIs, DR pairs, and concentration-risk geography.',
+          )}
+        />
+      ) : (
+        <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr
+                style={{
+                  fontSize: 10,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: 'var(--color-text-tertiary)',
+                  textAlign: 'left',
+                  position: 'sticky',
+                  top: 0,
+                  background: 'var(--color-background-primary)',
+                  zIndex: 1,
+                }}
+              >
+                <th style={{ padding: '6px 10px 6px 0' }}>{t('Site', 'Site')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Type', 'Type')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('Location', 'Location')}</th>
+                <th style={{ padding: '6px 10px' }}>{t('DR pair', 'DR pair')}</th>
+                <th style={{ padding: '6px 0 6px 10px' }}>{t('Hosted CIs', 'Hosted CIs')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((item) => (
+                <tr
+                  key={item.id}
+                  style={{ borderTop: '0.5px solid var(--color-border-tertiary)', cursor: 'pointer' }}
+                  onClick={() => router.push(`/sites/${encodeURIComponent(item.id)}`)}
+                >
+                  <td style={{ padding: '10px 10px 10px 0' }}>
+                    <div style={{ fontWeight: 500 }}>{item.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                      {item.id}
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px' }}>
+                    {item.site_type ? <Badge tone="navy">{item.site_type}</Badge> : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '10px', color: 'var(--color-text-secondary)' }}>
+                    {[item.city, item.country].filter(Boolean).join(', ') || '—'}
+                  </td>
+                  <td style={{ padding: '10px', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                    {item.dr_site || '—'}
+                  </td>
+                  <td style={{ padding: '10px 0 10px 10px', color: 'var(--color-text-secondary)' }}>
+                    {item.ci_count ?? 0}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {items.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          <Pagination
+            page={current}
+            pageSize={pageSize}
+            total={items.length}
+            onPageChange={setPage}
+            onPageSizeChange={(s) => {
+              setPageSize(s)
+              setPage(0)
+            }}
+            label={t('Sites', 'Sites')}
+          />
+        </div>
+      ) : null}
+    </Card>
   )
 }
