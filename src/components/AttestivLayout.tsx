@@ -274,6 +274,7 @@ const sections: Record<SectionKey, Section> = {
       { to: '/audit/executive-summary', label: 'Executive summary',  icon: 'ti-presentation' },
       { to: '/audit/weekly-digest',     label: 'Weekly digest',      icon: 'ti-mail-fast' },
       { to: '/audit/reports',   label: 'Reports',     icon: 'ti-file-description' },
+      { to: '/audit/documentation', label: 'Architecture (DAT)', icon: 'ti-book-2' },
       { to: '/audit/manifests', label: 'Manifests',   icon: 'ti-file-certificate' },
       { to: '/audit/prepacket',      label: 'Pre-packet',  icon: 'ti-file-zip' },
       { to: '/audit/prepacket-diff', label: 'Posture diff', icon: 'ti-arrows-diff' },
