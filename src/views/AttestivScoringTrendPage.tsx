@@ -200,11 +200,27 @@ function TrendChart({
   const innerW = width - margin.left - margin.right
   const innerH = height - margin.top - margin.bottom
 
-  // Y axis: 0–1 (we render the 0.7 → 1.0 portion since that's where
-  // most data lives). Anything below 0.7 is clamped at the bottom of
-  // the chart but shown as a labelled point.
-  const yMin = 0.7
-  const yMax = 1.0
+  // Y axis: auto-fit to the actual score range with a 10% pad so the
+  // line doesn't kiss the top/bottom. The previous hardcoded
+  // 70%-100% window flattened every point for a tenant in early
+  // posture build-out (30-60% scores all clamped to the floor).
+  // yMax always caps at 1.0; yMin floors at 0.0 — the chart never
+  // crops scores away just to look better.
+  const scores = items.map((p) => p.Score)
+  const rawMin = scores.length > 0 ? Math.min(...scores) : 0.7
+  const rawMax = scores.length > 0 ? Math.max(...scores) : 1.0
+  // Pad by 5% on each side; round to nearest 5%; clamp [0, 1].
+  // When all points are equal, expand by ±10% so we still see a
+  // line instead of a dot.
+  const span = Math.max(rawMax - rawMin, 0.05)
+  const yMin = Math.max(0, Math.floor((rawMin - 0.05 - (span === 0.05 ? 0.05 : 0)) * 20) / 20)
+  const yMax = Math.min(1, Math.ceil((rawMax + 0.05 + (span === 0.05 ? 0.05 : 0)) * 20) / 20)
+  // Generate 5 evenly-spaced ticks rounded to the nearest 5%.
+  const tickCount = 5
+  const ticks: number[] = []
+  for (let i = 0; i < tickCount; i++) {
+    ticks.push(yMin + ((yMax - yMin) * i) / (tickCount - 1))
+  }
   function y(score: number) {
     if (score >= yMax) return margin.top
     if (score <= yMin) return margin.top + innerH
@@ -221,13 +237,18 @@ function TrendChart({
   const path = items
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${x(index).toFixed(1)} ${y(point.Score).toFixed(1)}`)
     .join(' ')
+  // Only draw the PASS-95% guideline when it actually falls inside
+  // the visible range; otherwise it clamps to the chart edge and
+  // misleads (a line on the top axis of a 30-60% chart suggests
+  // "almost passing").
+  const passThresholdVisible = 0.95 >= yMin && 0.95 <= yMax
   const passLine = y(0.95)
 
   return (
     <div style={{ overflowX: 'auto' }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-        {/* Y axis grid */}
-        {[0.7, 0.8, 0.9, 0.95, 1.0].map((tick) => (
+        {/* Y axis grid — dynamic ticks based on the auto-fit range. */}
+        {ticks.map((tick) => (
           <g key={tick}>
             <line
               x1={margin.left}
@@ -235,7 +256,6 @@ function TrendChart({
               y1={y(tick)}
               y2={y(tick)}
               stroke="var(--color-border-tertiary)"
-              strokeDasharray={tick === 0.95 ? '4 4' : '0'}
             />
             <text
               x={margin.left - 6}
@@ -250,10 +270,25 @@ function TrendChart({
           </g>
         ))}
 
-        {/* Pass threshold callout */}
-        <text x={margin.left + innerW - 4} y={passLine - 4} textAnchor="end" fontSize={9} fill="var(--color-status-green-deep)">
-          {t('PASS 95%', 'PASS 95%')}
-        </text>
+        {/* PASS-95% dashed guideline — drawn only when it's actually
+            inside the visible Y range. Off-screen, it would hug
+            the top axis and misrepresent "almost passing". */}
+        {passThresholdVisible ? (
+          <>
+            <line
+              x1={margin.left}
+              x2={margin.left + innerW}
+              y1={passLine}
+              y2={passLine}
+              stroke="var(--color-status-green-deep)"
+              strokeDasharray="4 4"
+              strokeOpacity={0.6}
+            />
+            <text x={margin.left + innerW - 4} y={passLine - 4} textAnchor="end" fontSize={9} fill="var(--color-status-green-deep)">
+              {t('PASS 95%', 'PASS 95%')}
+            </text>
+          </>
+        ) : null}
 
         {/* Event markers — vertical dotted lines at the event's month */}
         {events.map((event, index) => {
