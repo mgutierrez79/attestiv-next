@@ -536,7 +536,34 @@ export function AttestivConnectorWizard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditMode, editKind, editRowName])
 
-  const connector = useMemo(() => CONNECTORS.find((entry) => entry.value === kind) ?? CONNECTORS[0], [kind])
+  const connector = useMemo(() => {
+    // Exact match wins.
+    const exact = CONNECTORS.find((entry) => entry.value === kind)
+    if (exact) return exact
+    // Edit mode receives the canonical kind from the backend (e.g.
+    // "redfish" after the user originally picked "idrac"), but the
+    // wizard's card list only has the wizard-facing aliases. Map
+    // canonical → preferred card so the rendered form / endpoint
+    // hint / fields aren't leaked from CONNECTORS[0] (which is
+    // palo_alto_panorama, hence the "wizard shows Panorama text on
+    // a Redfish edit" bug).
+    const aliasToCard: Record<string, string> = {
+      redfish: 'idrac',
+      palo_alto: 'palo_alto_firewall',
+      vcenter: 'vmware_vcenter',
+      powerstore: 'dell_powerstore',
+      veeam_enterprise_manager: 'veeam_em',
+      dnac: 'cisco_dna_center',
+      restconf: 'cisco_catalyst',
+      netconf: 'cisco_catalyst_netconf',
+    }
+    const aliased = aliasToCard[kind]
+    if (aliased) {
+      const fromAlias = CONNECTORS.find((entry) => entry.value === aliased)
+      if (fromAlias) return fromAlias
+    }
+    return CONNECTORS[0]
+  }, [kind])
 
   // mergedFields is the union of (a) the seed list curated in the
   // wizard and (b) the auth keys the catalog declares for this
