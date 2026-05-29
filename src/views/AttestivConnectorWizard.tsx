@@ -77,7 +77,7 @@ function isSecretFieldName(name: string): boolean {
 type ConnectorKind = {
   value: string
   label: string
-  category: 'Network' | 'Storage' | 'Virtualization' | 'Backup' | 'ITSM' | 'Observability' | 'Security' | 'Identity'
+  category: 'Network' | 'Storage' | 'Virtualization' | 'Backup' | 'ITSM' | 'Observability' | 'Security' | 'Identity' | 'Hardware'
   endpointHint: string
   fields: CredentialField[]
   pollDefault: number
@@ -116,27 +116,42 @@ const CONNECTORS: ConnectorKind[] = [
     ],
     pollDefault: 600,
   },
+  // Dell DataDomain cards removed — Veeam EM already covers the
+  // backup-job + repo-capacity evidence and the direct integration
+  // didn't move the scoring needle. Backend collector code retained
+  // (storage.go + data_domain_ssh.go) but no longer surfaced.
   {
-    value: 'dell_datadomain',
-    label: 'Dell DataDomain (REST)',
-    category: 'Storage',
-    endpointHint: 'https://dd-prod.acme.internal',
+    value: 'idrac',
+    label: 'Dell iDRAC (Redfish)',
+    category: 'Hardware',
+    endpointHint: 'https://idrac-srv-01.acme.internal',
     fields: [
-      { key: 'username', label: 'Username', required: true },
+      { key: 'username', label: 'iDRAC username', required: true, hint: 'iDRAC local account with Operator or Administrator role.' },
       { key: 'password', label: 'Password', type: 'password', required: true },
     ],
-    pollDefault: 1800,
+    pollDefault: 21600,
   },
   {
-    value: 'dell_datadomain_ssh',
-    label: 'Dell Data Domain (SSH/CLI)',
-    category: 'Storage',
-    endpointHint: 'dd-prod.acme.internal',
+    value: 'ilom',
+    label: 'Oracle ILOM (Redfish)',
+    category: 'Hardware',
+    endpointHint: 'https://ilom-srv-01.acme.internal',
     fields: [
-      { key: 'username', label: 'SSH username (sysadmin or admin role)', required: true },
-      { key: 'password', label: 'SSH password', type: 'password', required: true },
+      { key: 'username', label: 'ILOM username', required: true },
+      { key: 'password', label: 'Password', type: 'password', required: true },
     ],
-    pollDefault: 1800,
+    pollDefault: 21600,
+  },
+  {
+    value: 'dell_openmanage',
+    label: 'Dell OpenManage Enterprise',
+    category: 'Hardware',
+    endpointHint: 'https://ome.acme.internal',
+    fields: [
+      { key: 'username', label: 'OME username', required: true, hint: 'Fleet management account on OpenManage Enterprise — one endpoint covers all Dell servers OME manages.' },
+      { key: 'password', label: 'Password', type: 'password', required: true },
+    ],
+    pollDefault: 21600,
   },
   {
     value: 'dell_powerstore',
