@@ -36,10 +36,13 @@ type BulkResult = {
   connector_id: string
   slug: string
   dry_run: boolean
+  source: string
   total: number
   devices: Device[]
   skipped_no_management_ip?: string[]
 }
+
+type Source = 'inventory' | 'snapshot'
 
 export function AttestivConnectorBulkRestconfPage() {
   const { t } = useI18n()
@@ -50,24 +53,30 @@ export function AttestivConnectorBulkRestconfPage() {
   const [password, setPassword] = useState('')
   const [verifyTLS, setVerifyTLS] = useState(false)
   const [excludeIds, setExcludeIds] = useState('')
+  // Source: "snapshot" reads the freshest DNAC/Panorama poll directly
+  // (no inventory-import lag) — default. "inventory" hits the deduped
+  // persisted store — better when you have multiple connectors
+  // discovering the same switches.
+  const [source, setSource] = useState<Source>('snapshot')
   const [preview, setPreview] = useState<BulkResult | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<BulkResult | null>(null)
 
-  // Auto dry-run on mount so the operator sees the device list before
-  // typing any credentials. No-secret call, harmless to re-issue.
+  // Auto dry-run on mount AND whenever the source flips so the
+  // operator sees the right candidate list without clicking refresh.
+  // No-secret call, harmless to re-issue.
   useEffect(() => {
     void runDryRun()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [source])
 
   async function runDryRun() {
     setPreviewLoading(true)
     setError(null)
     try {
-      const body: Record<string, unknown> = { dry_run: true, slug }
+      const body: Record<string, unknown> = { dry_run: true, slug, source }
       const excluded = excludeIds
         .split(/[,\s]+/)
         .map((s) => s.trim())
@@ -100,6 +109,7 @@ export function AttestivConnectorBulkRestconfPage() {
     try {
       const body: Record<string, unknown> = {
         slug,
+        source,
         name: displayName,
         username,
         password,
@@ -163,17 +173,80 @@ export function AttestivConnectorBulkRestconfPage() {
         <Card style={{ marginTop: 12 }}>
           <CardTitle
             right={
-              <GhostButton onClick={() => void runDryRun()} disabled={previewLoading}>
-                <i
-                  className={previewLoading ? 'ti ti-loader' : 'ti ti-refresh'}
-                  aria-hidden="true"
-                />{' '}
-                {t('Refresh preview', 'Refresh preview')}
-              </GhostButton>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <div
+                  role="tablist"
+                  style={{
+                    display: 'inline-flex',
+                    border: '0.5px solid var(--color-border-tertiary)',
+                    borderRadius: 'var(--border-radius-md)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {(
+                    [
+                      { key: 'snapshot', label: t('Live connector', 'Live connector') },
+                      { key: 'inventory', label: t('Inventory store', 'Inventory store') },
+                    ] as Array<{ key: Source; label: string }>
+                  ).map((opt) => {
+                    const active = source === opt.key
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setSource(opt.key)}
+                        style={{
+                          fontSize: 11,
+                          padding: '4px 10px',
+                          background: active
+                            ? 'var(--color-status-blue-bg)'
+                            : 'var(--color-background-primary)',
+                          color: active
+                            ? 'var(--color-status-blue-deep)'
+                            : 'var(--color-text-secondary)',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          fontWeight: active ? 600 : 400,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <GhostButton onClick={() => void runDryRun()} disabled={previewLoading}>
+                  <i
+                    className={previewLoading ? 'ti ti-loader' : 'ti ti-refresh'}
+                    aria-hidden="true"
+                  />{' '}
+                  {t('Refresh', 'Refresh')}
+                </GhostButton>
+              </div>
             }
           >
             {t('Device list', 'Device list')}
           </CardTitle>
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--color-text-tertiary)',
+              marginBottom: 10,
+              lineHeight: 1.5,
+            }}
+          >
+            {source === 'snapshot'
+              ? t(
+                  'Reading the latest connector poll (DNAC / Panorama / RESTCONF) directly — no inventory-import lag.',
+                  'Reading the latest connector poll (DNAC / Panorama / RESTCONF) directly — no inventory-import lag.',
+                )
+              : t(
+                  'Reading the inventory store — deduped across every source but lags one import job behind the connector poll.',
+                  'Reading the inventory store — deduped across every source but lags one import job behind the connector poll.',
+                )}
+          </div>
           {previewLoading ? (
             <Skeleton lines={4} height={28} />
           ) : !preview ? (
