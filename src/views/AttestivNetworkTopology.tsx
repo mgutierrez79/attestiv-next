@@ -77,6 +77,12 @@ export function AttestivNetworkTopology() {
   const [showStorage, setShowStorage] = useState(true)
   const [showBackup, setShowBackup] = useState(false)
   const [showAppMembership, setShowAppMembership] = useState(false)
+  // Focus controls — narrow the graph to one application's blast
+  // radius OR to N hops around a single asset. Defaults: no focus,
+  // entire graph visible.
+  const [appFilter, setAppFilter] = useState<string>('')
+  const [focusAssetId, setFocusAssetId] = useState<string | null>(null)
+  const [hopRadius] = useState<number>(2)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -103,11 +109,56 @@ export function AttestivNetworkTopology() {
     }
   }, [])
 
+  // List of available apps for the filter dropdown — pulled from the
+  // synthetic app nodes the backend emits when app_membership edges
+  // exist.
+  const availableApps = useMemo(() => {
+    if (!data) return []
+    const seen = new Map<string, string>() // id → label
+    for (const node of data.nodes) {
+      if (node.id.startsWith('app:')) {
+        seen.set(node.id, node.label)
+      }
+    }
+    return Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [data])
+
+  // The kept-node ID set based on the focus controls. Empty filter
+  // = all nodes visible. App filter = app + its 1-hop component VMs
+  // + 2-hop joins (host, storage, backup). Asset focus = N hops
+  // around the chosen asset.
+  const focusedIDs = useMemo(() => {
+    if (!data) return null
+    if (!appFilter && !focusAssetId) return null
+    const keep = new Set<string>()
+    const adjacency = new Map<string, string[]>()
+    for (const e of data.edges) {
+      if (!adjacency.has(e.source)) adjacency.set(e.source, [])
+      adjacency.get(e.source)!.push(e.target)
+      if (!adjacency.has(e.target)) adjacency.set(e.target, [])
+      adjacency.get(e.target)!.push(e.source)
+    }
+    const seed = appFilter ? [appFilter] : focusAssetId ? [focusAssetId] : []
+    const queue: Array<{ id: string; depth: number }> = seed.map((id) => ({ id, depth: 0 }))
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift()!
+      if (keep.has(id)) continue
+      keep.add(id)
+      if (depth >= hopRadius) continue
+      const neighbors = adjacency.get(id) || []
+      for (const n of neighbors) queue.push({ id: n, depth: depth + 1 })
+    }
+    return keep
+  }, [data, appFilter, focusAssetId, hopRadius])
+
   // Filter edges by toggle (host_port hidden by default; auditor view
   // is backbone first).
   const visibleEdges = useMemo(() => {
     if (!data) return []
     return data.edges.filter((e) => {
+      // Focus filter first — drop edges where neither endpoint is
+      // in the kept set.
+      if (focusedIDs && !focusedIDs.has(e.source) && !focusedIDs.has(e.target)) return false
       switch (e.kind) {
         case 'host_port':
           return showHostPorts
@@ -123,7 +174,7 @@ export function AttestivNetworkTopology() {
           return true
       }
     })
-  }, [data, showHostPorts, showHypervisor, showStorage, showBackup, showAppMembership])
+  }, [data, focusedIDs, showHostPorts, showHypervisor, showStorage, showBackup, showAppMembership])
 
   // The set of node IDs actually wired up.
   const referenced = useMemo(() => {
@@ -137,9 +188,24 @@ export function AttestivNetworkTopology() {
 
   const visibleNodes = useMemo(() => {
     if (!data) return []
-    if (showOrphans) return data.nodes
-    return data.nodes.filter((n) => referenced.has(n.id))
-  }, [data, referenced, showOrphans])
+    return data.nodes.filter((n) => {
+      if (focusedIDs && !focusedIDs.has(n.id)) return false
+      if (!showOrphans && !referenced.has(n.id)) return false
+      return true
+    })
+  }, [data, referenced, showOrphans, focusedIDs])
+
+  // Per-node degree (count of edges in/out) — used for the
+  // aggregation badge so big-fan-out nodes (a host with 50 VMs, a
+  // storage array with 200 volumes) read as hubs at a glance.
+  const degreeByNode = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const e of visibleEdges) {
+      counts.set(e.source, (counts.get(e.source) ?? 0) + 1)
+      counts.set(e.target, (counts.get(e.target) ?? 0) + 1)
+    }
+    return counts
+  }, [visibleEdges])
 
   const layout = useMemo(() => layoutNodes(visibleNodes), [visibleNodes])
 
@@ -163,7 +229,32 @@ export function AttestivNetworkTopology() {
           ) : null
         }
         right={
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, flexWrap: 'wrap' }}>
+            <select
+              value={appFilter}
+              onChange={(e) => {
+                setAppFilter(e.target.value)
+                setFocusAssetId(null)
+              }}
+              style={{
+                fontSize: 11,
+                padding: '4px 6px',
+                border: '0.5px solid var(--color-border-secondary)',
+                borderRadius: 'var(--border-radius-md)',
+                background: appFilter ? 'var(--color-status-blue-bg)' : 'var(--color-background-primary)',
+                fontFamily: 'inherit',
+              }}
+            >
+              <option value="">{t('All applications', 'All applications')}</option>
+              {availableApps.map(([id, label]) => (
+                <option key={id} value={id}>{label}</option>
+              ))}
+            </select>
+            {focusAssetId ? (
+              <GhostButton onClick={() => setFocusAssetId(null)}>
+                <i className="ti ti-x" aria-hidden="true" /> {t('Clear focus', 'Clear focus')}
+              </GhostButton>
+            ) : null}
             <EdgeToggle checked={showHypervisor} onChange={setShowHypervisor} label={t('VM↔Host', 'VM↔Host')} color="var(--color-status-amber-mid)" />
             <EdgeToggle checked={showStorage} onChange={setShowStorage} label={t('VM↔Storage', 'VM↔Storage')} color="var(--color-status-green-mid)" />
             <EdgeToggle checked={showBackup} onChange={setShowBackup} label={t('Backup', 'Backup')} color="var(--color-status-blue-deep)" />
@@ -234,12 +325,23 @@ export function AttestivNetworkTopology() {
                 overlay={overlay}
                 selectedId={selectedId}
                 onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
+                degreeByNode={degreeByNode}
               />
             )}
             <Legend overlay={overlay} t={t} />
           </Card>
           {selected ? (
-            <NodeDetailPanel node={selected} onClose={() => setSelectedId(null)} onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)} t={t} />
+            <NodeDetailPanel
+              node={selected}
+              onClose={() => setSelectedId(null)}
+              onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)}
+              onFocus={() => {
+                setFocusAssetId(selected.id)
+                setAppFilter('')
+              }}
+              isFocused={focusAssetId === selected.id}
+              t={t}
+            />
           ) : null}
         </div>
       </div>
@@ -314,12 +416,14 @@ function TopologySVG({
   overlay,
   selectedId,
   onSelect,
+  degreeByNode,
 }: {
   layout: ReturnType<typeof layoutNodes>
   edges: TopologyEdge[]
   overlay: Overlay
   selectedId: string | null
   onSelect: (id: string) => void
+  degreeByNode: Map<string, number>
 }) {
   const { positions, width, height, sites } = layout
   return (
@@ -402,6 +506,12 @@ function TopologySVG({
           if (!node) return null
           const fill = nodeFillFor(node, overlay)
           const stroke = selectedId === id ? 'var(--color-status-blue-deep)' : 'var(--color-border-secondary)'
+          // Node radius grows with connection degree so hubs (host
+          // with 50 VMs, storage array with 200 volumes) read as
+          // big circles. Sub-linear scaling so the chart stays
+          // readable even with extreme outliers.
+          const degree = degreeByNode.get(id) ?? 0
+          const radius = Math.min(12 + Math.floor(Math.sqrt(degree) * 2), 28)
           return (
             <g
               key={id}
@@ -409,8 +519,13 @@ function TopologySVG({
               onClick={() => onSelect(id)}
               style={{ cursor: 'pointer' }}
             >
-              <circle r={12} fill={fill} stroke={stroke} strokeWidth={selectedId === id ? 3 : 1} />
-              <text x={20} y={4} fontSize={10} fill="var(--color-text-primary)">
+              <circle r={radius} fill={fill} stroke={stroke} strokeWidth={selectedId === id ? 3 : 1} />
+              {degree > 4 ? (
+                <text x={0} y={4} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--color-text-primary)">
+                  {degree}
+                </text>
+              ) : null}
+              <text x={radius + 6} y={4} fontSize={10} fill="var(--color-text-primary)">
                 {node.label.length > 22 ? node.label.slice(0, 20) + '…' : node.label}
               </text>
             </g>
@@ -537,11 +652,15 @@ function NodeDetailPanel({
   node,
   onClose,
   onOpen,
+  onFocus,
+  isFocused,
   t,
 }: {
   node: TopologyNode
   onClose: () => void
   onOpen: () => void
+  onFocus: () => void
+  isFocused: boolean
   t: (key: string, fallback?: string) => string
 }) {
   return (
@@ -561,9 +680,13 @@ function NodeDetailPanel({
       <Row label={t('Compliance', 'Compliance')} value={node.compliance || '—'} />
       <Row label={t('Switch port', 'Switch port')} value={node.switch_port || '—'} />
       <Row label={t('Seen by', 'Seen by')} value={(node.present_in || []).join(', ') || '—'} />
-      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+        <GhostButton onClick={onFocus}>
+          <i className={isFocused ? 'ti ti-zoom-out' : 'ti ti-zoom-in'} aria-hidden="true" />
+          {isFocused ? t('Focused (2 hops)', 'Focused (2 hops)') : t('Focus 2 hops', 'Focus 2 hops')}
+        </GhostButton>
         <GhostButton onClick={onOpen}>
-          <i className="ti ti-external-link" aria-hidden="true" /> {t('Open in inventory', 'Open in inventory')}
+          <i className="ti ti-external-link" aria-hidden="true" /> {t('Open', 'Open')}
         </GhostButton>
       </div>
     </Card>
