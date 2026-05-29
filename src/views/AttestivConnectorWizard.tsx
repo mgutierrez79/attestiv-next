@@ -1007,16 +1007,16 @@ function renderCategorisedConnectors(
     return (ai === -1 ? ORDER.length : ai) - (bi === -1 ? ORDER.length : bi)
   })
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {ordered.map(([cat, members]) => (
         <section key={cat}>
           <div
             style={{
-              fontSize: 9,
+              fontSize: 11,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
               color: 'var(--color-text-tertiary)',
-              marginBottom: 3,
+              marginBottom: 6,
               fontWeight: 600,
             }}
           >
@@ -1025,8 +1025,8 @@ function renderCategorisedConnectors(
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-              gap: 3,
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: 8,
             }}
           >
             {members.map((connector) => {
@@ -1046,23 +1046,22 @@ function renderCategorisedConnectors(
                     border: active
                       ? '1px solid var(--color-brand-blue)'
                       : '0.5px solid var(--color-border-tertiary)',
-                    borderRadius: 'var(--border-radius-sm)',
-                    padding: '3px 6px',
+                    borderRadius: 'var(--border-radius-md)',
+                    padding: '8px 12px',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     color: 'var(--color-text-primary)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 4,
-                    minHeight: 22,
-                    lineHeight: 1.1,
+                    gap: 10,
+                    minHeight: 48,
                   }}
                 >
                   <div
                     style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 3,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1070,12 +1069,12 @@ function renderCategorisedConnectors(
                       background: brandHex ? `${brandHex}1A` : 'var(--color-background-tertiary)',
                     }}
                   >
-                    <ConnectorLogo name={connector.value} size={10} />
+                    <ConnectorLogo name={connector.value} size={20} />
                   </div>
                   <span
                     style={{
-                      fontSize: 11,
-                      fontWeight: active ? 500 : 400,
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 500,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -1092,7 +1091,7 @@ function renderCategorisedConnectors(
                       style={{
                         color: 'var(--color-brand-blue)',
                         flexShrink: 0,
-                        fontSize: 10,
+                        fontSize: 14,
                       }}
                     />
                   ) : null}
