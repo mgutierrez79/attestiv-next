@@ -12,7 +12,7 @@
 // physics anyway — sites stay separated, types stay grouped.
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import {
   Badge,
@@ -62,6 +62,12 @@ type Overlay = 'criticality' | 'health' | 'backup' | 'compliance' | 'mfa'
 export function AttestivNetworkTopology() {
   const { t } = useI18n()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // Deep-link from the embedded card on the app detail page lands
+  // here with ?app=<application_id>. Reading it as the initial
+  // appFilter value preserves the prefilter on the standalone page.
+  const initialApp = searchParams?.get('app') ?? ''
+  const initialAppFilter = initialApp ? `app:${initialApp}` : ''
   const [data, setData] = useState<TopologyResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -80,7 +86,7 @@ export function AttestivNetworkTopology() {
   // Focus controls — narrow the graph to one application's blast
   // radius OR to N hops around a single asset. Defaults: no focus,
   // entire graph visible.
-  const [appFilter, setAppFilter] = useState<string>('')
+  const [appFilter, setAppFilter] = useState<string>(initialAppFilter)
   const [focusAssetId, setFocusAssetId] = useState<string | null>(null)
   const [hopRadius] = useState<number>(2)
   const [selectedId, setSelectedId] = useState<string | null>(null)

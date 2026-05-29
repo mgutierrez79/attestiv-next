@@ -208,7 +208,6 @@ const sections: Record<SectionKey, Section> = {
       // Tab deep-links — same Inventory page, different tab.
       { to: '/inventory?tab=applications',             label: 'Applications',    icon: 'ti-apps' },
       { to: '/inventory?tab=sites',                    label: 'Sites',           icon: 'ti-building' },
-      { to: '/network/topology',                       label: 'Network map',     icon: 'ti-affiliate' },
       // Third parties — vendor register lives in the same managed-
       // objects family as apps and sites. Direct link, not a tab,
       // because the third-party UX is materially different (CSV

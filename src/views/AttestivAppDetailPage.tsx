@@ -279,6 +279,19 @@ export function AttestivAppDetailPage() {
         </Card>
 
         <Card style={{ marginTop: 12 }}>
+          <CardTitle
+            right={
+              <GhostButton onClick={() => router.push(`/network/topology?app=${encodeURIComponent(app.application_id)}`)}>
+                <i className="ti ti-affiliate" aria-hidden="true" /> {t('Open full map', 'Open full map')}
+              </GhostButton>
+            }
+          >
+            {t('Network topology', 'Network topology')}
+          </CardTitle>
+          <AppTopologyEmbed appID={app.application_id} t={t} />
+        </Card>
+
+        <Card style={{ marginTop: 12 }}>
           <CardTitle right={<Badge tone="navy">{app.dependencies?.length ?? 0}</Badge>}>{t('Dependencies', 'Dependencies')}</CardTitle>
           {!app.dependencies || app.dependencies.length === 0 ? (
             <EmptyState icon="ti-link-off" title={t('No declared dependencies', 'No declared dependencies')} description={t(
@@ -447,6 +460,203 @@ export function AttestivAppDetailPage() {
       </div>
     </>
   );
+}
+
+// AppTopologyEmbed renders a small graph of this app's components +
+// their cross-source neighbours (hosts they ride, storage they
+// mount, backup source, network adjacency). Reuses /v1/network/
+// topology and applies the app filter client-side.
+function AppTopologyEmbed({
+  appID,
+  t,
+}: {
+  appID: string
+  t: (key: string, fallback?: string) => string
+}) {
+  type Node = {
+    id: string
+    label: string
+    asset_type: string
+    criticality?: string
+    health?: string
+    backup_state?: string
+  }
+  type Edge = { id: string; source: string; target: string; kind: string }
+
+  const [nodes, setNodes] = useState<Node[]>([])
+  const [edges, setEdges] = useState<Edge[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await apiFetch('/network/topology')
+        if (!response.ok) throw new Error(`${response.status}`)
+        const body = (await response.json()) as { nodes: Node[]; edges: Edge[] }
+        if (cancelled) return
+        const appNodeID = `app:${appID}`
+        const adj = new Map<string, string[]>()
+        for (const e of body.edges) {
+          if (!adj.has(e.source)) adj.set(e.source, [])
+          adj.get(e.source)!.push(e.target)
+          if (!adj.has(e.target)) adj.set(e.target, [])
+          adj.get(e.target)!.push(e.source)
+        }
+        const keep = new Set<string>()
+        const queue: Array<{ id: string; depth: number }> = [{ id: appNodeID, depth: 0 }]
+        while (queue.length > 0) {
+          const { id, depth } = queue.shift()!
+          if (keep.has(id)) continue
+          keep.add(id)
+          if (depth >= 2) continue
+          for (const n of adj.get(id) || []) queue.push({ id: n, depth: depth + 1 })
+        }
+        setNodes(body.nodes.filter((n) => keep.has(n.id)))
+        setEdges(body.edges.filter((e) => keep.has(e.source) && keep.has(e.target)))
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [appID])
+
+  if (loading) {
+    return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '20px 0' }}>{t('Loading…', 'Loading…')}</div>
+  }
+  if (error) {
+    return <Banner tone="error">{error}</Banner>
+  }
+  if (nodes.length === 0) {
+    return (
+      <EmptyState
+        icon="ti-affiliate-off"
+        title={t('No topology data yet', 'No topology data yet')}
+        description={t(
+          "No network_adjacency or cross-source edges connect this application's components. Configure Cisco / DNA / vCenter connectors and refresh.",
+          "No network_adjacency or cross-source edges connect this application's components. Configure Cisco / DNA / vCenter connectors and refresh.",
+        )}
+      />
+    )
+  }
+
+  // Lay out: app node at center, component VMs in a ring, second-hop
+  // nodes (host, storage, backup) on the outer ring. Simple radial.
+  const cx = 320
+  const cy = 200
+  const innerR = 80
+  const outerR = 160
+  const components = nodes.filter((n) => n.asset_type === 'vm')
+  const others = nodes.filter((n) => !n.id.startsWith('app:') && n.asset_type !== 'vm')
+
+  const positions = new Map<string, { x: number; y: number }>()
+  positions.set(`app:${appID}`, { x: cx, y: cy })
+  components.forEach((n, i) => {
+    const angle = (i / Math.max(components.length, 1)) * 2 * Math.PI - Math.PI / 2
+    positions.set(n.id, { x: cx + Math.cos(angle) * innerR, y: cy + Math.sin(angle) * innerR })
+  })
+  others.forEach((n, i) => {
+    const angle = (i / Math.max(others.length, 1)) * 2 * Math.PI - Math.PI / 2 + Math.PI / others.length
+    positions.set(n.id, { x: cx + Math.cos(angle) * outerR, y: cy + Math.sin(angle) * outerR })
+  })
+
+  function fillFor(node: Node): string {
+    switch (node.asset_type) {
+      case 'application':
+        return 'var(--color-status-blue-mid)'
+      case 'vm':
+        return 'var(--color-status-amber-mid)'
+      case 'host':
+      case 'hypervisor_host':
+        return 'var(--color-status-blue-deep)'
+      case 'storage_array':
+      case 'storage_volume':
+        return 'var(--color-status-green-mid)'
+      case 'backup_appliance':
+        return 'var(--color-status-blue-deep)'
+    }
+    return 'var(--color-background-tertiary)'
+  }
+
+  function strokeFor(kind: string): string {
+    switch (kind) {
+      case 'app_membership':
+        return 'var(--color-status-red-mid)'
+      case 'hypervisor_host':
+        return 'var(--color-status-amber-mid)'
+      case 'storage_attachment':
+        return 'var(--color-status-green-mid)'
+      case 'backup_coverage':
+        return 'var(--color-status-blue-deep)'
+    }
+    return 'var(--color-border-tertiary)'
+  }
+
+  return (
+    <div style={{ overflow: 'hidden' }}>
+      <svg width="100%" height={400} viewBox={`0 0 640 400`} style={{ background: 'var(--color-background-secondary)', borderRadius: 6 }}>
+        {edges.map((e) => {
+          const a = positions.get(e.source)
+          const b = positions.get(e.target)
+          if (!a || !b) return null
+          return (
+            <line
+              key={e.id}
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke={strokeFor(e.kind)}
+              strokeWidth={1.5}
+              opacity={0.7}
+              strokeDasharray={e.kind === 'app_membership' ? '4 2' : '0'}
+            />
+          )
+        })}
+        {nodes.map((n) => {
+          const pos = positions.get(n.id)
+          if (!pos) return null
+          const r = n.id === `app:${appID}` ? 18 : 11
+          return (
+            <g key={n.id} transform={`translate(${pos.x},${pos.y})`}>
+              <circle r={r} fill={fillFor(n)} stroke="var(--color-border-secondary)" strokeWidth={1} />
+              <text
+                y={r + 14}
+                textAnchor="middle"
+                fontSize={10}
+                fill="var(--color-text-primary)"
+              >
+                {n.label.length > 22 ? n.label.slice(0, 20) + '…' : n.label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Legend swatch="var(--color-status-blue-mid)" label={t('App', 'App')} />
+        <Legend swatch="var(--color-status-amber-mid)" label={t('Component VM', 'Component VM')} />
+        <Legend swatch="var(--color-status-blue-deep)" label={t('Host / Backup', 'Host / Backup')} />
+        <Legend swatch="var(--color-status-green-mid)" label={t('Storage', 'Storage')} />
+      </div>
+    </div>
+  )
+}
+
+function Legend({ swatch, label }: { swatch: string; label: string }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+      <span style={{ width: 10, height: 10, borderRadius: 5, background: swatch, border: '0.5px solid var(--color-border-secondary)' }} />
+      {label}
+    </span>
+  )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
