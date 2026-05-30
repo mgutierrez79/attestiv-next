@@ -48,6 +48,7 @@ function useNavTranslator() {
 // localised label.
 const RAIL_LABEL_TKEY: Record<SectionKey, string> = {
   dashboard: 'nav.dashboard',
+  management: 'nav.management',
   connectors: 'nav.connectors',
   evidence: 'nav.evidence',
   frameworks: 'nav.frameworks',
@@ -67,6 +68,7 @@ const RAIL_LABEL_TKEY: Record<SectionKey, string> = {
 
 type SectionKey =
   | 'dashboard'
+  | 'management'
   | 'connectors'
   | 'evidence'
   | 'frameworks'
@@ -108,6 +110,12 @@ type Section = {
 // daily-use rail.
 const railTop: RailItem[] = [
   { key: 'dashboard',  label: 'Dashboard',  icon: 'ti-layout-dashboard', prefix: '/dashboard' },
+  // Management is the explicit boundary for non-auditor consumption
+  // (ROI, financial posture, what-if scenarios). Excluded from
+  // auditorAllowedPrefixes — auditor tokens can NOT see this section,
+  // and audit pre-packet generators MUST NOT pull from /v1/roi/* (see
+  // docs/audit-management-boundary.md).
+  { key: 'management', label: 'Management', icon: 'ti-briefcase',        prefix: '/management' },
   { key: 'connectors', label: 'Connectors', icon: 'ti-plug',             prefix: '/connectors' },
   { key: 'evidence',   label: 'Evidence',   icon: 'ti-lock',             prefix: '/evidence' },
   { key: 'frameworks', label: 'Frameworks', icon: 'ti-shield-check',     prefix: '/frameworks' },
@@ -143,6 +151,13 @@ const sections: Record<SectionKey, Section> = {
       { to: '/dashboard',         label: 'Overview', icon: 'ti-home' },
       { to: '/dashboard/posture', label: 'Posture',  icon: 'ti-chart-pie' },
       { to: '/dashboard/issues',  label: 'Issues',   icon: 'ti-alert-triangle', badge: 'issues' },
+    ],
+  },
+  management: {
+    key: 'management',
+    navLabel: 'Management',
+    items: [
+      { to: '/management/roi', label: 'Financial posture', icon: 'ti-coin' },
     ],
   },
   connectors: {
@@ -287,7 +302,10 @@ const sections: Record<SectionKey, Section> = {
     items: [
       { to: '/audit',                  label: 'Audit trail',        icon: 'ti-timeline' },
       { to: '/audit/executive-summary', label: 'Executive summary',  icon: 'ti-presentation' },
-      { to: '/audit/roi',               label: 'Financial posture',  icon: 'ti-coin' },
+      // NOTE: Financial posture (ROI) is intentionally NOT here. It
+      // lives under /management/roi because auditor-independence
+      // requires management-tier metrics stay out of auditor-visible
+      // artefacts. See docs/audit-management-boundary.md.
       { to: '/audit/weekly-digest',     label: 'Weekly digest',      icon: 'ti-mail-fast' },
       { to: '/audit/reports',   label: 'Reports',     icon: 'ti-file-description' },
       { to: '/audit/documentation', label: 'Architecture (DAT)', icon: 'ti-book-2' },
@@ -331,6 +349,10 @@ type Role = 'admin' | 'reporter' | 'reader' | 'auditor'
 // (always allowed). An empty list means admin-only.
 const SECTION_ROLES: Record<SectionKey, Role[]> = {
   dashboard:    ['reporter', 'reader', 'auditor'],
+  // Management explicitly excludes the auditor role. ROI / financial
+  // posture is a management view; surfacing it to an auditor token
+  // breaches the independence boundary (PCAOB AS 2701, ISAE 3000).
+  management:   ['reporter', 'reader'],
   connectors:   ['reporter', 'reader', 'auditor'],
   evidence:     ['reporter', 'reader', 'auditor'],
   frameworks:   ['reporter', 'reader', 'auditor'],
