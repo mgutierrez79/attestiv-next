@@ -158,6 +158,7 @@ const sections: Record<SectionKey, Section> = {
     navLabel: 'Management',
     items: [
       { to: '/management/roi', label: 'Financial posture', icon: 'ti-coin' },
+      { to: '/management/board-pack', label: 'Board pack', icon: 'ti-presentation-analytics' },
     ],
   },
   connectors: {
