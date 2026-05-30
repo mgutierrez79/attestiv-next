@@ -293,6 +293,7 @@ const sections: Record<SectionKey, Section> = {
     key: 'dr',
     navLabel: 'DR testing',
     items: [
+      { to: '/dr/plans',     label: 'DR Plans',   icon: 'ti-map-2' },
       { to: '/dr',           label: 'Schedules',  icon: 'ti-calendar' },
       { to: '/dr/runs',      label: 'Test runs',  icon: 'ti-history' },
       { to: '/dr/approvals', label: 'Approvals',  icon: 'ti-user-check' },
