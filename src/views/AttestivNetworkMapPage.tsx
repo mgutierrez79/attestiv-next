@@ -992,65 +992,87 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         </defs>
 
         {/* Site containers */}
-        {effectiveSites.map((s) => (
-          <g key={s.site}>
-            <rect
-              x={s.x}
-              y={s.y}
-              width={s.w}
-              height={s.h}
-              fill="url(#nm-site-bg)"
-              stroke="rgba(20,30,60,0.08)"
-              strokeWidth={0.5}
-              rx={12}
-            />
-            {/* Coloured top stripe */}
-            <rect x={s.x} y={s.y} width={s.w} height={4} fill={s.accent} rx={2} />
-            {/* Site title pill — drag handle for the whole site */}
-            <rect
-              x={s.x + SITE_PAD_X}
-              y={s.y + 14}
-              width={Math.max(s.site.length * 6.5 + 28, 90)}
-              height={22}
-              fill="#03234A"
-              rx={11}
-              data-role="site-header"
-              data-target={s.site}
-              style={{ cursor: dragging?.kind === 'site' && dragging.site === s.site ? 'grabbing' : 'grab' }}
-            />
-            <text
-              x={s.x + SITE_PAD_X + 12}
-              y={s.y + 29}
-              fill="#ffffff"
-              fontWeight={600}
-              fontSize={11}
-              style={{ letterSpacing: '0.02em', pointerEvents: 'none' }}
-            >
-              {s.site}
-            </text>
-            {/* Node count chip */}
-            <rect
-              x={s.x + s.w - SITE_PAD_X - 62}
-              y={s.y + 14}
-              width={62}
-              height={22}
-              fill="#ffffff"
-              stroke="rgba(20,30,60,0.08)"
-              strokeWidth={0.5}
-              rx={11}
-            />
-            <text
-              x={s.x + s.w - SITE_PAD_X - 31}
-              y={s.y + 29}
-              textAnchor="middle"
-              fill="#54534e"
-              fontSize={10}
-              fontWeight={500}
-            >
-              {s.nodeCount} {s.nodeCount === 1 ? 'node' : 'nodes'}
-            </text>
-          </g>
-        ))}
+        {effectiveSites.map((s) => {
+          const siteCursor =
+            dragging?.kind === 'site' && dragging.site === s.site ? 'grabbing' : 'grab'
+          return (
+            <g key={s.site}>
+              {/* Backdrop — the entire site box is the drag handle.
+                  Nodes drawn ON TOP carry their own data-role="node",
+                  so clicks on nodes route to node-drag instead. */}
+              <rect
+                x={s.x}
+                y={s.y}
+                width={s.w}
+                height={s.h}
+                fill="url(#nm-site-bg)"
+                stroke="rgba(20,30,60,0.08)"
+                strokeWidth={0.5}
+                rx={12}
+                data-role="site-header"
+                data-target={s.site}
+                style={{ cursor: siteCursor }}
+              />
+              {/* Coloured top stripe */}
+              <rect
+                x={s.x}
+                y={s.y}
+                width={s.w}
+                height={4}
+                fill={s.accent}
+                rx={2}
+                data-role="site-header"
+                data-target={s.site}
+              />
+              {/* Site title pill */}
+              <rect
+                x={s.x + SITE_PAD_X}
+                y={s.y + 14}
+                width={Math.max(s.site.length * 6.5 + 28, 90)}
+                height={22}
+                fill="#03234A"
+                rx={11}
+                data-role="site-header"
+                data-target={s.site}
+                style={{ cursor: siteCursor }}
+              />
+              <text
+                x={s.x + SITE_PAD_X + 12}
+                y={s.y + 29}
+                fill="#ffffff"
+                fontWeight={600}
+                fontSize={11}
+                style={{ letterSpacing: '0.02em', pointerEvents: 'none' }}
+              >
+                {s.site}
+              </text>
+              {/* Node count chip */}
+              <rect
+                x={s.x + s.w - SITE_PAD_X - 62}
+                y={s.y + 14}
+                width={62}
+                height={22}
+                fill="#ffffff"
+                stroke="rgba(20,30,60,0.08)"
+                strokeWidth={0.5}
+                rx={11}
+                data-role="site-header"
+                data-target={s.site}
+              />
+              <text
+                x={s.x + s.w - SITE_PAD_X - 31}
+                y={s.y + 29}
+                textAnchor="middle"
+                fill="#54534e"
+                fontSize={10}
+                fontWeight={500}
+                style={{ pointerEvents: 'none' }}
+              >
+                {s.nodeCount} {s.nodeCount === 1 ? 'node' : 'nodes'}
+              </text>
+            </g>
+          )
+        })}
 
         {/* Edges */}
         {visibleEdges.map(({ edge, count }, i) => {
@@ -1283,7 +1305,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         <LegendItem gradientId="nm-edge-portchannel" label="Port channel" />
         <LegendItem gradientId="nm-edge-switchlink" label="Switch link" dashed />
         <span style={{ marginLeft: 'auto', color: '#807e76' }}>
-          Scroll to zoom · drag site header to move the whole site freely · drag a node inside its site · drag empty space to pan · ↺ resets
+          Scroll to zoom · drag any empty area inside a site to move it · drag a node inside its site · drag the canvas to pan · ↺ resets
         </span>
       </div>
     </div>
