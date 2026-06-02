@@ -23,6 +23,7 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 
 type InventoryAsset = {
   asset_id: string
@@ -139,6 +140,12 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // problem when the operator drills in from the inventory list.
   const [endpointAssets, setEndpointAssets] = useState<Record<string, InventoryAsset>>({})
   const [memberAssets, setMemberAssets] = useState<InventoryAsset[]>([])
+  // network_device enrichment: every parent network_link that
+  // references this device in metadata.endpoints. Lets the detail
+  // page show how many port-channels, host trunks, and intersite
+  // links touch this switch, plus the friendly names of every
+  // connected non-switch host.
+  const [relatedLinks, setRelatedLinks] = useState<InventoryAsset[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -206,6 +213,37 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
           }
         } catch {
           // Apps unreachable / no apps registered — fine.
+        }
+        // network_device enrichment — pull every parent network_link
+        // that references this device so the detail page can render
+        // counts + neighbor lists without operator hunting.
+        if (
+          (body as InventoryAsset).asset_type === 'network_device' ||
+          (body as InventoryAsset).asset_type === 'switch' ||
+          (body as InventoryAsset).asset_type === 'router'
+        ) {
+          try {
+            const linksResp = await apiFetch('/inventory/assets?asset_type=network_link&limit=2000')
+            if (linksResp.ok) {
+              const linksBody = await linksResp.json()
+              const items = Array.isArray(linksBody?.items) ? (linksBody.items as InventoryAsset[]) : []
+              const idLower = String((body as InventoryAsset).asset_id ?? '').toLowerCase()
+              const nameLower = String((body as InventoryAsset).name ?? '').toLowerCase()
+              const matches = items.filter((link) => {
+                const endpoints = Array.isArray(link.metadata?.['endpoints'])
+                  ? (link.metadata!['endpoints'] as Array<Record<string, unknown>>)
+                  : []
+                return endpoints.some((ep) => {
+                  const epID = String(ep['asset_id'] ?? '').toLowerCase()
+                  const epLabel = String(ep['label'] ?? '').toLowerCase()
+                  return epID === idLower || (nameLower && epLabel === nameLower)
+                })
+              })
+              if (!cancelled) setRelatedLinks(matches)
+            }
+          } catch {
+            // Related links missing isn't fatal — fall back to bare detail.
+          }
         }
         // network_link enrichment — resolve endpoints + members so
         // the operator sees friendly names + cross-source context
@@ -449,6 +487,10 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                 endpointAssets={endpointAssets}
                 memberAssets={memberAssets}
               />
+            ) : null}
+
+            {asset.asset_type === 'network_device' || asset.asset_type === 'switch' || asset.asset_type === 'router' ? (
+              <NetworkDeviceDetails asset={asset} relatedLinks={relatedLinks} />
             ) : null}
 
             {asset.asset_type === 'vm' && (lastBackup || replication || lastRestore) ? (
