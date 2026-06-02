@@ -1088,6 +1088,36 @@ function AssetRow({
               )
             })}
           </span>
+        ) : isLinkAsset ? (
+          // Network link: render BOTH endpoint sites with an arrow
+          // so the operator immediately sees "paris ↔ lyon" for
+          // intersite bundles. Same-site bundles collapse to a
+          // single label. Empty side renders as "?".
+          (() => {
+            const siteA = String(asset.metadata?.['site_a'] ?? '').trim()
+            const siteB = String(asset.metadata?.['site_b'] ?? '').trim()
+            if (!siteA && !siteB) {
+              return <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+            }
+            if (siteA && siteB && siteA === siteB) {
+              return (
+                <span style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)', fontFamily: 'var(--font-mono)' }}>
+                  {siteA}
+                </span>
+              )
+            }
+            return (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                <span style={{ padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
+                  {siteA || '?'}
+                </span>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>↔</span>
+                <span style={{ padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
+                  {siteB || '?'}
+                </span>
+              </span>
+            )
+          })()
         ) : isStorageVolume ? (
           // Storage volume: render the parent array's name (e.g.
           // "POWERSTOREA01") as the location identity. Backend

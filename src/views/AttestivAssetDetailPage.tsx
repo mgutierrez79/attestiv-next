@@ -765,6 +765,8 @@ function NetworkLinkDetails({
   const neighborKind = String(metadata['neighbor_kind'] ?? '').trim()
   const mixedVlan = Boolean(metadata['mixed_vlan'])
   const sites = Array.isArray(metadata['sites']) ? (metadata['sites'] as string[]) : []
+  const siteA = String(metadata['site_a'] ?? '').trim()
+  const siteB = String(metadata['site_b'] ?? '').trim()
   const endpoints = Array.isArray(metadata['endpoints']) ? (metadata['endpoints'] as Array<Record<string, unknown>>) : []
   const memberSummaries = Array.isArray(metadata['members']) ? (metadata['members'] as Array<Record<string, unknown>>) : []
   return (
@@ -776,10 +778,15 @@ function NetworkLinkDetails({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8 }}>
           {correlation && <Stat label={t('Correlation', 'Correlation')} value={correlation} mono />}
           <Stat label={t('Members', 'Members')} value={String(memberCount || memberSummaries.length || '—')} />
+          {/* Two-site fields: always render Site A / Site B explicitly
+              so the operator sees both endpoints at a glance. Falls
+              back to the metadata.sites array (legacy field) when
+              site_a / site_b are missing. */}
+          <Stat label={t('Site A', 'Site A')} value={siteA || (sites[0] ?? '—')} />
+          <Stat label={t('Site B', 'Site B')} value={siteB || (sites[1] ?? '—')} />
           {bundleA && <Stat label={t('Bundle A', 'Bundle A')} value={bundleA} mono />}
           {bundleB && <Stat label={t('Bundle B', 'Bundle B')} value={bundleB} mono />}
           {neighborKind && <Stat label={t('Neighbor kind', 'Neighbor kind')} value={neighborKind} />}
-          {sites.length > 0 && <Stat label={t('Sites', 'Sites')} value={sites.join(' ↔ ')} />}
           {mixedVlan && (
             <Stat label={t('Segregation flag', 'Segregation flag')} value={t('mixed VLAN trunk', 'mixed VLAN trunk')} />
           )}
