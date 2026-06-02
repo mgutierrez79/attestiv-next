@@ -223,6 +223,11 @@ const sections: Record<SectionKey, Section> = {
       { to: '/inventory?asset_type=server',            label: 'Servers',          icon: 'ti-server' },
       { to: '/inventory?asset_type=firewall',          label: 'Firewalls',        icon: 'ti-wall' },
       { to: '/inventory?asset_type=network_device',    label: 'Network devices',  icon: 'ti-network' },
+      // Network: dedicated link list + topology map (Port-channels,
+      // Intersite links, host trunks). Distinct from "Network devices"
+      // (that's the switches/routers themselves; this is the CABLES
+      // between them).
+      { to: '/inventory/network',                      label: 'Network',         icon: 'ti-route' },
       // Tab deep-links — same Inventory page, different tab.
       { to: '/inventory?tab=applications',             label: 'Applications',    icon: 'ti-apps' },
       { to: '/inventory?tab=sites',                    label: 'Sites',           icon: 'ti-building' },

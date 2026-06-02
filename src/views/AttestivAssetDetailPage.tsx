@@ -132,6 +132,13 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const [loading, setLoading] = useState(true)
   const [evaluating, setEvaluating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // network_link enrichment: resolve each endpoint's friendly name +
+  // type by fetching the inventory asset, and resolve each child
+  // member by following metadata.member_asset_ids. Avoids the
+  // "you're looking at link::host-1017::… but who/what is that?"
+  // problem when the operator drills in from the inventory list.
+  const [endpointAssets, setEndpointAssets] = useState<Record<string, InventoryAsset>>({})
+  const [memberAssets, setMemberAssets] = useState<InventoryAsset[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -199,6 +206,56 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
           }
         } catch {
           // Apps unreachable / no apps registered — fine.
+        }
+        // network_link enrichment — resolve endpoints + members so
+        // the operator sees friendly names + cross-source context
+        // instead of bare asset_ids.
+        if ((body as InventoryAsset).asset_type === 'network_link') {
+          const metadata = (body as InventoryAsset).metadata ?? {}
+          const endpoints = Array.isArray(metadata['endpoints']) ? metadata['endpoints'] as Array<Record<string, unknown>> : []
+          const memberIDs = Array.isArray(metadata['member_asset_ids']) ? metadata['member_asset_ids'] as string[] : []
+          // Endpoints: try to fetch each asset_id; failures are silently
+          // dropped (endpoint might not be in inventory yet).
+          const epIDs = endpoints
+            .map((e) => String(e['asset_id'] ?? '').trim())
+            .filter(Boolean)
+          if (epIDs.length > 0) {
+            const epResults = await Promise.all(
+              epIDs.map((id) =>
+                apiFetch(`/inventory/assets/${encodeURIComponent(id)}`)
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null),
+              ),
+            )
+            if (!cancelled) {
+              const map: Record<string, InventoryAsset> = {}
+              epResults.forEach((r, i) => {
+                if (r && typeof r === 'object') {
+                  map[epIDs[i]] = r as InventoryAsset
+                }
+              })
+              setEndpointAssets(map)
+            }
+          }
+          // Members: fetch in parallel (typical bundle has 2-4).
+          if (memberIDs.length > 0 && memberIDs.length <= 20) {
+            const memResults = await Promise.all(
+              memberIDs.map((id) =>
+                apiFetch(`/inventory/assets/${encodeURIComponent(id)}`)
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null),
+              ),
+            )
+            if (!cancelled) {
+              const list: InventoryAsset[] = []
+              memResults.forEach((r) => {
+                if (r && typeof r === 'object') {
+                  list.push(r as InventoryAsset)
+                }
+              })
+              setMemberAssets(list)
+            }
+          }
         }
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? 'Failed to load asset')
@@ -384,6 +441,14 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   </div>
                 ) : null}
               </Card>
+            ) : null}
+
+            {asset.asset_type === 'network_link' ? (
+              <NetworkLinkDetails
+                asset={asset}
+                endpointAssets={endpointAssets}
+                memberAssets={memberAssets}
+              />
             ) : null}
 
             {asset.asset_type === 'vm' && (lastBackup || replication || lastRestore) ? (
@@ -672,5 +737,165 @@ function Stat({ label, value, mono }: { label: string; value: string; mono?: boo
         {value}
       </span>
     </div>
+  )
+}
+
+// NetworkLinkDetails renders the bundle classification + per-side
+// bundle names + endpoints (with cross-source enrichment from their
+// own inventory rows) + per-cable member list. Each endpoint and
+// each member is a clickable link to its own asset detail page so
+// the operator can drill through the topology naturally.
+function NetworkLinkDetails({
+  asset,
+  endpointAssets,
+  memberAssets,
+}: {
+  asset: InventoryAsset
+  endpointAssets: Record<string, InventoryAsset>
+  memberAssets: InventoryAsset[]
+}) {
+  const { t } = useI18n()
+  const metadata = asset.metadata ?? {}
+  const label = String(metadata['link_type_label'] ?? '').trim()
+  const correlation = String(metadata['correlation'] ?? '').trim()
+  const verified = Boolean(metadata['verified'])
+  const memberCount = Number(metadata['member_count'] ?? 0)
+  const bundleA = String(metadata['bundle_a'] ?? '').trim()
+  const bundleB = String(metadata['bundle_b'] ?? '').trim()
+  const neighborKind = String(metadata['neighbor_kind'] ?? '').trim()
+  const mixedVlan = Boolean(metadata['mixed_vlan'])
+  const sites = Array.isArray(metadata['sites']) ? (metadata['sites'] as string[]) : []
+  const endpoints = Array.isArray(metadata['endpoints']) ? (metadata['endpoints'] as Array<Record<string, unknown>>) : []
+  const memberSummaries = Array.isArray(metadata['members']) ? (metadata['members'] as Array<Record<string, unknown>>) : []
+  return (
+    <>
+      <Card>
+        <CardTitle right={<Badge tone={verified ? 'green' : 'amber'}>{verified ? t('Bidirectional', 'Bidirectional') : t('Single-sided', 'Single-sided')}</Badge>}>
+          {label ? t(label.replace(/_/g, ' '), label.replace(/_/g, ' ')) : t('Network link', 'Network link')}
+        </CardTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8 }}>
+          {correlation && <Stat label={t('Correlation', 'Correlation')} value={correlation} mono />}
+          <Stat label={t('Members', 'Members')} value={String(memberCount || memberSummaries.length || '—')} />
+          {bundleA && <Stat label={t('Bundle A', 'Bundle A')} value={bundleA} mono />}
+          {bundleB && <Stat label={t('Bundle B', 'Bundle B')} value={bundleB} mono />}
+          {neighborKind && <Stat label={t('Neighbor kind', 'Neighbor kind')} value={neighborKind} />}
+          {sites.length > 0 && <Stat label={t('Sites', 'Sites')} value={sites.join(' ↔ ')} />}
+          {mixedVlan && (
+            <Stat label={t('Segregation flag', 'Segregation flag')} value={t('mixed VLAN trunk', 'mixed VLAN trunk')} />
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardTitle>{t('Endpoints', 'Endpoints')}</CardTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 8 }}>
+          {endpoints.map((ep, i) => {
+            const epID = String(ep['asset_id'] ?? '').trim()
+            const epLabel = String(ep['label'] ?? '').trim()
+            const epSite = String(ep['site'] ?? '').trim()
+            const enriched = epID ? endpointAssets[epID] : null
+            const enrichedType = String(enriched?.asset_type ?? '').toLowerCase()
+            const enrichedCrit = String(enriched?.criticality ?? '').toLowerCase()
+            const enrichedTags = enriched?.tags ?? []
+            return (
+              <div
+                key={epID || i}
+                style={{
+                  border: '0.5px solid var(--color-border-tertiary)',
+                  borderRadius: 6,
+                  padding: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {i === 0 ? t('Endpoint A', 'Endpoint A') : t('Endpoint B', 'Endpoint B')}
+                </div>
+                <a
+                  href={epID ? `/inventory/${encodeURIComponent(epID)}` : undefined}
+                  style={{ fontSize: 14, fontWeight: 500, textDecoration: 'none', color: 'var(--color-text-primary)' }}
+                >
+                  {enriched?.name || epLabel || epID || '—'}
+                </a>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                  {epID}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+                  {enrichedType && <Badge tone="navy">{enrichedType}</Badge>}
+                  {enrichedCrit && <Badge tone={enrichedCrit === 'critical' ? 'red' : enrichedCrit === 'high' ? 'amber' : 'gray'}>{enrichedCrit}</Badge>}
+                  {epSite && <Badge tone="gray">{epSite}</Badge>}
+                </div>
+                {enrichedTags.length > 0 && (
+                  <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                    {enrichedTags.slice(0, 6).join(' · ')}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      {memberSummaries.length > 0 && (
+        <Card>
+          <CardTitle right={<Badge tone="navy">{memberSummaries.length}</Badge>}>{t('Members (per cable)', 'Members (per cable)')}</CardTitle>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <th style={{ padding: '6px 8px 6px 0' }}>{t('Interface A', 'Interface A')}</th>
+                  <th style={{ padding: '6px 8px' }}>{t('Parent A', 'Parent A')}</th>
+                  <th style={{ padding: '6px 8px' }}>{t('Interface B', 'Interface B')}</th>
+                  <th style={{ padding: '6px 8px' }}>{t('Parent B', 'Parent B')}</th>
+                  <th style={{ padding: '6px 8px' }}>{t('Status', 'Status')}</th>
+                  <th style={{ padding: '6px 8px' }}>{t('VLANs', 'VLANs')}</th>
+                  <th style={{ padding: '6px 0 6px 8px' }}>{t('Asset', 'Asset')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberSummaries.map((m, i) => {
+                  const memberID = String(m['asset_id'] ?? '').trim()
+                  const enrichedMember = memberAssets.find((ma) => ma.asset_id === memberID)
+                  const memberMeta = enrichedMember?.metadata ?? {}
+                  const ifaceA = String(m['interface_a'] ?? memberMeta['interface_a'] ?? '').trim()
+                  const ifaceB = String(m['interface_b'] ?? memberMeta['interface_b'] ?? '').trim()
+                  const parentA = String(m['parent_a'] ?? memberMeta['parent_a'] ?? '').trim()
+                  const parentB = String(m['parent_b'] ?? memberMeta['parent_b'] ?? '').trim()
+                  const status = String(m['link_status'] ?? memberMeta['link_status'] ?? '').trim()
+                  const allowed = Array.isArray(memberMeta['allowed_vlans']) ? (memberMeta['allowed_vlans'] as string[]) : []
+                  const native = String(memberMeta['native_vlan'] ?? '').trim()
+                  const vlanCell = (() => {
+                    if (allowed.length > 0) return `${allowed.length} (${native || allowed[0]})`
+                    if (native) return native
+                    return '—'
+                  })()
+                  const statusTone: 'green' | 'amber' | 'red' | 'gray' = status === 'up' ? 'green' : status === 'down' ? 'red' : status ? 'amber' : 'gray'
+                  return (
+                    <tr key={memberID || i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <td style={{ padding: '8px 8px 8px 0', fontFamily: 'var(--font-mono)' }}>{ifaceA || '—'}</td>
+                      <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{parentA || '—'}</td>
+                      <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{ifaceB || '—'}</td>
+                      <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{parentB || '—'}</td>
+                      <td style={{ padding: '8px' }}>{status ? <Badge tone={statusTone}>{status}</Badge> : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}</td>
+                      <td style={{ padding: '8px' }}>{vlanCell}</td>
+                      <td style={{ padding: '8px 0 8px 8px' }}>
+                        {memberID ? (
+                          <a href={`/inventory/${encodeURIComponent(memberID)}`} style={{ fontSize: 10, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                            {memberID.length > 40 ? memberID.slice(0, 40) + '…' : memberID}
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
   )
 }
