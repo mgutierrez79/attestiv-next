@@ -470,67 +470,210 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
     degree.set(e.to, (degree.get(e.to) ?? 0) + 1)
   }
 
-  const nodePos: Record<string, { x: number; y: number; w: number; h: number }> = {}
-  const sites: Array<{ site: string; nodeCount: number; x: number; w: number; h: number; accent: string }> = []
-  let cursor = 0
-  for (const { site, nodes } of sitesWithNodes) {
-    // Special-case singletons: just centre the lone node in a small
-    // box. Avoids a giant empty ring around one device.
-    if (nodes.length <= 1) {
-      const w = SITE_PAD_X * 2 + NODE_W + 20
-      const h = SITE_PAD_TOP + NODE_H + SITE_PAD_BOTTOM
-      if (nodes[0]) {
-        nodePos[nodes[0].id] = {
-          x: cursor + SITE_PAD_X + 10,
-          y: SITE_PAD_TOP,
-          w: NODE_W,
-          h: NODE_H,
+  // Smart initial layout. Two passes:
+  //
+  //   1. Classify each site as tier-1 (main row) or tier-2 (leaf —
+  //      a small site, 1–2 nodes with at most one inter-site partner;
+  //      these get LIFTED above their parent rather than fighting for
+  //      a horizontal slot they don't need).
+  //   2. Order tier-1 sites so connected ones land adjacent — start
+  //      from the highest-intersite-degree site and extend greedily
+  //      via the next-highest-weight neighbour. Eliminates the long
+  //      arcs that otherwise cut across intervening columns.
+  //
+  // Both tiers still use the same star + ring sizing. Tier-2 sites
+  // are simply painted on a second row above the tier-1 row, centred
+  // over their parent's column.
+  //
+  // The user can override either decision by dragging — the auto
+  // layout only fires on initial mount.
+
+  const siteByNodeId = new Map<string, string>()
+  for (const node of data.nodes) siteByNodeId.set(node.id, node.site)
+
+  const intersiteWeights = new Map<string, Map<string, number>>()
+  const noteIntersite = (a: string, b: string) => {
+    if (!intersiteWeights.has(a)) intersiteWeights.set(a, new Map())
+    const m = intersiteWeights.get(a)!
+    m.set(b, (m.get(b) ?? 0) + 1)
+  }
+  for (const e of data.edges) {
+    const fs = siteByNodeId.get(e.from)
+    const ts = siteByNodeId.get(e.to)
+    if (!fs || !ts || fs === ts) continue
+    noteIntersite(fs, ts)
+    noteIntersite(ts, fs)
+  }
+
+  const nodeCountBySite = new Map<string, number>()
+  for (const n of data.nodes) {
+    nodeCountBySite.set(n.site, (nodeCountBySite.get(n.site) ?? 0) + 1)
+  }
+
+  // Classify tier-2 leaves. Only counts when the partner is itself
+  // tier-1 — two leaves attached to each other would otherwise both
+  // try to live above the other, recursing forever.
+  const tier2Parent = new Map<string, string>()
+  for (const site of data.siteOrder) {
+    const conns = intersiteWeights.get(site)
+    if (!conns || conns.size !== 1) continue
+    if ((nodeCountBySite.get(site) ?? 0) > 2) continue
+    const partner = Array.from(conns.keys())[0]
+    const partnerConns = intersiteWeights.get(partner)?.size ?? 0
+    const partnerNodes = nodeCountBySite.get(partner) ?? 0
+    // Partner qualifies as tier-1 if it has more than one partner OR
+    // more than two nodes (both signs of a backbone site).
+    if (partnerConns > 1 || partnerNodes > 2) tier2Parent.set(site, partner)
+  }
+  const tier1Sites = data.siteOrder.filter((s) => !tier2Parent.has(s))
+
+  // Tier-1 ordering: greedy chain by intersite weight.
+  const tier1Degree = new Map<string, number>()
+  for (const s of tier1Sites) {
+    let deg = 0
+    const conns = intersiteWeights.get(s)
+    if (conns) {
+      for (const [partner, w] of conns) {
+        if (tier1Sites.includes(partner)) deg += w
+      }
+    }
+    tier1Degree.set(s, deg)
+  }
+  const tier1Ordered: string[] = []
+  const remaining = new Set(tier1Sites)
+  const pickHighestRemaining = () =>
+    [...remaining].sort(
+      (a, b) => (tier1Degree.get(b) ?? 0) - (tier1Degree.get(a) ?? 0) || a.localeCompare(b),
+    )[0]
+  while (remaining.size > 0) {
+    let next: string
+    if (tier1Ordered.length === 0) {
+      next = pickHighestRemaining()
+    } else {
+      const last = tier1Ordered[tier1Ordered.length - 1]
+      const lastConns = intersiteWeights.get(last)
+      let best: string | null = null
+      let bestWeight = -1
+      if (lastConns) {
+        for (const [partner, w] of lastConns) {
+          if (remaining.has(partner) && w > bestWeight) {
+            best = partner
+            bestWeight = w
+          }
         }
       }
-      sites.push({ site, nodeCount: nodes.length, x: cursor, w, h, accent: siteAccent(site) })
-      cursor += w + SITE_GAP
-      continue
+      next = best ?? pickHighestRemaining()
     }
+    tier1Ordered.push(next)
+    remaining.delete(next)
+  }
 
-    // Star layout: highest-degree node = hub at centre, rest on a ring.
-    // Stable tie-break by id so layout doesn't jitter between renders
-    // when two nodes share the same degree.
-    const sorted = [...nodes].sort((a, b) => {
+  // Compute the (w, h) of each site box independently of placement
+  // so tier-2 sites can centre themselves over their parent in the
+  // same units the tier-1 walker is using.
+  const sortNodesByDegree = (nodes: MapNode[]) =>
+    [...nodes].sort((a, b) => {
       const da = degree.get(a.id) ?? 0
       const db = degree.get(b.id) ?? 0
       if (db !== da) return db - da
       return a.id.localeCompare(b.id)
     })
+  const siteBox = (nodes: MapNode[]) => {
+    if (nodes.length <= 1) {
+      return {
+        w: SITE_PAD_X * 2 + NODE_W + 20,
+        h: SITE_PAD_TOP + NODE_H + SITE_PAD_BOTTOM,
+        ringR: 0,
+      }
+    }
+    const spokeCount = nodes.length - 1
+    const ringR = Math.max(RING_MIN_R, (RING_NODE_PITCH * spokeCount) / (2 * Math.PI))
+    const siteRadiusPx = ringR + NODE_W / 2 + 16
+    return {
+      w: SITE_PAD_X * 2 + siteRadiusPx * 2,
+      h: SITE_PAD_TOP + siteRadiusPx * 2 + SITE_PAD_BOTTOM,
+      ringR,
+    }
+  }
+
+  const siteBoxesBySite = new Map<string, { w: number; h: number; ringR: number; nodes: MapNode[] }>()
+  for (const { site, nodes } of sitesWithNodes) {
+    const box = siteBox(nodes)
+    siteBoxesBySite.set(site, { ...box, nodes })
+  }
+
+  // Vertical layout: if there are tier-2 sites, push tier-1 down by
+  // the tallest tier-2 box + a gap so the leaf row sits cleanly above.
+  const TIER_ROW_GAP = 36
+  let tier2RowHeight = 0
+  for (const site of tier2Parent.keys()) {
+    tier2RowHeight = Math.max(tier2RowHeight, siteBoxesBySite.get(site)?.h ?? 0)
+  }
+  const tier1RowY = tier2RowHeight > 0 ? tier2RowHeight + TIER_ROW_GAP : 0
+
+  // Walk the tier-1 row left to right, assigning x.
+  const sitePosBySite = new Map<string, { x: number; y: number }>()
+  {
+    let cursor = 0
+    for (const site of tier1Ordered) {
+      const box = siteBoxesBySite.get(site)
+      if (!box) continue
+      sitePosBySite.set(site, { x: cursor, y: tier1RowY })
+      cursor += box.w + SITE_GAP
+    }
+  }
+
+  // Place tier-2 sites centred over their parent. If parent isn't
+  // in the tier-1 row (shouldn't happen given the classifier), fall
+  // back to next free slot at the top.
+  for (const [site, parent] of tier2Parent) {
+    const myBox = siteBoxesBySite.get(site)
+    const parentPos = sitePosBySite.get(parent)
+    const parentBox = siteBoxesBySite.get(parent)
+    if (!myBox) continue
+    if (parentPos && parentBox) {
+      sitePosBySite.set(site, {
+        x: parentPos.x + (parentBox.w - myBox.w) / 2,
+        y: 0,
+      })
+    }
+  }
+
+  // Now materialise nodePos + sites[] from the placement decisions.
+  const nodePos: Record<string, { x: number; y: number; w: number; h: number }> = {}
+  const sites: Array<{ site: string; nodeCount: number; x: number; y: number; w: number; h: number; accent: string }> = []
+  for (const site of data.siteOrder) {
+    const box = siteBoxesBySite.get(site)
+    const pos = sitePosBySite.get(site)
+    if (!box || !pos) continue
+    const { nodes, w, h, ringR } = box
+
+    if (nodes.length <= 1) {
+      if (nodes[0]) {
+        nodePos[nodes[0].id] = {
+          x: pos.x + SITE_PAD_X + 10,
+          y: pos.y + SITE_PAD_TOP,
+          w: NODE_W,
+          h: NODE_H,
+        }
+      }
+      sites.push({ site, nodeCount: nodes.length, x: pos.x, y: pos.y, w, h, accent: siteAccent(site) })
+      continue
+    }
+
+    const sorted = sortNodesByDegree(nodes)
     const hub = sorted[0]
     const spokes = sorted.slice(1)
-
-    // Ring radius: scale by spoke count so labels don't collide on
-    // the circumference. Arc length per spoke = 2π·R/n; pin that at
-    // RING_NODE_PITCH (a node width plus padding) so a busy site
-    // grows a fatter ring instead of stacking nodes.
-    const ringR = Math.max(
-      RING_MIN_R,
-      (RING_NODE_PITCH * spokes.length) / (2 * Math.PI),
-    )
-
-    // Site box: hub + ring radius + node width on each side + padding.
     const siteRadiusPx = ringR + NODE_W / 2 + 16
-    const w = SITE_PAD_X * 2 + siteRadiusPx * 2
-    const h = SITE_PAD_TOP + siteRadiusPx * 2 + SITE_PAD_BOTTOM
+    const centerX = pos.x + w / 2
+    const centerY = pos.y + SITE_PAD_TOP + siteRadiusPx
 
-    const centerX = cursor + w / 2
-    const centerY = SITE_PAD_TOP + siteRadiusPx
-
-    // Hub at centre.
     nodePos[hub.id] = {
       x: centerX - NODE_W / 2,
       y: centerY - NODE_H / 2,
       w: NODE_W,
       h: NODE_H,
     }
-
-    // Spokes evenly around the ring, starting at the top (12 o'clock)
-    // and going clockwise for a predictable read order.
     spokes.forEach((node, i) => {
       const angle = (i / spokes.length) * Math.PI * 2 - Math.PI / 2
       nodePos[node.id] = {
@@ -541,11 +684,17 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
       }
     })
 
-    sites.push({ site, nodeCount: nodes.length, x: cursor, w, h, accent: siteAccent(site) })
-    cursor += w + SITE_GAP
+    sites.push({ site, nodeCount: nodes.length, x: pos.x, y: pos.y, w, h, accent: siteAccent(site) })
   }
+
+  // cursor placeholder kept for downstream width math.
+  const cursor =
+    tier1Ordered.reduce(
+      (acc, s) => acc + (siteBoxesBySite.get(s)?.w ?? 0) + SITE_GAP,
+      0,
+    )
   const svgWidth = Math.max(cursor - SITE_GAP, 400) + 24
-  const svgContentHeight = Math.max(...sites.map((s) => s.h), 240) + 24
+  const svgContentHeight = Math.max(...sites.map((s) => s.y + s.h), 240) + 24
 
   // Reserve vertical space ABOVE the site boxes so intersite edges
   // can arc over them instead of cutting through whatever site
@@ -750,8 +899,8 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         if (base && siteBox) {
           const minDx = siteBox.x + SITE_PAD_X - base.x
           const maxDx = siteBox.x + siteBox.w - SITE_PAD_X - base.x - base.w
-          const minDy = SITE_PAD_TOP - base.y
-          const maxDy = siteBox.h - SITE_PAD_BOTTOM - base.y - base.h
+          const minDy = siteBox.y + SITE_PAD_TOP - base.y
+          const maxDy = siteBox.y + siteBox.h - SITE_PAD_BOTTOM - base.y - base.h
           // Guard against degenerate boxes (min > max means the site
           // is too small to hold the node + padding; just don't move).
           if (minDx <= maxDx) clampedDx = Math.max(minDx, Math.min(maxDx, rawDx))
@@ -819,7 +968,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
   // only carry the site-level offset).
   const effectiveSites = sites.map((s) => {
     const off = siteOffset(s.site)
-    return { ...s, x: s.x + off.dx, y: off.dy }
+    return { ...s, x: s.x + off.dx, y: s.y + off.dy }
   })
 
   // Bundle parallel edges between the same pair into a single
