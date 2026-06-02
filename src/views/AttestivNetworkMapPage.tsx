@@ -193,9 +193,21 @@ export function AttestivNetworkMapPage() {
                     const label = String(link.metadata?.['link_type_label'] ?? '').trim() || link.asset_type || '—'
                     const memberCount = Number(link.metadata?.['member_count'] ?? 0)
                     const verified = Boolean(link.metadata?.['verified'])
-                    const sites = Array.isArray(link.metadata?.['sites'])
-                      ? (link.metadata!['sites'] as string[]).join(' ↔ ')
-                      : String(link.datacenter_id ?? '—')
+                    // Render both sides explicitly when available:
+                    // metadata.site_a + .site_b (preferred — always
+                    // present on links built by the new code), fall
+                    // back to the metadata.sites legacy array, then
+                    // datacenter_id for very old assets.
+                    const tableSiteA = String(link.metadata?.['site_a'] ?? '').trim()
+                    const tableSiteB = String(link.metadata?.['site_b'] ?? '').trim()
+                    const legacySites = Array.isArray(link.metadata?.['sites'])
+                      ? (link.metadata!['sites'] as string[])
+                      : []
+                    const sites = (tableSiteA && tableSiteB)
+                      ? (tableSiteA === tableSiteB ? tableSiteA : `${tableSiteA} ↔ ${tableSiteB}`)
+                      : legacySites.length > 0
+                        ? legacySites.join(' ↔ ')
+                        : String(link.datacenter_id ?? '—')
                     const endpoints = Array.isArray(link.metadata?.['endpoints'])
                       ? (link.metadata!['endpoints'] as Array<Record<string, unknown>>)
                       : []
@@ -260,18 +272,29 @@ export function AttestivNetworkMapPage() {
 type MapNode = { id: string; label: string; site: string; assetType: string }
 type MapEdge = { from: string; to: string; subtype: string }
 
-// resolveSite picks the best site label for an endpoint:
-//   1. endpoint.site in the link's metadata (when promoter knew it)
-//   2. inventory store's asset.datacenter_id (when the asset is in
-//      inventory but the link metadata was empty — happens for links
-//      created BEFORE inferAndPersistSwitchSites filled the gap)
-//   3. fallback to the link's own datacenter_id (intra-site bundles)
-//   4. "unassigned" — honest signal that nothing knows where this is.
-function resolveSite(endpoint: Record<string, unknown>, linkSite: string, siteByAssetID: Record<string, string>): string {
+// resolveSite picks the best site label for one endpoint. Tries in
+// order:
+//   1. endpoint.site in the link's metadata.endpoints[]
+//   2. inventory store's asset.datacenter_id (catches assets the
+//      link metadata didn't know about — typically because the
+//      link was created before inferAndPersistSwitchSites filled
+//      the gap)
+//   3. the link's metadata.site_a or .site_b — explicit per-side
+//      site the backend stamps on every link asset
+//   4. the link's own datacenter_id (intra-site fallback)
+//   5. "unassigned" — honest signal that nothing knows where the
+//      endpoint is, so the operator sees the gap
+function resolveSite(
+  endpoint: Record<string, unknown>,
+  linkSite: string,
+  linkSideSite: string,
+  siteByAssetID: Record<string, string>,
+): string {
   const fromMeta = String(endpoint['site'] ?? '').trim()
   if (fromMeta) return fromMeta
   const id = String(endpoint['asset_id'] ?? '').trim()
   if (id && siteByAssetID[id]) return siteByAssetID[id]
+  if (linkSideSite) return linkSideSite
   if (linkSite) return linkSite
   return 'unassigned'
 }
@@ -297,8 +320,14 @@ function buildMapData(
     const aLabel = String(a['label'] ?? aID).trim()
     const bLabel = String(b['label'] ?? bID).trim()
     const linkSite = String(link.datacenter_id ?? '').trim()
-    const aSite = resolveSite(a, linkSite, siteByAssetID)
-    const bSite = resolveSite(b, linkSite, siteByAssetID)
+    // Per-side site comes from the link's metadata.site_a / site_b
+    // (set by the backend on every link asset, parent + children).
+    // Falls back through endpoint.site + inventory lookup + link
+    // datacenter_id when the per-side fields are empty.
+    const linkSiteA = String(link.metadata?.['site_a'] ?? '').trim()
+    const linkSiteB = String(link.metadata?.['site_b'] ?? '').trim()
+    const aSite = resolveSite(a, linkSite, linkSiteA, siteByAssetID)
+    const bSite = resolveSite(b, linkSite, linkSiteB, siteByAssetID)
     if (!aID || !bID) continue
     sites.add(aSite)
     sites.add(bSite)
