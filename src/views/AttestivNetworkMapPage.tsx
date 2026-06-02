@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type WheelEvent as ReactWheelEvent, type MouseEvent as ReactMouseEvent } from 'react'
 
-import { Badge, Banner, Card, CardTitle, EmptyState, Skeleton, Topbar } from '../components/AttestivUi'
+import { Badge, Banner, Card, CardTitle, EmptyState, Pagination, Skeleton, Topbar } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 
@@ -47,6 +47,8 @@ export function AttestivNetworkMapPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'Intersite_Link' | 'Port_Channel' | 'Host_Trunk' | 'Switch_Link'>('all')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(20)
 
   useEffect(() => {
     let cancelled = false
@@ -102,6 +104,21 @@ export function AttestivNetworkMapPage() {
       return label === filter
     })
   }, [links, filter])
+
+  // Reset to page 0 whenever the filter or underlying data changes
+  // so the operator doesn't land on a phantom page 4 when the
+  // matching set just shrank.
+  useEffect(() => {
+    setPage(0)
+  }, [filter, filtered.length])
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * pageSize
+  const pageRows = useMemo(
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize],
+  )
 
   const counts = useMemo(() => {
     const out: Record<string, number> = { all: links.length, Intersite_Link: 0, Port_Channel: 0, Host_Trunk: 0, Switch_Link: 0 }
@@ -176,7 +193,7 @@ export function AttestivNetworkMapPage() {
               description={t('Switch to "All" or another type to see what was discovered.', 'Switch to "All" or another type to see what was discovered.')}
             />
           ) : (
-            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <div style={{ overflowX: 'auto', overflowY: 'auto', marginTop: 8, maxHeight: 560 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -189,7 +206,7 @@ export function AttestivNetworkMapPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((link) => {
+                  {pageRows.map((link) => {
                     const label = String(link.metadata?.['link_type_label'] ?? '').trim() || link.asset_type || '—'
                     const memberCount = Number(link.metadata?.['member_count'] ?? 0)
                     const verified = Boolean(link.metadata?.['verified'])
@@ -261,6 +278,21 @@ export function AttestivNetworkMapPage() {
               </table>
             </div>
           )}
+          {filtered.length > 0 ? (
+            <div style={{ marginTop: 8 }}>
+              <Pagination
+                page={currentPage}
+                pageSize={pageSize}
+                total={filtered.length}
+                onPageChange={setPage}
+                onPageSizeChange={(s) => {
+                  setPageSize(s)
+                  setPage(0)
+                }}
+                label={t('Links', 'Links')}
+              />
+            </div>
+          ) : null}
         </Card>
       </div>
     </>
