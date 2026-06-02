@@ -800,7 +800,7 @@ export function InventoryPage() {
                   <th style={{ padding: '6px 10px' }}>{t('Criticality', 'Criticality')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('App tier', 'App tier')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Source', 'Source')}</th>
-                  <th style={{ padding: '6px 10px' }}>{t('Location', 'Location')}</th>
+                  <th style={{ padding: '6px 10px' }}>{t('Site', 'Site')}</th>
                   <th style={{ padding: '6px 10px' }}>{t('Switch port', 'Switch port')}</th>
                   <th style={{ padding: '6px 0 6px 10px' }}>{t('Tags', 'Tags')}</th>
                 </tr>
