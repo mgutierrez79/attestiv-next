@@ -11,13 +11,14 @@
 //
 // Backed by /v1/scoring/frameworks/{id}/controls/{cid}/evidence.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   Badge,
   Banner,
   Card,
   CardTitle,
+  Pagination,
   Skeleton,
   Topbar,
 } from '../components/AttestivUi'
@@ -113,6 +114,11 @@ export function AttestivControlEvidenceDetailPage({
   // historical state. Empty = live latest evaluation.
   const [asOfInput, setAsOfInput] = useState<string>('')
   const [activeAsOf, setActiveAsOf] = useState<string>('')
+  // Evidence records pagination — 199+ rows on a healthy pilot, list
+  // primitive without a page-size selector pushed the rest of the page
+  // off-screen. Shared platform primitive (10/20/50/100), default 20.
+  const [evidencePage, setEvidencePage] = useState(0)
+  const [evidencePageSize, setEvidencePageSize] = useState(20)
 
   useEffect(() => {
     let cancelled = false
@@ -431,39 +437,94 @@ export function AttestivControlEvidenceDetailPage({
                   {t('No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.', 'No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.')}
                 </div>
               ) : (
-                <div style={{ marginTop: 8 }}>
-                  {data.records.map((rec, i) => (
-                    <div key={rec.evidence_id + ':' + i} style={{ padding: '8px 0', borderTop: i ? '0.5px solid var(--color-border-tertiary)' : 'none' }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{rec.evidence_id}</code>
-                        <Badge tone="gray">{rec.type}</Badge>
-                        {rec.source ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('via', 'via')} <strong>{rec.source}</strong></span> : null}
-                        {rec.timestamp ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rec.timestamp}</span> : <span style={{ fontSize: 11, color: 'var(--color-status-red-mid)' }}>{t('rolled off', 'rolled off')}</span>}
-                      </div>
-                      {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
-                        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                          {t('Satisfies', 'Satisfies')}: {rec.satisfies_tags.map((tag) => <code key={tag} style={{ marginRight: 6, fontSize: 10 }}>{tag}</code>)}
-                        </div>
-                      ) : null}
-                      {rec.payload_preview && Object.keys(rec.payload_preview).length > 0 ? (
-                        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-secondary)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2px 12px' }}>
-                          {Object.entries(rec.payload_preview).map(([k, v]) => (
-                            <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                              <span style={{ color: 'var(--color-text-tertiary)' }}>{k}:</span>
-                              <span style={{ fontFamily: 'var(--font-family-mono, monospace)', fontSize: 10 }}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
+                <PaginatedEvidenceRecords
+                  records={data.records}
+                  page={evidencePage}
+                  pageSize={evidencePageSize}
+                  onPageChange={setEvidencePage}
+                  onPageSizeChange={(s) => {
+                    setEvidencePageSize(s)
+                    setEvidencePage(0)
+                  }}
+                  t={t}
+                />
               )}
             </Card>
           </>
         )}
       </div>
     </>
+  )
+}
+
+function PaginatedEvidenceRecords({
+  records,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  t,
+}: {
+  records: EvidenceRecord[]
+  page: number
+  pageSize: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+  t: (key: string, fallback: string) => string
+}) {
+  const pageCount = Math.max(1, Math.ceil(records.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageStart = currentPage * pageSize
+  const pageRows = useMemo(
+    () => records.slice(pageStart, pageStart + pageSize),
+    [records, pageStart, pageSize],
+  )
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+        {pageRows.map((rec, i) => (
+          <div
+            key={rec.evidence_id + ':' + (pageStart + i)}
+            style={{
+              padding: '8px 0',
+              borderTop: i === 0 && currentPage === 0 ? 'none' : '0.5px solid var(--color-border-tertiary)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{rec.evidence_id}</code>
+              <Badge tone="gray">{rec.type}</Badge>
+              {rec.source ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('via', 'via')} <strong>{rec.source}</strong></span> : null}
+              {rec.timestamp ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rec.timestamp}</span> : <span style={{ fontSize: 11, color: 'var(--color-status-red-mid)' }}>{t('rolled off', 'rolled off')}</span>}
+            </div>
+            {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                {t('Satisfies', 'Satisfies')}: {rec.satisfies_tags.map((tag) => <code key={tag} style={{ marginRight: 6, fontSize: 10 }}>{tag}</code>)}
+              </div>
+            ) : null}
+            {rec.payload_preview && Object.keys(rec.payload_preview).length > 0 ? (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-secondary)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2px 12px' }}>
+                {Object.entries(rec.payload_preview).map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>{k}:</span>
+                    <span style={{ fontFamily: 'var(--font-family-mono, monospace)', fontSize: 10 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <Pagination
+          page={currentPage}
+          pageSize={pageSize}
+          total={records.length}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+          label={t('Evidence', 'Evidence')}
+        />
+      </div>
+    </div>
   )
 }
 
