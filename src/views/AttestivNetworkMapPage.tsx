@@ -16,7 +16,7 @@
 // Children (network_link_member) are filtered out of the list — they
 // surface via the parent's detail page.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 
 import { Badge, Banner, Card, CardTitle, EmptyState, Skeleton, Topbar } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
@@ -346,29 +346,47 @@ function buildMapData(
   return { nodes: Array.from(nodes.values()), edges, siteOrder }
 }
 
+// ----- Modern network map renderer ---------------------------------
+//
+// Visual choices:
+//   - Site columns sit on a deep-navy gradient backdrop ("data-center
+//     floors") with a coloured top stripe so each site reads as a
+//     physical location, not a generic box.
+//   - Nodes are pill cards with a left accent stripe coloured by
+//     asset role (network=brand-blue, host=blue-mid, firewall=rust,
+//     storage=violet) and an inline SVG icon — no emoji.
+//   - Edges are gradient strokes routed as smooth Bezier arcs.
+//     Intersite_Link gets an animated dash flow drawing attention to
+//     the cross-DC pipe. A bundle's member count is stamped as a chip
+//     at the edge midpoint when > 1.
+//   - Hovering a node fades non-connected nodes + edges so the
+//     operator can isolate one switch's neighbourhood; hovering an
+//     edge highlights both endpoints and surfaces a tooltip with
+//     site_a ↔ site_b + member count.
+//
+// Layout still uses fixed site columns + a 2-wide node grid per
+// column — same data shape, just dressed properly.
+
 function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; siteOrder: string[] } }) {
-  // Layout: sites are horizontal columns separated by gaps. Within
-  // each site, nodes flow in a 2-column grid so a site with 6
-  // switches doesn't end up 6 deep. Inter-site edges arc through
-  // the gap; intra-site edges curve gently to avoid overlap.
-  const SITE_PAD_X = 14
-  const SITE_PAD_TOP = 36
-  const SITE_GAP = 56
-  const NODE_W = 168
-  const NODE_H = 30
+  const SITE_PAD_X = 16
+  const SITE_PAD_TOP = 44
+  const SITE_GAP = 68
+  const NODE_W = 188
+  const NODE_H = 38
   const NODE_GAP_X = 14
-  const NODE_GAP_Y = 14
+  const NODE_GAP_Y = 12
   const NODES_PER_ROW = 2
+
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [hoveredEdge, setHoveredEdge] = useState<number | null>(null)
 
   const sitesWithNodes = data.siteOrder.map((site) => ({
     site,
     nodes: data.nodes.filter((n) => n.site === site),
   }))
 
-  // First pass: compute each site box's width + the node positions
-  // inside it.
   const nodePos: Record<string, { x: number; y: number; w: number; h: number }> = {}
-  const sites: Array<{ site: string; nodeCount: number; x: number; w: number; h: number }> = []
+  const sites: Array<{ site: string; nodeCount: number; x: number; w: number; h: number; accent: string }> = []
   let cursor = 0
   for (const { site, nodes } of sitesWithNodes) {
     const cols = Math.min(NODES_PER_ROW, Math.max(nodes.length, 1))
@@ -385,63 +403,102 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         h: NODE_H,
       }
     })
-    sites.push({ site, nodeCount: nodes.length, x: cursor, w, h })
+    sites.push({ site, nodeCount: nodes.length, x: cursor, w, h, accent: siteAccent(site) })
     cursor += w + SITE_GAP
   }
-  const svgWidth = Math.max(cursor - SITE_GAP, 400) + 20
-  const svgHeight = Math.max(
-    ...sites.map((s) => s.h),
-    220,
-  ) + 20
+  const svgWidth = Math.max(cursor - SITE_GAP, 400) + 24
+  const svgHeight = Math.max(...sites.map((s) => s.h), 240) + 24
 
-  const edgeStyle = (subtype: string): { stroke: string; width: number; dash?: string } => {
-    switch (subtype) {
-      case 'Intersite_Link':
-        return { stroke: 'var(--color-text-danger, #c44)', width: 2.5 }
-      case 'Port_Channel':
-        return { stroke: 'var(--color-text-secondary, #444)', width: 1.5 }
-      case 'Switch_Link':
-        return { stroke: 'var(--color-text-tertiary, #888)', width: 1.5, dash: '4 3' }
-      default:
-        return { stroke: '#999', width: 1.5 }
+  // Bundle parallel edges between the same pair into a single
+  // visible line and remember the count so we can stamp a chip
+  // at the midpoint.
+  const grouped = new Map<string, { edge: MapEdge; count: number; idx: number }>()
+  data.edges.forEach((edge, idx) => {
+    const key = [edge.from, edge.to].sort().join('|') + '::' + edge.subtype
+    const prev = grouped.get(key)
+    if (prev) {
+      prev.count += 1
+    } else {
+      grouped.set(key, { edge, count: 1, idx })
     }
-  }
+  })
+  const visibleEdges = Array.from(grouped.values())
 
-  // Edge path: a quadratic Bezier whose control point sits between
-  // the two endpoints, offset perpendicularly by a small amount so
-  // parallel edges between the same pair don't stack directly on
-  // top of each other.
-  const edgeIndex: Record<string, number> = {}
-  const edgePath = (edge: MapEdge, a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }, i: number) => {
+  // Edge routing: smooth quadratic Bezier with a small perpendicular
+  // offset so parallel bundles between the same pair draw to both
+  // sides.
+  const parallelTally: Record<string, number> = {}
+  const edgePath = (
+    edge: MapEdge,
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ): { d: string; mx: number; my: number } => {
     const key = [edge.from, edge.to].sort().join('|')
-    const parallel = edgeIndex[key] ?? 0
-    edgeIndex[key] = parallel + 1
+    const parallel = parallelTally[key] ?? 0
+    parallelTally[key] = parallel + 1
     const ax = a.x + a.w / 2
     const ay = a.y + a.h / 2
     const bx = b.x + b.w / 2
     const by = b.y + b.h / 2
-    const mx = (ax + bx) / 2
-    const my = (ay + by) / 2
-    // Perpendicular offset (toggles sign per parallel edge so 2-cable
-    // bundles draw to both sides).
     const dx = bx - ax
     const dy = by - ay
     const len = Math.max(Math.sqrt(dx * dx + dy * dy), 1)
     const sign = parallel % 2 === 0 ? 1 : -1
-    const magnitude = 18 + Math.floor(parallel / 2) * 14
-    const cx = mx + sign * magnitude * (-dy / len)
-    const cy = my + sign * magnitude * (dx / len)
-    return `M ${ax} ${ay} Q ${cx} ${cy} ${bx} ${by}`
+    const magnitude = 22 + Math.floor(parallel / 2) * 16
+    const cx = (ax + bx) / 2 + sign * magnitude * (-dy / len)
+    const cy = (ay + by) / 2 + sign * magnitude * (dx / len)
+    // Midpoint of the Bezier curve (t = 0.5) for the chip position.
+    const mx = 0.25 * ax + 0.5 * cx + 0.25 * bx
+    const my = 0.25 * ay + 0.5 * cy + 0.25 * by
+    return { d: `M ${ax} ${ay} Q ${cx} ${cy} ${bx} ${by}`, mx, my }
   }
 
+  // Which edges + nodes are highlighted given the current hover state.
+  const connectedNodeIds = new Set<string>()
+  if (hoveredNode) {
+    connectedNodeIds.add(hoveredNode)
+    visibleEdges.forEach(({ edge }) => {
+      if (edge.from === hoveredNode) connectedNodeIds.add(edge.to)
+      if (edge.to === hoveredNode) connectedNodeIds.add(edge.from)
+    })
+  }
+  const hoveredEdgeData = hoveredEdge !== null ? visibleEdges[hoveredEdge] : null
+
   return (
-    <div style={{ overflow: 'auto', maxWidth: '100%', marginTop: 8 }}>
+    <div style={{ overflow: 'auto', maxWidth: '100%', marginTop: 8, position: 'relative' }}>
       <svg
         width={svgWidth}
         height={svgHeight}
-        style={{ minWidth: svgWidth, fontSize: 11, fontFamily: 'sans-serif' }}
+        style={{ minWidth: svgWidth, fontSize: 11, fontFamily: 'var(--font-sans)' }}
       >
-        {/* Site backgrounds */}
+        <defs>
+          {/* Card drop shadow */}
+          <filter id="nm-card-shadow" x="-10%" y="-10%" width="120%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#03234A" floodOpacity="0.10" />
+          </filter>
+          {/* Site backdrop: subtle warm vertical gradient */}
+          <linearGradient id="nm-site-bg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f6f6f3" />
+            <stop offset="100%" stopColor="#ecebe5" />
+          </linearGradient>
+          {/* Intersite gradient: navy → vivid blue, animated */}
+          <linearGradient id="nm-edge-intersite" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#C73030" />
+            <stop offset="100%" stopColor="#1C68C7" />
+          </linearGradient>
+          {/* Port_Channel gradient: brand navy → blue-mid */}
+          <linearGradient id="nm-edge-portchannel" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#03234A" />
+            <stop offset="100%" stopColor="#3E92E6" />
+          </linearGradient>
+          {/* Switch_Link: pale blue */}
+          <linearGradient id="nm-edge-switchlink" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#8CC0F2" />
+            <stop offset="100%" stopColor="#1C68C7" />
+          </linearGradient>
+        </defs>
+
+        {/* Site containers */}
         {sites.map((s) => (
           <g key={s.site}>
             <rect
@@ -449,95 +506,409 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
               y={0}
               width={s.w}
               height={s.h}
-              fill="var(--color-surface-secondary, #f5f5f5)"
-              stroke="var(--color-border-tertiary, #e0e0e0)"
+              fill="url(#nm-site-bg)"
+              stroke="rgba(20,30,60,0.08)"
               strokeWidth={0.5}
-              rx={8}
+              rx={12}
             />
-            <text x={s.x + SITE_PAD_X} y={22} fill="var(--color-text-secondary, #444)" fontWeight={600} fontSize={12}>
+            {/* Coloured top stripe */}
+            <rect x={s.x} y={0} width={s.w} height={4} fill={s.accent} rx={2} />
+            {/* Site title pill */}
+            <rect
+              x={s.x + SITE_PAD_X}
+              y={14}
+              width={Math.max(s.site.length * 6.5 + 28, 90)}
+              height={22}
+              fill="#03234A"
+              rx={11}
+            />
+            <text
+              x={s.x + SITE_PAD_X + 12}
+              y={29}
+              fill="#ffffff"
+              fontWeight={600}
+              fontSize={11}
+              style={{ letterSpacing: '0.02em' }}
+            >
               {s.site}
             </text>
-            <text x={s.x + s.w - SITE_PAD_X} y={22} textAnchor="end" fill="var(--color-text-tertiary, #888)" fontSize={11}>
+            {/* Node count chip */}
+            <rect
+              x={s.x + s.w - SITE_PAD_X - 62}
+              y={14}
+              width={62}
+              height={22}
+              fill="#ffffff"
+              stroke="rgba(20,30,60,0.08)"
+              strokeWidth={0.5}
+              rx={11}
+            />
+            <text
+              x={s.x + s.w - SITE_PAD_X - 31}
+              y={29}
+              textAnchor="middle"
+              fill="#54534e"
+              fontSize={10}
+              fontWeight={500}
+            >
               {s.nodeCount} {s.nodeCount === 1 ? 'node' : 'nodes'}
             </text>
           </g>
         ))}
+
         {/* Edges */}
-        {data.edges.map((edge, i) => {
+        {visibleEdges.map(({ edge, count }, i) => {
           const a = nodePos[edge.from]
           const b = nodePos[edge.to]
           if (!a || !b) return null
+          const { d, mx, my } = edgePath(edge, a, b)
           const style = edgeStyle(edge.subtype)
+          const dimmed = hoveredNode !== null && edge.from !== hoveredNode && edge.to !== hoveredNode
+          const highlighted = hoveredEdge === i || (hoveredNode !== null && (edge.from === hoveredNode || edge.to === hoveredNode))
           return (
-            <path
-              key={i}
-              d={edgePath(edge, a, b, i)}
-              fill="none"
-              stroke={style.stroke}
-              strokeWidth={style.width}
-              strokeDasharray={style.dash}
-              opacity={0.7}
-            />
+            <g key={i} opacity={dimmed ? 0.18 : 1}>
+              {/* Wide invisible hit area for hover */}
+              <path
+                d={d}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={14}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredEdge(i)}
+                onMouseLeave={() => setHoveredEdge(null)}
+              />
+              {/* Faint glow under intersite + highlighted */}
+              {(edge.subtype === 'Intersite_Link' || highlighted) && (
+                <path
+                  d={d}
+                  fill="none"
+                  stroke={style.stroke}
+                  strokeWidth={highlighted ? style.width + 6 : style.width + 3}
+                  strokeOpacity={0.18}
+                  strokeLinecap="round"
+                />
+              )}
+              {/* Main stroke */}
+              <path
+                d={d}
+                fill="none"
+                stroke={style.stroke}
+                strokeWidth={highlighted ? style.width + 0.8 : style.width}
+                strokeDasharray={style.dash}
+                strokeLinecap="round"
+                opacity={0.95}
+              >
+                {edge.subtype === 'Intersite_Link' ? (
+                  <animate
+                    attributeName="stroke-dashoffset"
+                    from="0"
+                    to="-24"
+                    dur="1.4s"
+                    repeatCount="indefinite"
+                  />
+                ) : null}
+              </path>
+              {/* Member chip at midpoint when bundle > 1 */}
+              {count > 1 && (
+                <g>
+                  <rect
+                    x={mx - 14}
+                    y={my - 9}
+                    width={28}
+                    height={18}
+                    fill="#ffffff"
+                    stroke={style.stroke}
+                    strokeWidth={0.6}
+                    rx={9}
+                  />
+                  <text x={mx} y={my + 4} textAnchor="middle" fill="#14130f" fontSize={10} fontWeight={600}>
+                    ×{count}
+                  </text>
+                </g>
+              )}
+            </g>
           )
         })}
+
         {/* Nodes (drawn last so they sit ON TOP of edges) */}
         {data.nodes.map((node) => {
           const pos = nodePos[node.id]
           if (!pos) return null
-          const icon = nodeIcon(node.assetType)
+          const accent = nodeAccent(node.assetType)
+          const dimmed = hoveredNode !== null && !connectedNodeIds.has(node.id)
+          const highlighted = node.id === hoveredNode
           return (
-            <g key={node.id}>
+            <g
+              key={node.id}
+              opacity={dimmed ? 0.25 : 1}
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHoveredNode(node.id)}
+              onMouseLeave={() => setHoveredNode(null)}
+            >
               <rect
                 x={pos.x}
                 y={pos.y}
                 width={pos.w}
                 height={pos.h}
-                fill="var(--color-surface-primary, #fff)"
-                stroke="var(--color-border-secondary, #ccc)"
-                strokeWidth={0.5}
-                rx={5}
+                fill="#ffffff"
+                stroke={highlighted ? accent : 'rgba(20,30,60,0.12)'}
+                strokeWidth={highlighted ? 1.4 : 0.6}
+                rx={8}
+                filter="url(#nm-card-shadow)"
               />
-              <text x={pos.x + 8} y={pos.y + 19} fontSize={13}>
-                {icon}
-              </text>
+              {/* Left accent stripe */}
+              <rect x={pos.x} y={pos.y} width={3} height={pos.h} fill={accent} rx={1.5} />
+              {/* Icon */}
+              <g transform={`translate(${pos.x + 12}, ${pos.y + (pos.h - 16) / 2})`}>
+                <NodeIcon kind={nodeKind(node.assetType)} color={accent} />
+              </g>
               <text
-                x={pos.x + 28}
-                y={pos.y + 19}
-                fill="var(--color-text-primary, #111)"
-                fontSize={11}
+                x={pos.x + 36}
+                y={pos.y + 17}
+                fill="#14130f"
+                fontSize={12}
+                fontWeight={500}
               >
                 {node.label.length > 22 ? node.label.slice(0, 20) + '…' : node.label}
+              </text>
+              <text
+                x={pos.x + 36}
+                y={pos.y + 30}
+                fill="#807e76"
+                fontSize={10}
+                style={{ letterSpacing: '0.02em' }}
+              >
+                {nodeRoleLabel(node.assetType)}
               </text>
             </g>
           )
         })}
       </svg>
-      <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 11, color: 'var(--color-text-tertiary)', flexWrap: 'wrap' }}>
-        <LegendItem color="var(--color-text-danger, #c44)" label="Intersite_Link" />
-        <LegendItem color="var(--color-text-secondary, #444)" label="Port_Channel" />
-        <LegendItem color="var(--color-text-tertiary, #888)" label="Switch_Link" dashed />
+
+      {/* Edge tooltip */}
+      {hoveredEdgeData && (
+        <EdgeTooltip
+          subtype={hoveredEdgeData.edge.subtype}
+          fromLabel={data.nodes.find((n) => n.id === hoveredEdgeData.edge.from)?.label ?? ''}
+          toLabel={data.nodes.find((n) => n.id === hoveredEdgeData.edge.to)?.label ?? ''}
+          fromSite={data.nodes.find((n) => n.id === hoveredEdgeData.edge.from)?.site ?? ''}
+          toSite={data.nodes.find((n) => n.id === hoveredEdgeData.edge.to)?.site ?? ''}
+          count={hoveredEdgeData.count}
+        />
+      )}
+
+      <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 11, color: '#54534e', flexWrap: 'wrap' }}>
+        <LegendItem gradientId="nm-edge-intersite" label="Intersite link" animated />
+        <LegendItem gradientId="nm-edge-portchannel" label="Port channel" />
+        <LegendItem gradientId="nm-edge-switchlink" label="Switch link" dashed />
+        <span style={{ marginLeft: 'auto', color: '#807e76' }}>Hover a node to isolate, an edge for details</span>
       </div>
     </div>
   )
 }
 
-function LegendItem({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+function EdgeTooltip({
+  subtype,
+  fromLabel,
+  toLabel,
+  fromSite,
+  toSite,
+  count,
+}: {
+  subtype: string
+  fromLabel: string
+  toLabel: string
+  fromSite: string
+  toSite: string
+  count: number
+}) {
+  const accent = edgeStyle(subtype).stroke
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        background: '#ffffff',
+        border: '0.5px solid rgba(20,30,60,0.18)',
+        borderLeft: `3px solid ${accent}`,
+        padding: '8px 12px',
+        borderRadius: 8,
+        fontSize: 11,
+        color: '#14130f',
+        boxShadow: '0 2px 8px rgba(3,35,74,0.12)',
+        maxWidth: 280,
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{subtype.replace(/_/g, ' ')}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#54534e' }}>
+        {fromLabel} <span style={{ color: accent }}>↔</span> {toLabel}
+      </div>
+      <div style={{ fontSize: 10, color: '#807e76', marginTop: 4 }}>
+        {fromSite}
+        {fromSite !== toSite ? ` → ${toSite}` : ''} · {count} {count === 1 ? 'bundle' : 'bundles'}
+      </div>
+    </div>
+  )
+}
+
+function LegendItem({ gradientId, label, dashed, animated }: { gradientId: string; label: string; dashed?: boolean; animated?: boolean }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <svg width={20} height={4}>
-        <line x1={0} y1={2} x2={20} y2={2} stroke={color} strokeWidth={2} strokeDasharray={dashed ? '4 3' : undefined} />
+      <svg width={28} height={8}>
+        <line
+          x1={0}
+          y1={4}
+          x2={28}
+          y2={4}
+          stroke={`url(#${gradientId})`}
+          strokeWidth={2.5}
+          strokeDasharray={dashed ? '4 3' : undefined}
+          strokeLinecap="round"
+        />
+        {animated ? (
+          <line x1={0} y1={4} x2={28} y2={4} stroke="#fff" strokeWidth={2.5} strokeDasharray="3 6" opacity={0.4}>
+            <animate attributeName="stroke-dashoffset" from="0" to="-9" dur="1s" repeatCount="indefinite" />
+          </line>
+        ) : null}
       </svg>
-      {label}
+      <span>{label}</span>
     </span>
   )
 }
 
-function nodeIcon(assetType: string): string {
+function edgeStyle(subtype: string): { stroke: string; width: number; dash?: string } {
+  switch (subtype) {
+    case 'Intersite_Link':
+      return { stroke: 'url(#nm-edge-intersite)', width: 2.6, dash: '8 4' }
+    case 'Port_Channel':
+      return { stroke: 'url(#nm-edge-portchannel)', width: 2 }
+    case 'Switch_Link':
+      return { stroke: 'url(#nm-edge-switchlink)', width: 1.8, dash: '4 3' }
+    default:
+      return { stroke: '#3E92E6', width: 1.8 }
+  }
+}
+
+// ----- Node icons + classification --------------------------------
+
+type NodeKind = 'network' | 'host' | 'server' | 'firewall' | 'storage' | 'generic'
+
+function nodeKind(assetType: string): NodeKind {
   const t = assetType.toLowerCase()
-  if (t === 'network_device' || t === 'switch' || t === 'router') return '🔀'
-  if (t === 'host' || t === 'esxi_host' || t === 'hypervisor') return '🖥'
-  if (t === 'server') return '⚙'
-  if (t === 'firewall' || t === 'firewall_manager') return '🛡'
-  if (t === 'storage_array' || t === 'storage_appliance' || t === 'storage_volume') return '💾'
-  return '◆'
+  if (t === 'network_device' || t === 'switch' || t === 'router') return 'network'
+  if (t === 'host' || t === 'esxi_host' || t === 'hypervisor') return 'host'
+  if (t === 'server') return 'server'
+  if (t === 'firewall' || t === 'firewall_manager') return 'firewall'
+  if (t === 'storage_array' || t === 'storage_appliance' || t === 'storage_volume') return 'storage'
+  return 'generic'
+}
+
+function nodeAccent(assetType: string): string {
+  switch (nodeKind(assetType)) {
+    case 'network':
+      return '#03234A'
+    case 'host':
+      return '#1C68C7'
+    case 'server':
+      return '#3E92E6'
+    case 'firewall':
+      return '#993C1D'
+    case 'storage':
+      return '#534AB7'
+    default:
+      return '#807e76'
+  }
+}
+
+function nodeRoleLabel(assetType: string): string {
+  switch (nodeKind(assetType)) {
+    case 'network':
+      return 'switch / router'
+    case 'host':
+      return 'hypervisor host'
+    case 'server':
+      return 'server'
+    case 'firewall':
+      return 'firewall'
+    case 'storage':
+      return 'storage'
+    default:
+      return assetType || 'asset'
+  }
+}
+
+// Deterministic per-site accent — same site keeps the same colour
+// across renders. Picks from the brand palette so the colours feel
+// curated rather than random.
+function siteAccent(site: string): string {
+  const palette = ['#1C68C7', '#534AB7', '#199E78', '#ED9314', '#993C1D', '#3E92E6']
+  if (site === 'unassigned') return '#807e76'
+  let hash = 0
+  for (let i = 0; i < site.length; i++) {
+    hash = (hash * 31 + site.charCodeAt(i)) >>> 0
+  }
+  return palette[hash % palette.length]
+}
+
+// Inline SVG icons (16×16, single colour). Hand-tuned for the node
+// card — no emoji, no icon-font dependency.
+function NodeIcon({ kind, color }: { kind: NodeKind; color: string }) {
+  const common: CSSProperties = { display: 'block' }
+  switch (kind) {
+    case 'network':
+      // Stacked rectangle (switch) with three port dots.
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          <rect x={1.5} y={4.5} width={13} height={7} rx={1.5} fill="none" stroke={color} strokeWidth={1.2} />
+          <circle cx={4} cy={8} r={0.9} fill={color} />
+          <circle cx={8} cy={8} r={0.9} fill={color} />
+          <circle cx={12} cy={8} r={0.9} fill={color} />
+          <line x1={3.5} y1={11.5} x2={3.5} y2={13.5} stroke={color} strokeWidth={1} />
+          <line x1={12.5} y1={11.5} x2={12.5} y2={13.5} stroke={color} strokeWidth={1} />
+        </svg>
+      )
+    case 'host':
+    case 'server':
+      // Rack stack
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          <rect x={2} y={2.5} width={12} height={3.5} rx={0.6} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={2} y={6.8} width={12} height={3.5} rx={0.6} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={2} y={11.1} width={12} height={2.5} rx={0.6} fill="none" stroke={color} strokeWidth={1.2} />
+          <circle cx={4} cy={4.3} r={0.7} fill={color} />
+          <circle cx={4} cy={8.6} r={0.7} fill={color} />
+        </svg>
+      )
+    case 'firewall':
+      // Shield
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          <path
+            d="M8 1.5 L13.5 3.5 L13.5 8 C13.5 11 11 13.5 8 14.5 C5 13.5 2.5 11 2.5 8 L2.5 3.5 Z"
+            fill="none"
+            stroke={color}
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+          />
+          <line x1={5.5} y1={7.5} x2={10.5} y2={7.5} stroke={color} strokeWidth={1.2} />
+        </svg>
+      )
+    case 'storage':
+      // Disk platters
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          <ellipse cx={8} cy={4} rx={5.5} ry={1.6} fill="none" stroke={color} strokeWidth={1.2} />
+          <path d="M2.5 4 L2.5 8 C2.5 8.88 4.96 9.6 8 9.6 C11.04 9.6 13.5 8.88 13.5 8 L13.5 4" fill="none" stroke={color} strokeWidth={1.2} />
+          <path d="M2.5 8 L2.5 12 C2.5 12.88 4.96 13.6 8 13.6 C11.04 13.6 13.5 12.88 13.5 12 L13.5 8" fill="none" stroke={color} strokeWidth={1.2} />
+        </svg>
+      )
+    default:
+      // Diamond
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          <path d="M8 2 L14 8 L8 14 L2 8 Z" fill="none" stroke={color} strokeWidth={1.2} strokeLinejoin="round" />
+        </svg>
+      )
+  }
 }
