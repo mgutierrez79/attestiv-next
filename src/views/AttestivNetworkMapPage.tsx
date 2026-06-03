@@ -1148,9 +1148,25 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
   // Bundle parallel edges between the same pair into a single
   // visible line and remember the count so we can stamp a chip
   // at the midpoint.
+  //
+  // Intersite_Link gets special treatment: collapse by SITE pair
+  // instead of device pair, so a sensorium↔dca-par7 link via the
+  // backbone switches AND a parallel link via the firewalls draw as
+  // ONE arc with a "×2" badge — not two arcs that visually clutter
+  // without telling the operator anything actionable. Same applies
+  // to dca-par7↔dcb-mrs2 and every other intersite pair. The
+  // selection panel's "Site-pair redundancy" row already exposes the
+  // underlying device pairs and counts, so no detail is lost.
   const grouped = new Map<string, { edge: MapEdge; count: number; idx: number }>()
   data.edges.forEach((edge, idx) => {
-    const key = [edge.from, edge.to].sort().join('|') + '::' + edge.subtype
+    let key: string
+    if (edge.subtype === 'Intersite_Link') {
+      const fromSite = siteByNodeId.get(edge.from) ?? ''
+      const toSite = siteByNodeId.get(edge.to) ?? ''
+      key = [fromSite, toSite].sort().join('|') + '::Intersite_Link'
+    } else {
+      key = [edge.from, edge.to].sort().join('|') + '::' + edge.subtype
+    }
     const prev = grouped.get(key)
     if (prev) {
       prev.count += 1
@@ -2110,17 +2126,19 @@ function SelectionPanel({
                 }
                 mono
               />
-              <PanelRow
-                label="This cable / bundle"
-                value={`${edgeInfo.count} ${edgeInfo.count === 1 ? 'cable in 1 bundle' : 'parallel cables in 1 bundle'}`}
-              />
+              {edgeInfo.edge.subtype !== 'Intersite_Link' && (
+                <PanelRow
+                  label="This cable / bundle"
+                  value={`${edgeInfo.count} ${edgeInfo.count === 1 ? 'cable in 1 bundle' : 'parallel cables in 1 bundle'}`}
+                />
+              )}
               {edgeInfo.edge.subtype === 'Intersite_Link' && edgeInfo.sitePairBundles > 0 && (
                 <PanelRow
                   label="Site-pair redundancy"
                   value={
                     edgeInfo.sitePairBundles === 1
                       ? `1 intersite bundle between ${edgeInfo.fromSite} and ${edgeInfo.toSite} — no alternate path`
-                      : `${edgeInfo.sitePairBundles} intersite bundles (${edgeInfo.sitePairCables} cables) between ${edgeInfo.fromSite} and ${edgeInfo.toSite}`
+                      : `${edgeInfo.sitePairBundles} intersite bundles between ${edgeInfo.fromSite} and ${edgeInfo.toSite}`
                   }
                 />
               )}
