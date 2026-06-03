@@ -1836,20 +1836,41 @@ function NodeIcon({ kind, color }: { kind: NodeKind; color: string }) {
   const common: CSSProperties = { display: 'block' }
   switch (kind) {
     case 'network':
-      // Stacked rectangle (switch) with three port dots.
+      // Switch — chassis with a row of stacked ports + uplink/downlink
+      // arrows so it reads as a managed switch at a glance, not just
+      // a generic box.
       return (
         <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
-          <rect x={1.5} y={4.5} width={13} height={7} rx={1.5} fill="none" stroke={color} strokeWidth={1.2} />
-          <circle cx={4} cy={8} r={0.9} fill={color} />
-          <circle cx={8} cy={8} r={0.9} fill={color} />
-          <circle cx={12} cy={8} r={0.9} fill={color} />
-          <line x1={3.5} y1={11.5} x2={3.5} y2={13.5} stroke={color} strokeWidth={1} />
-          <line x1={12.5} y1={11.5} x2={12.5} y2={13.5} stroke={color} strokeWidth={1} />
+          <rect x={1.5} y={5.5} width={13} height={5.5} rx={1} fill="none" stroke={color} strokeWidth={1.2} />
+          {/* Port indicators along the bottom of the chassis */}
+          <rect x={3} y={9} width={1.6} height={1.2} fill={color} />
+          <rect x={5.2} y={9} width={1.6} height={1.2} fill={color} />
+          <rect x={7.4} y={9} width={1.6} height={1.2} fill={color} />
+          <rect x={9.6} y={9} width={1.6} height={1.2} fill={color} />
+          <rect x={11.8} y={9} width={1.6} height={1.2} fill={color} />
+          {/* Up / down arrows above the chassis — packets transiting */}
+          <path d="M5 3.5 L5 5.2 M5 3.5 L4 4.4 M5 3.5 L6 4.4" stroke={color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <path d="M11 5.2 L11 3.5 M11 5.2 L10 4.3 M11 5.2 L12 4.3" stroke={color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
       )
     case 'host':
+      // Hypervisor host (ESXi) — server chassis with a 2x2 grid of
+      // tinted "VM" tiles inside. Distinguishes a virtualisation
+      // platform from a plain server (which keeps the rack-stack icon
+      // below).
+      return (
+        <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
+          {/* Server chassis */}
+          <rect x={1} y={2} width={14} height={12} rx={1.2} fill="none" stroke={color} strokeWidth={1.2} />
+          {/* 2×2 VM tiles inside */}
+          <rect x={2.6} y={3.4} width={4.4} height={3.6} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={0.8} />
+          <rect x={9} y={3.4} width={4.4} height={3.6} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={0.8} />
+          <rect x={2.6} y={9} width={4.4} height={3.6} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={0.8} />
+          <rect x={9} y={9} width={4.4} height={3.6} fill={color} fillOpacity={0.18} stroke={color} strokeWidth={0.8} />
+        </svg>
+      )
     case 'server':
-      // Rack stack
+      // Plain server — rack stack (kept distinct from hypervisor host).
       return (
         <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
           <rect x={2} y={2.5} width={12} height={3.5} rx={0.6} fill="none" stroke={color} strokeWidth={1.2} />
@@ -1860,17 +1881,26 @@ function NodeIcon({ kind, color }: { kind: NodeKind; color: string }) {
         </svg>
       )
     case 'firewall':
-      // Shield
+      // Firewall — brick wall. Three rows of bricks with the middle
+      // row offset by half a brick (the standard brickwork
+      // staggered-bond pattern). Universally readable as "wall".
       return (
         <svg width={16} height={16} viewBox="0 0 16 16" style={common}>
-          <path
-            d="M8 1.5 L13.5 3.5 L13.5 8 C13.5 11 11 13.5 8 14.5 C5 13.5 2.5 11 2.5 8 L2.5 3.5 Z"
-            fill="none"
-            stroke={color}
-            strokeWidth={1.2}
-            strokeLinejoin="round"
-          />
-          <line x1={5.5} y1={7.5} x2={10.5} y2={7.5} stroke={color} strokeWidth={1.2} />
+          {/* Outer wall outline */}
+          <rect x={1.5} y={2.5} width={13} height={11} fill="none" stroke={color} strokeWidth={1.2} />
+          {/* Two horizontal mortar lines splitting wall into 3 rows */}
+          <line x1={1.5} y1={6.2} x2={14.5} y2={6.2} stroke={color} strokeWidth={0.9} />
+          <line x1={1.5} y1={9.8} x2={14.5} y2={9.8} stroke={color} strokeWidth={0.9} />
+          {/* Row 1 (top) — 3 bricks with verticals at 1/3 and 2/3 */}
+          <line x1={5.8} y1={2.5} x2={5.8} y2={6.2} stroke={color} strokeWidth={0.9} />
+          <line x1={10.2} y1={2.5} x2={10.2} y2={6.2} stroke={color} strokeWidth={0.9} />
+          {/* Row 2 (middle) — offset by half a brick: verticals at 1/6 and 1/2 and 5/6 */}
+          <line x1={3.7} y1={6.2} x2={3.7} y2={9.8} stroke={color} strokeWidth={0.9} />
+          <line x1={8} y1={6.2} x2={8} y2={9.8} stroke={color} strokeWidth={0.9} />
+          <line x1={12.3} y1={6.2} x2={12.3} y2={9.8} stroke={color} strokeWidth={0.9} />
+          {/* Row 3 (bottom) — same pattern as row 1 */}
+          <line x1={5.8} y1={9.8} x2={5.8} y2={13.5} stroke={color} strokeWidth={0.9} />
+          <line x1={10.2} y1={9.8} x2={10.2} y2={13.5} stroke={color} strokeWidth={0.9} />
         </svg>
       )
     case 'storage':
