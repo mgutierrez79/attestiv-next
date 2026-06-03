@@ -32,7 +32,7 @@ type LinkAsset = {
   metadata?: Record<string, unknown>
 }
 
-const MAIN_TYPES = new Set(['Intersite_Link', 'Port_Channel', 'Switch_Link'])
+const MAIN_TYPES = new Set(['Intersite_Link', 'Port_Channel', 'Switch_Link', 'Firewall_Trunk'])
 
 export function AttestivNetworkMapPage() {
   const { t } = useI18n()
@@ -52,7 +52,7 @@ export function AttestivNetworkMapPage() {
   const [orphanDevices, setOrphanDevices] = useState<MapNode[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'all' | 'Intersite_Link' | 'Port_Channel' | 'Host_Trunk' | 'Switch_Link'>('all')
+  const [filter, setFilter] = useState<'all' | 'Intersite_Link' | 'Port_Channel' | 'Firewall_Trunk' | 'Host_Trunk' | 'Switch_Link'>('all')
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(20)
 
@@ -148,7 +148,7 @@ export function AttestivNetworkMapPage() {
   )
 
   const counts = useMemo(() => {
-    const out: Record<string, number> = { all: links.length, Intersite_Link: 0, Port_Channel: 0, Host_Trunk: 0, Switch_Link: 0 }
+    const out: Record<string, number> = { all: links.length, Intersite_Link: 0, Port_Channel: 0, Firewall_Trunk: 0, Host_Trunk: 0, Switch_Link: 0 }
     for (const l of links) {
       const label = String(l.metadata?.['link_type_label'] ?? '').trim()
       if (label in out) out[label]++
@@ -193,7 +193,7 @@ export function AttestivNetworkMapPage() {
         </Card>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-          {(['all', 'Intersite_Link', 'Port_Channel', 'Host_Trunk', 'Switch_Link'] as const).map((key) => (
+          {(['all', 'Intersite_Link', 'Port_Channel', 'Firewall_Trunk', 'Host_Trunk', 'Switch_Link'] as const).map((key) => (
             <button
               key={key}
               type="button"
