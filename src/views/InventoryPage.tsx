@@ -117,6 +117,10 @@ export function InventoryPage() {
   // chip is present even before the main asset list loads. 30s
   // refresh cadence matches the rest of the page's polling.
   const [cmdbGapCount, setCmdbGapCount] = useState<number | null>(null)
+  // Monitoring gap count for the second summary tile. Same shape as
+  // the CMDB one but cross-referenced against observability
+  // connectors (Dynatrace, Zabbix, …) instead of CMDBs (GLPI etc.).
+  const [monitoringGapCount, setMonitoringGapCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -145,6 +149,10 @@ export function InventoryPage() {
   // "Not in CMDB" hero pill click-through and a visible chip on this
   // page so the operator knows the table is filtered.
   const notInCMDB = String(searchParams?.get('not_in_cmdb') ?? '').toLowerCase() === 'true'
+  // not_in_monitoring mirrors not_in_cmdb but cross-references against
+  // observability connector hosts (Dynatrace, Zabbix). Answers the
+  // "which discovered assets are NOT being observed?" question.
+  const notInMonitoring = String(searchParams?.get('not_in_monitoring') ?? '').toLowerCase() === 'true'
 
   // tab drives the registry view: 'assets' is the existing rich
   // asset table; 'applications' and 'sites' surface the operator-
@@ -175,7 +183,10 @@ export function InventoryPage() {
       const all: InventoryAsset[] = []
       let offset = 0
       let total = Infinity
-      const filterSuffix = notInCMDB ? '&not_in_cmdb=true' : ''
+      const filterParts: string[] = []
+      if (notInCMDB) filterParts.push('not_in_cmdb=true')
+      if (notInMonitoring) filterParts.push('not_in_monitoring=true')
+      const filterSuffix = filterParts.length ? '&' + filterParts.join('&') : ''
       while (offset < total && offset < MAX) {
         const response = await apiFetch(`/inventory/assets?limit=${PAGE}&offset=${offset}${filterSuffix}`)
         if (!response.ok) {
@@ -196,7 +207,7 @@ export function InventoryPage() {
     } finally {
       setLoading(false)
     }
-  }, [notInCMDB])
+  }, [notInCMDB, notInMonitoring])
 
   useEffect(() => {
     void load()
@@ -217,6 +228,33 @@ export function InventoryPage() {
         if (!cancelled) setCmdbGapCount(typeof body?.count === 'number' ? body.count : 0)
       } catch {
         if (!cancelled) setCmdbGapCount(null)
+      }
+    }
+    void pull()
+    const handle = window.setInterval(() => void pull(), 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(handle)
+    }
+  }, [])
+
+  // Mirror poll for the Monitoring gap tile — same cadence + same
+  // failure handling as the CMDB gap. Hitting the same /inventory/
+  // assets endpoint with a different filter param means we don't add
+  // a route or build a parallel computation path.
+  useEffect(() => {
+    let cancelled = false
+    async function pull() {
+      try {
+        const response = await apiFetch('/inventory/assets?not_in_monitoring=true&limit=1')
+        if (!response.ok) {
+          if (!cancelled) setMonitoringGapCount(null)
+          return
+        }
+        const body = await response.json()
+        if (!cancelled) setMonitoringGapCount(typeof body?.count === 'number' ? body.count : 0)
+      } catch {
+        if (!cancelled) setMonitoringGapCount(null)
       }
     }
     void pull()
@@ -621,6 +659,17 @@ export function InventoryPage() {
           </Banner>
         ) : null}
 
+        {notInMonitoring ? (
+          <Banner tone="warning" title={t('Filtered: assets NOT under monitoring', 'Filtered: assets NOT under monitoring')}>
+            {t(
+              'Showing inventory rows discovered by connectors that no observability source (Dynatrace, Zabbix) has observed. These hosts are running without telemetry — auditor question: "what is watching this?"',
+              'Showing inventory rows discovered by connectors that no observability source (Dynatrace, Zabbix) has observed. These hosts are running without telemetry — auditor question: "what is watching this?"',
+            )}
+            {' '}
+            <a href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'underline' }}>{t('Clear filter', 'Clear filter')}</a>
+          </Banner>
+        ) : null}
+
         {tab === 'applications' ? <ApplicationsTab /> : null}
         {tab === 'sites' ? <SitesTab /> : null}
         {tab === 'assets' ? (
@@ -642,6 +691,22 @@ export function InventoryPage() {
                 const params = new URLSearchParams(searchParams?.toString() ?? '')
                 if (notInCMDB) params.delete('not_in_cmdb')
                 else params.set('not_in_cmdb', 'true')
+                params.delete('not_in_monitoring')
+                const qs = params.toString()
+                router.push(qs ? `/inventory?${qs}` : '/inventory')
+              }}
+              t={t}
+            />
+          ) : null}
+          {monitoringGapCount !== null ? (
+            <MonitoringGapTile
+              count={monitoringGapCount}
+              active={notInMonitoring}
+              onClick={() => {
+                const params = new URLSearchParams(searchParams?.toString() ?? '')
+                if (notInMonitoring) params.delete('not_in_monitoring')
+                else params.set('not_in_monitoring', 'true')
+                params.delete('not_in_cmdb')
                 const qs = params.toString()
                 router.push(qs ? `/inventory?${qs}` : '/inventory')
               }}
@@ -1325,6 +1390,59 @@ function CMDBGapTile({
       <div style={{ fontSize: 18, fontWeight: 600, color: valueColor, marginTop: 4 }}>{count}</div>
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
         {count > 0 ? t('registration gap', 'registration gap') : t('all registered', 'all registered')}
+      </div>
+    </button>
+  )
+}
+
+// MonitoringGapTile mirrors CMDBGapTile but cross-references against
+// observability connectors (Dynatrace, Zabbix, ...). Same amber/green
+// tone logic — amber when there's a monitoring gap, green when every
+// monitorable discovered asset is also under observation.
+function MonitoringGapTile({
+  count,
+  active,
+  onClick,
+  t,
+}: {
+  count: number
+  active: boolean
+  onClick: () => void
+  t: (key: string, defaultText?: string, vars?: Record<string, string | number>) => string
+}) {
+  const tone = count > 0 ? 'amber' : 'green'
+  const bgColor = active
+    ? tone === 'amber'
+      ? 'var(--color-status-amber-bg)'
+      : 'var(--color-status-green-bg)'
+    : 'var(--color-background-primary)'
+  const valueColor = tone === 'amber'
+    ? 'var(--color-status-amber-mid)'
+    : 'var(--color-status-green-deep)'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t(
+        'Click to toggle filter: assets discovered by connectors but NOT observed by any monitoring source (Dynatrace, Zabbix). Observability gap.',
+        'Click to toggle filter: assets discovered by connectors but NOT observed by any monitoring source (Dynatrace, Zabbix). Observability gap.',
+      )}
+      style={{
+        textAlign: 'left',
+        padding: '10px 12px',
+        border: `1px solid ${tone === 'amber' ? 'var(--color-status-amber-mid)' : 'var(--color-border-tertiary)'}`,
+        borderRadius: 'var(--border-radius-md)',
+        background: bgColor,
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+    >
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-tertiary)' }}>
+        {t('Not in Monitoring', 'Not in Monitoring')}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 600, color: valueColor, marginTop: 4 }}>{count}</div>
+      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2 }}>
+        {count > 0 ? t('observability gap', 'observability gap') : t('all observed', 'all observed')}
       </div>
     </button>
   )
