@@ -490,9 +490,25 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
 
   // Entry animation: nodes + edges fade/scale in once mounted.
   const [mounted, setMounted] = useState(false)
+  // Search: empty string = no filter highlight. Matching is case-
+  // insensitive substring against node.label and node.id.
+  const [searchQuery, setSearchQuery] = useState('')
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 30)
     return () => clearTimeout(t)
+  }, [])
+
+  // Esc clears selection from anywhere. Doesn't need an input-focus
+  // check because the search box already handles its own Esc-to-clear.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setSelectedNode(null)
+        setSelectedEdge(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const sitesWithNodes = data.siteOrder.map((site) => ({
@@ -1094,8 +1110,110 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
   }
   const hoveredEdgeData = hoveredEdge !== null ? visibleEdges[hoveredEdge] : null
 
+  // Centre the view on a specific node — used by search-enter and the
+  // minimap click. Preserves the current zoom level.
+  function panToNode(nodeId: string) {
+    const pos = effectiveNodePos[nodeId]
+    if (!pos || !view) return
+    const cx = pos.x + pos.w / 2
+    const cy = pos.y + pos.h / 2
+    setView({ x: cx - view.w / 2, y: cy - view.h / 2, w: view.w, h: view.h })
+  }
+
+  // Search match set: nodes whose label OR id includes the search
+  // query (case-insensitive). Empty query → empty set (no highlight).
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return new Set<string>()
+    const out = new Set<string>()
+    for (const n of data.nodes) {
+      if (n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q)) {
+        out.add(n.id)
+      }
+    }
+    return out
+  }, [searchQuery, data.nodes])
+
   return (
     <div ref={wrapperRef} style={{ position: 'relative', marginTop: 8 }}>
+      {/* Top-left floating search box */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          zIndex: 3,
+          background: '#ffffff',
+          border: '0.5px solid rgba(20,30,60,0.18)',
+          borderRadius: 8,
+          boxShadow: '0 2px 8px rgba(3,35,74,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '4px 8px',
+          gap: 6,
+        }}
+      >
+        <span style={{ color: '#807e76', fontSize: 12 }}>🔎</span>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const first = Array.from(searchMatches)[0]
+              if (first) {
+                panToNode(first)
+                setSelectedNode(first)
+                setSelectedEdge(null)
+              }
+            }
+            if (e.key === 'Escape') {
+              setSearchQuery('')
+            }
+          }}
+          placeholder="Find device…"
+          style={{
+            border: 0,
+            outline: 'none',
+            background: 'transparent',
+            fontSize: 12,
+            color: '#14130f',
+            width: 180,
+            fontFamily: 'var(--font-sans)',
+          }}
+        />
+        {searchQuery ? (
+          <span
+            style={{
+              fontSize: 10,
+              color: '#807e76',
+              fontFamily: 'var(--font-mono)',
+              marginRight: 4,
+            }}
+          >
+            {searchMatches.size}
+          </span>
+        ) : null}
+        {searchQuery ? (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            style={{
+              border: 0,
+              background: 'transparent',
+              cursor: 'pointer',
+              color: '#807e76',
+              fontSize: 12,
+              padding: 0,
+              lineHeight: 1,
+            }}
+            title="Clear (Esc)"
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
+
       {/* Top-right floating zoom controls */}
       <div
         style={{
@@ -1145,8 +1263,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           height: VIEWPORT_H,
           fontSize: 11,
           fontFamily: 'var(--font-sans)',
-          background:
-            'radial-gradient(ellipse at 30% 0%, rgba(28,104,199,0.06), transparent 60%), radial-gradient(ellipse at 80% 100%, rgba(83,74,183,0.05), transparent 55%), #ffffff',
+          background: '#fbfaf6',
           border: '0.5px solid rgba(20,30,60,0.08)',
           borderRadius: 12,
           cursor: dragging ? 'grabbing' : 'grab',
@@ -1155,9 +1272,17 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         }}
       >
         <defs>
-          {/* Card drop shadow */}
+          {/* Engineering-blueprint dot grid behind everything */}
+          <pattern id="nm-dot-grid" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.7" fill="rgba(20,30,60,0.10)" />
+          </pattern>
+          {/* Soft card drop shadow */}
           <filter id="nm-card-shadow" x="-10%" y="-10%" width="120%" height="140%">
             <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#03234A" floodOpacity="0.10" />
+          </filter>
+          {/* Stronger glow used on hover-pulse and selection halo */}
+          <filter id="nm-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.2" />
           </filter>
           {/* Site backdrop: subtle warm vertical gradient */}
           <linearGradient id="nm-site-bg" x1="0" y1="0" x2="0" y2="1">
@@ -1180,6 +1305,17 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
             <stop offset="100%" stopColor="#1C68C7" />
           </linearGradient>
         </defs>
+
+        {/* Dot-grid backdrop — covers a generous border around the
+            content bounds so the pattern is visible even when the
+            user pans past the edges of the laid-out sites. */}
+        <rect
+          x={-2000}
+          y={-2000}
+          width={svgWidth + 4000}
+          height={svgHeight + 4000}
+          fill="url(#nm-dot-grid)"
+        />
 
         {/* Site containers */}
         {effectiveSites.map((s) => {
@@ -1407,6 +1543,23 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
                   <animate attributeName="stroke-opacity" values="0.15;0.55;0.15" dur="2s" repeatCount="indefinite" />
                 </rect>
               )}
+              {/* Search-match glow — yellow ring around every node
+                  whose name matches the active search query. Doesn't
+                  conflict with the selection halo (which uses the
+                  accent colour). */}
+              {searchMatches.has(node.id) && (
+                <rect
+                  x={pos.x - 6}
+                  y={pos.y - 6}
+                  width={pos.w + 12}
+                  height={pos.h + 12}
+                  fill="none"
+                  stroke="#ED9314"
+                  strokeOpacity={0.5}
+                  strokeWidth={2.5}
+                  rx={12}
+                />
+              )}
               <rect
                 x={pos.x}
                 y={pos.y}
@@ -1449,6 +1602,23 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           )
         })}
       </svg>
+
+      {/* Minimap — bottom-right corner overview of the full layout
+          with the current viewport drawn as a translucent rectangle.
+          Click anywhere on the minimap to pan the main view to that
+          spot. Updates live as the user pans / zooms / drags. */}
+      <Minimap
+        nodes={data.nodes}
+        nodePos={effectiveNodePos}
+        sites={effectiveSites}
+        view={view}
+        svgWidth={svgWidth}
+        svgHeight={svgHeight}
+        svgInitialY={svgInitialY}
+        onPan={(svgX, svgY) => {
+          setView((prev) => (prev ? { ...prev, x: svgX - prev.w / 2, y: svgY - prev.h / 2 } : prev))
+        }}
+      />
 
       {/* Edge tooltip */}
       {hoveredEdgeData && (
@@ -1495,7 +1665,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
         <LegendItem gradientId="nm-edge-portchannel" label="Port channel" />
         <LegendItem gradientId="nm-edge-switchlink" label="Switch link" dashed />
         <span style={{ marginLeft: 'auto', color: '#807e76' }}>
-          Scroll to zoom · drag any empty area inside a site to move it · drag a node inside its site · drag the canvas to pan · ↺ resets
+          🔎 type to find a device · drag site to move · drag node inside its site · scroll to zoom · click minimap to jump · Esc clears selection
         </span>
       </div>
     </div>
@@ -1532,6 +1702,140 @@ function ZoomButton({ onClick, title, children }: { onClick: () => void; title: 
     >
       {children}
     </button>
+  )
+}
+
+function Minimap({
+  nodes,
+  nodePos,
+  sites,
+  view,
+  svgWidth,
+  svgHeight,
+  svgInitialY,
+  onPan,
+}: {
+  nodes: MapNode[]
+  nodePos: Record<string, { x: number; y: number; w: number; h: number }>
+  sites: Array<{ site: string; x: number; y: number; w: number; h: number; accent: string }>
+  view: { x: number; y: number; w: number; h: number } | null
+  svgWidth: number
+  svgHeight: number
+  svgInitialY: number
+  onPan: (svgX: number, svgY: number) => void
+}) {
+  // Fixed minimap viewport. Aspect ratio of the source content is
+  // preserved by computing the scale that fits the content into the
+  // minimap rectangle.
+  const MM_W = 200
+  const MM_H = 140
+  const PAD = 6
+  const usableW = MM_W - PAD * 2
+  const usableH = MM_H - PAD * 2
+
+  // Source content bounds.
+  const contentW = svgWidth
+  const contentH = svgHeight
+  const contentTop = svgInitialY
+  const scale = Math.min(usableW / contentW, usableH / contentH)
+  const innerW = contentW * scale
+  const innerH = contentH * scale
+  const offsetX = PAD + (usableW - innerW) / 2
+  const offsetY = PAD + (usableH - innerH) / 2
+
+  // SVG → minimap coordinate transform.
+  const toMm = (x: number, y: number) => ({
+    x: offsetX + (x - 0) * scale,
+    y: offsetY + (y - contentTop) * scale,
+  })
+
+  // Minimap → SVG coordinate transform (click-to-pan).
+  function onMinimapClick(e: React.MouseEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const mmX = e.clientX - rect.left
+    const mmY = e.clientY - rect.top
+    const svgX = (mmX - offsetX) / scale
+    const svgY = (mmY - offsetY) / scale + contentTop
+    onPan(svgX, svgY)
+  }
+
+  if (!view) return null
+
+  const viewportTL = toMm(view.x, view.y)
+  const viewportBR = toMm(view.x + view.w, view.y + view.h)
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 44, // clear the legend below the SVG
+        right: 8,
+        zIndex: 3,
+        background: '#ffffff',
+        border: '0.5px solid rgba(20,30,60,0.18)',
+        borderRadius: 8,
+        boxShadow: '0 2px 8px rgba(3,35,74,0.08)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          color: '#807e76',
+          padding: '4px 8px',
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          borderBottom: '0.5px solid rgba(20,30,60,0.08)',
+          fontWeight: 500,
+        }}
+      >
+        Overview
+      </div>
+      <svg
+        width={MM_W}
+        height={MM_H}
+        viewBox={`0 0 ${MM_W} ${MM_H}`}
+        style={{ display: 'block', cursor: 'crosshair', background: '#fbfaf6' }}
+        onClick={onMinimapClick}
+      >
+        {/* Site rectangles */}
+        {sites.map((s) => {
+          const tl = toMm(s.x, s.y)
+          return (
+            <rect
+              key={s.site}
+              x={tl.x}
+              y={tl.y}
+              width={s.w * scale}
+              height={s.h * scale}
+              fill="rgba(20,30,60,0.05)"
+              stroke="rgba(20,30,60,0.18)"
+              strokeWidth={0.5}
+              rx={2}
+            />
+          )
+        })}
+        {/* Node dots */}
+        {nodes.map((n) => {
+          const pos = nodePos[n.id]
+          if (!pos) return null
+          const c = toMm(pos.x + pos.w / 2, pos.y + pos.h / 2)
+          return <circle key={n.id} cx={c.x} cy={c.y} r={1.4} fill="#03234A" opacity={0.7} />
+        })}
+        {/* Viewport rectangle (current main-view extent) */}
+        <rect
+          x={Math.max(0, viewportTL.x)}
+          y={Math.max(0, viewportTL.y)}
+          width={Math.max(0, viewportBR.x - viewportTL.x)}
+          height={Math.max(0, viewportBR.y - viewportTL.y)}
+          fill="rgba(28,104,199,0.10)"
+          stroke="#1C68C7"
+          strokeWidth={1.2}
+          rx={2}
+          pointerEvents="none"
+        />
+      </svg>
+    </div>
   )
 }
 
