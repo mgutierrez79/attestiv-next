@@ -103,8 +103,8 @@ export function AttestivWeeklyDigestPage() {
   const totals = useMemo(() => {
     if (!data) return null
     return {
-      newFailures: data.new_failures.length,
-      recovered: data.recovered_controls.length,
+      newFailures: (data.new_failures ?? []).length,
+      recovered: (data.recovered_controls ?? []).length,
     }
   }, [data])
 
@@ -218,17 +218,17 @@ export function AttestivWeeklyDigestPage() {
               )}
             </Card>
 
-            {data.new_failures.length > 0 ? (
+            {(data.new_failures ?? []).length > 0 ? (
               <Card style={{ marginTop: 12 }}>
-                <CardTitle>{t('New control failures', 'New control failures')} <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({data.new_failures.length})</span></CardTitle>
-                <FlipsList flips={data.new_failures} t={t} />
+                <CardTitle>{t('New control failures', 'New control failures')} <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({(data.new_failures ?? []).length})</span></CardTitle>
+                <FlipsList flips={data.new_failures ?? []} t={t} />
               </Card>
             ) : null}
 
-            {data.recovered_controls.length > 0 ? (
+            {(data.recovered_controls ?? []).length > 0 ? (
               <Card style={{ marginTop: 12 }}>
-                <CardTitle>{t('Controls recovered', 'Controls recovered')} <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({data.recovered_controls.length})</span></CardTitle>
-                <FlipsList flips={data.recovered_controls} t={t} />
+                <CardTitle>{t('Controls recovered', 'Controls recovered')} <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({(data.recovered_controls ?? []).length})</span></CardTitle>
+                <FlipsList flips={data.recovered_controls ?? []} t={t} />
               </Card>
             ) : null}
           </>
