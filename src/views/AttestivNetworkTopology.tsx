@@ -381,12 +381,21 @@ function EdgeToggle({
   )
 }
 
-// layoutNodes places nodes in site-grouped columns with type-grouped
-// rows inside each column. Site "" (no site) becomes the last column.
+// layoutNodes places each site's nodes in a GRID inside a bounded
+// "site container" box. Containers flow left-to-right and wrap to a
+// new row when they would overflow the canvas width — so every
+// component is visually grouped under its Site, nodes never collapse
+// onto a single overlapping column, and edges get room to route. Site
+// "" (no site) sorts last.
 function layoutNodes(nodes: TopologyNode[]) {
-  const COL_W = 240
-  const ROW_H = 60
-  const PAD = 30
+  const CELL_W = 116
+  const CELL_H = 84
+  const SITE_PAD = 18
+  const HEADER_H = 30
+  const SITE_GAP = 28
+  const CANVAS_MAX_W = 1480
+  const typeOrder = ['firewall', 'firewall_manager', 'network_device', 'host', 'cluster', 'server', 'vm', 'storage_array', 'storage_volume', 'backup_appliance', 'computer', 'unknown']
+
   const sitesMap = new Map<string, TopologyNode[]>()
   for (const node of nodes) {
     const key = node.site_id || ''
@@ -398,26 +407,61 @@ function layoutNodes(nodes: TopologyNode[]) {
     if (b[0] === '') return -1
     return a[0].localeCompare(b[0])
   })
-  const typeOrder = ['firewall', 'firewall_manager', 'network_device', 'host', 'cluster', 'server', 'vm', 'storage_array', 'storage_volume', 'backup_appliance', 'computer', 'unknown']
-  const positions = new Map<string, { x: number; y: number; site: string; siteName: string }>()
-  let xOffset = PAD
-  let maxY = PAD
+
+  const positions = new Map<string, { x: number; y: number }>()
+  const nodeById = new Map<string, TopologyNode>()
+  const containers: Array<{ siteID: string; siteName: string; x: number; y: number; w: number; h: number }> = []
+
+  let cursorX = SITE_PAD
+  let cursorY = SITE_PAD
+  let rowMaxH = 0
+  let canvasW = 0
+
   for (const [siteID, members] of sites) {
     members.sort((a, b) => {
       const ai = typeOrder.indexOf(a.asset_type || 'unknown')
       const bi = typeOrder.indexOf(b.asset_type || 'unknown')
       return (ai === -1 ? typeOrder.length : ai) - (bi === -1 ? typeOrder.length : bi)
     })
-    let y = PAD + 30
-    const siteName = members[0]?.site_name || siteID || ''
-    for (const node of members) {
-      positions.set(node.id, { x: xOffset + COL_W / 2, y, site: siteID, siteName })
-      y += ROW_H
+    const n = members.length
+    // Roughly-square grid, capped so a huge site doesn't sprawl wider
+    // than the canvas before wrapping.
+    const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(n * 1.3))))
+    const rows = Math.ceil(n / cols)
+    const boxW = cols * CELL_W + SITE_PAD * 2
+    const boxH = HEADER_H + rows * CELL_H + SITE_PAD
+
+    // Wrap to the next container row when this box would overflow.
+    if (cursorX > SITE_PAD && cursorX + boxW > CANVAS_MAX_W) {
+      cursorX = SITE_PAD
+      cursorY += rowMaxH + SITE_GAP
+      rowMaxH = 0
     }
-    if (y > maxY) maxY = y
-    xOffset += COL_W
+
+    const siteName = members[0]?.site_name || siteID || '(no site)'
+    containers.push({ siteID, siteName, x: cursorX, y: cursorY, w: boxW, h: boxH })
+
+    members.forEach((node, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      const x = cursorX + SITE_PAD + col * CELL_W + CELL_W / 2
+      const y = cursorY + HEADER_H + SITE_PAD + row * CELL_H + 22
+      positions.set(node.id, { x, y })
+      nodeById.set(node.id, node)
+    })
+
+    cursorX += boxW + SITE_GAP
+    rowMaxH = Math.max(rowMaxH, boxH)
+    canvasW = Math.max(canvasW, cursorX)
   }
-  return { positions, width: Math.max(xOffset + PAD, 600), height: Math.max(maxY + PAD, 400), sites }
+
+  return {
+    positions,
+    nodeById,
+    containers,
+    width: Math.max(canvasW + SITE_PAD, 600),
+    height: Math.max(cursorY + rowMaxH + SITE_PAD, 400),
+  }
 }
 
 function TopologySVG({
@@ -435,39 +479,66 @@ function TopologySVG({
   onSelect: (id: string) => void
   degreeByNode: Map<string, number>
 }) {
-  const { positions, width, height, sites } = layout
+  const { positions, nodeById, containers, width, height } = layout
+
+  // Index each edge within its endpoint-pair group so parallel edges
+  // (two switches with a port-channel + a backup link, say) fan out
+  // along the perpendicular instead of stacking on one straight line.
+  const pairPos = useMemo(() => {
+    const groups = new Map<string, string[]>()
+    for (const e of edges) {
+      const key = [e.source, e.target].sort().join('|')
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(e.id)
+    }
+    const out = new Map<string, { i: number; n: number }>()
+    for (const ids of groups.values()) ids.forEach((id, i) => out.set(id, { i, n: ids.length }))
+    return out
+  }, [edges])
+
   return (
     <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600 }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Site columns as background bands so the operator sees the
-            site grouping at a glance. */}
-        {sites.map(([siteID, members], i) => {
-          const x = 30 + i * 240
-          return (
-            <g key={siteID || `nosite-${i}`}>
-              <rect
-                x={x}
-                y={20}
-                width={220}
-                height={height - 40}
-                fill={i % 2 === 0 ? 'var(--color-background-secondary)' : 'transparent'}
-                opacity={0.4}
-                rx={6}
-              />
-              <text x={x + 110} y={36} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--color-text-secondary)">
-                {members[0]?.site_name || siteID || '(no site)'}
-              </text>
-            </g>
-          )
-        })}
-        {/* Edges first so nodes sit on top. Per-kind stroke +
-            dash pattern so the operator can tell a backbone link
-            from a hypervisor mapping at a glance. */}
+        {/* Site containers: one bounded, labelled box per site, sized
+            to its node grid, so every component reads as belonging to
+            its Site. */}
+        {containers.map((c) => (
+          <g key={c.siteID || `nosite-${c.x}-${c.y}`}>
+            <rect
+              x={c.x}
+              y={c.y}
+              width={c.w}
+              height={c.h}
+              rx={10}
+              fill="var(--color-background-secondary)"
+              opacity={0.45}
+              stroke="var(--color-border-secondary)"
+              strokeWidth={1}
+            />
+            <text
+              x={c.x + 12}
+              y={c.y + 18}
+              fontSize={11}
+              fontWeight={700}
+              fill="var(--color-text-secondary)"
+            >
+              {c.siteName}
+            </text>
+          </g>
+        ))}
+        {/* Edges, drawn before nodes so the nodes sit on top. Each edge
+            is a quadratic curve bowed along the perpendicular — single
+            edges arc clear of any node on the straight path, parallel
+            edges fan out so they never coincide. Per-kind stroke + dash
+            keep a backbone link distinguishable from a hypervisor map. */}
         {edges.map((edge) => {
           const a = positions.get(edge.source)
           const b = positions.get(edge.target)
           if (!a || !b) return null
-          let stroke = 'var(--color-status-blue-mid)'
+          // device_link / backbone default. (--color-status-blue-mid is
+          // not defined in the current theme — renders invisible — so the
+          // backbone uses the defined blue-deep token.)
+          let stroke = 'var(--color-status-blue-deep)'
           let strokeWidth = 2
           let dash = '0'
           switch (edge.kind) {
@@ -500,52 +571,77 @@ function TopologySVG({
               strokeWidth = 1.5
               break
           }
-          // Show port + VLAN as a tiny label at the midpoint when
-          // the edge has it. Auditor question this answers:
-          // "which VLAN is this VM trunked on?"
+          const { i, n } = pairPos.get(edge.id) ?? { i: 0, n: 1 }
+          const dx = b.x - a.x
+          const dy = b.y - a.y
+          const dist = Math.hypot(dx, dy) || 1
+          // Perpendicular unit vector — the direction we bow/fan along.
+          const px = -dy / dist
+          const py = dx / dist
+          // Always bow a little so a straight a→b line that would clip
+          // an intervening node arcs clear; bow grows with length, capped.
+          const bow = Math.min(Math.max(dist * 0.13, 14), 44)
+          // Parallel edges fan symmetrically around that bowed center.
+          const fan = (i - (n - 1) / 2) * 16
+          const cx = (a.x + b.x) / 2 + px * (bow + fan)
+          const cy = (a.y + b.y) / 2 + py * (bow + fan)
+          const d = `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`
+          // Point on the quadratic at t=0.5 for the optional label.
+          const lx = 0.25 * a.x + 0.5 * cx + 0.25 * b.x
+          const ly = 0.25 * a.y + 0.5 * cy + 0.25 * b.y
           const label =
             edge.kind === 'network_port' && (edge.source_interface || edge.vlan)
               ? `${edge.source_interface || ''}${edge.vlan ? ' v' + edge.vlan : ''}`
               : ''
           return (
             <g key={edge.id}>
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
+              <path
+                d={d}
+                fill="none"
                 stroke={stroke}
                 strokeWidth={strokeWidth}
-                strokeDasharray={dash}
+                strokeDasharray={dash === '0' ? undefined : dash}
                 opacity={0.7}
               />
               {label ? (
-                <text
-                  x={(a.x + b.x) / 2}
-                  y={(a.y + b.y) / 2 - 3}
-                  textAnchor="middle"
-                  fontSize={8}
-                  fill="var(--color-status-blue-deep)"
-                  fontFamily="var(--font-mono)"
-                >
-                  {label}
-                </text>
+                <>
+                  <rect
+                    x={lx - label.length * 2.6 - 2}
+                    y={ly - 9}
+                    width={label.length * 5.2 + 4}
+                    height={11}
+                    rx={2}
+                    fill="var(--color-background-primary)"
+                    opacity={0.85}
+                  />
+                  <text
+                    x={lx}
+                    y={ly - 1}
+                    textAnchor="middle"
+                    fontSize={8}
+                    fill="var(--color-status-blue-deep)"
+                    fontFamily="var(--font-mono)"
+                  >
+                    {label}
+                  </text>
+                </>
               ) : null}
             </g>
           )
         })}
-        {/* Nodes. */}
+        {/* Nodes on top, with the label centred BELOW the circle (on a
+            translucent halo) so it never bleeds into the neighbouring
+            grid cell or gets lost under a crossing edge. */}
         {Array.from(positions.entries()).map(([id, pos]) => {
-          const node = layout.sites.flatMap(([, members]) => members).find((n) => n.id === id)
+          const node = nodeById.get(id)
           if (!node) return null
           const fill = nodeFillFor(node, overlay)
           const stroke = selectedId === id ? 'var(--color-status-blue-deep)' : 'var(--color-border-secondary)'
-          // Node radius grows with connection degree so hubs (host
-          // with 50 VMs, storage array with 200 volumes) read as
-          // big circles. Sub-linear scaling so the chart stays
-          // readable even with extreme outliers.
+          // Node radius grows with connection degree so hubs (host with
+          // 50 VMs, storage array with 200 volumes) read as big circles.
           const degree = degreeByNode.get(id) ?? 0
-          const radius = Math.min(12 + Math.floor(Math.sqrt(degree) * 2), 28)
+          const radius = Math.min(12 + Math.floor(Math.sqrt(degree) * 2), 26)
+          const short = node.label.length > 16 ? node.label.slice(0, 14) + '…' : node.label
           return (
             <g
               key={id}
@@ -559,8 +655,17 @@ function TopologySVG({
                   {degree}
                 </text>
               ) : null}
-              <text x={radius + 6} y={4} fontSize={10} fill="var(--color-text-primary)">
-                {node.label.length > 22 ? node.label.slice(0, 20) + '…' : node.label}
+              <rect
+                x={-(short.length * 3.05) - 3}
+                y={radius + 2}
+                width={short.length * 6.1 + 6}
+                height={13}
+                rx={3}
+                fill="var(--color-background-primary)"
+                opacity={0.82}
+              />
+              <text x={0} y={radius + 12} textAnchor="middle" fontSize={9.5} fill="var(--color-text-primary)">
+                {short}
               </text>
             </g>
           )
