@@ -68,6 +68,12 @@ type FrameworkPosture = {
   warn_controls?: number
   fail_controls?: number
   coverage?: Coverage
+  // Attestation split: `overall` is the connector-MEASURED score; these
+  // carry the management-asserted augmentation when attestable-only
+  // controls lifted it. See scoring.ts FrameworkSummary for the contract.
+  score_with_attestation?: number
+  attested_synthetic_count?: number
+  weighted_attested_pct?: number
 }
 
 type ScoringFrameworkResult = {
@@ -82,6 +88,10 @@ type ScoringFrameworkResult = {
   fail_controls?: number
   evaluated_at?: string
   coverage?: Coverage
+  score_with_attestation?: number
+  status_with_attestation?: string
+  attested_synthetic_count?: number
+  weighted_attested_pct?: number
 }
 
 const DEMO_POSTURE: FrameworkPosture[] = [
@@ -702,6 +712,7 @@ function FrameworkCard({
         )}
       </div>
       {framework.coverage ? <CoverageBlock coverage={framework.coverage} liveCovered={liveCovered} /> : null}
+      <AttestationSplit framework={framework} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
           {framework.last_updated
@@ -874,6 +885,68 @@ function CoverageBlock({ coverage, liveCovered }: { coverage: Coverage; liveCove
   )
 }
 
+// AttestationSplit makes the two scores impossible to conflate: the
+// MEASURED score (connector-evidenced controls only — what the platform
+// can prove) and the AUGMENTED score (measured + attestable-only controls
+// the operator signed off on, with no connector evidence behind them).
+//
+// Why this matters to a CISO/auditor: blending the two into one headline
+// number lets a management assertion ("we have a policy for that") read
+// as a tested control. An auditor will challenge that immediately. We
+// show both, label the augmented one as asserted-not-measured, and state
+// how many controls and how much weight came from attestation — so the
+// number on the dashboard is the same number that survives the audit.
+function AttestationSplit({ framework }: { framework: FrameworkPosture }) {
+  const { t } = useI18n()
+  const augmented = framework.score_with_attestation
+  const synthCount = framework.attested_synthetic_count ?? 0
+  // Backend only stamps these when synthetics actually lifted the score.
+  // Absent ⇒ measured == augmented ⇒ nothing to disambiguate.
+  if (typeof augmented !== 'number' || synthCount <= 0) return null
+  const measuredPct = framework.overall
+  const augmentedPct = Math.round(augmented <= 1 ? augmented * 100 : augmented)
+  const weightedPct = framework.weighted_attested_pct
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        fontSize: 11.5,
+        border: '1px solid var(--color-border-tertiary)',
+        borderRadius: 'var(--border-radius-sm)',
+        padding: '8px 10px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--color-text-tertiary)' }}>
+            {t('Measured', 'Measured')}
+          </span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)' }}>{measuredPct}%</span>
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('connector-evidenced', 'connector-evidenced')}</span>
+        </span>
+        <span style={{ color: 'var(--color-text-tertiary)', alignSelf: 'center' }}>→</span>
+        <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--color-status-amber-deep, var(--color-text-tertiary))' }}>
+            {t('With attestations', 'With attestations')}
+          </span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--color-text-primary)' }}>{augmentedPct}%</span>
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('incl. management assertions', 'incl. management assertions')}</span>
+        </span>
+      </div>
+      <div style={{ marginTop: 6, color: 'var(--color-text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <i className="ti ti-alert-triangle" aria-hidden="true" style={{ color: 'var(--color-status-amber-mid)' }} />
+        <span>
+          {synthCount} {synthCount === 1 ? t('control', 'control') : t('controls', 'controls')}{' '}
+          {t('counted by signed attestation, not connector evidence', 'counted by signed attestation, not connector evidence')}
+          {typeof weightedPct === 'number' && weightedPct > 0
+            ? ` · ${Math.round(weightedPct * 100)}% ${t('of weight', 'of weight')}`
+            : ''}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function formatEvaluatedAt(iso: string): string {
   const ts = new Date(iso).getTime()
   if (Number.isNaN(ts)) return iso
@@ -909,6 +982,9 @@ function scoringResultToPosture(result: ScoringFrameworkResult): FrameworkPostur
     warn_controls: result.warn_controls,
     fail_controls: result.fail_controls,
     coverage: result.coverage,
+    score_with_attestation: result.score_with_attestation,
+    attested_synthetic_count: result.attested_synthetic_count,
+    weighted_attested_pct: result.weighted_attested_pct,
   }
 }
 

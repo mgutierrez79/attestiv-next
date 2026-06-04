@@ -63,6 +63,17 @@ export type FrameworkSummary = {
   fail_controls?: number
   evaluated_at?: string
   control_results?: ControlResult[]
+  // Attestation split (Workstream B2). `score` is the connector-MEASURED
+  // weighted score. score_with_attestation recomputes it treating
+  // attestable-only register entries (signed policy doc / owner
+  // attestation, no connector evidence) as PASS. Only present when those
+  // synthetics actually lifted the score, so a missing field means
+  // "measured == augmented". The UI MUST show the two numbers distinctly
+  // and label the augmented one as management-asserted, not measured.
+  score_with_attestation?: number
+  status_with_attestation?: ControlStatus
+  attested_synthetic_count?: number
+  weighted_attested_pct?: number
 }
 
 export type MonthlyScore = {

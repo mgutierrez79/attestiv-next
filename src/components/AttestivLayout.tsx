@@ -192,6 +192,7 @@ const sections: Record<SectionKey, Section> = {
       { to: '/frameworks/crosswalk',  label: 'Crosswalk',         icon: 'ti-arrows-cross' },
       { to: '/scoring/crosswalk',     label: 'Coverage by evidence', icon: 'ti-table-options' },
       { to: '/scoring/scope',         label: 'Per-scope score',   icon: 'ti-zoom-scan' },
+      { to: '/scoring/citations',     label: 'Citation review',   icon: 'ti-gavel' },
     ],
   },
   apps: {
