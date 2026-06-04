@@ -156,6 +156,12 @@ export function AttestivFrameworksPage() {
   const [reevalPhase, setReevalPhase] = useState<'idle' | 'refreshing' | 'scoring'>('idle')
   const [reevalDone, setReevalDone] = useState<{ at: string; frameworks: number } | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  // Honest-denominator overlay: the scored-controls count (140) is the
+  // MEASURED subset, not the regulation universe. Pull the coverage
+  // register rollup so the hero can show "N scored of 682 auditable" +
+  // real regulation coverage, instead of implying 140 is everything.
+  const [coverageAgg, setCoverageAgg] = useState<{ regTotal: number; covered: number } | null>(null)
+  const [coverageByFw, setCoverageByFw] = useState<Record<string, { total: number; covered: number }>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -218,6 +224,40 @@ export function AttestivFrameworksPage() {
   // used by Dashboard and the tests means hero values can't drift from
   // the underlying scoring output.
   const hero = useMemo(() => deriveFrameworksHero(frameworks), [frameworks])
+
+  // Aggregate the coverage register so the hero's denominator is the
+  // honest 682 auditable units, with covered = evidenced + attested.
+  useEffect(() => {
+    let cancelled = false
+    async function loadCoverage() {
+      try {
+        const r = await apiFetch('/scoring/coverage-register')
+        if (!r.ok) return
+        const body = await r.json()
+        const fws: Array<{ framework_id?: string; rollup?: { total?: number; evidenced?: number; attested?: number } }> = body?.frameworks ?? []
+        let regTotal = 0
+        let covered = 0
+        const map: Record<string, { total: number; covered: number }> = {}
+        for (const f of fws) {
+          const tot = f.rollup?.total ?? 0
+          const cov = (f.rollup?.evidenced ?? 0) + (f.rollup?.attested ?? 0)
+          regTotal += tot
+          covered += cov
+          if (f.framework_id) map[f.framework_id] = { total: tot, covered: cov }
+        }
+        if (!cancelled && regTotal > 0) {
+          setCoverageAgg({ regTotal, covered })
+          setCoverageByFw(map)
+        }
+      } catch {
+        // leave null — the tile renders "—" rather than a wrong number
+      }
+    }
+    void loadCoverage()
+    return () => {
+      cancelled = true
+    }
+  }, [reloadKey])
 
   // Async generate-and-download:
   //   1. POST /v1/generate-report/async — enqueues a worker job and
@@ -464,7 +504,7 @@ export function AttestivFrameworksPage() {
             percent={hero.avg}
             caption={
               hero.evaluatedCount > 0
-                ? `${t('average across', 'average across')} ${hero.evaluatedCount} ${t('evaluated frameworks', 'evaluated frameworks')}`
+                ? `${t('score of scored controls across', 'score of scored controls across')} ${hero.evaluatedCount} ${t('evaluated frameworks — see Regulation coverage for the full denominator', 'evaluated frameworks — see Regulation coverage for the full denominator')}`
                 : t('No scoring run yet', 'No scoring run yet')
             }
             pills={
@@ -481,13 +521,19 @@ export function AttestivFrameworksPage() {
                   valueColor="var(--color-status-green-deep)"
                 />
                 <StatPill
-                  label={t('Controls passing', 'Controls passing')}
+                  label={t('Scored controls passing', 'Scored controls passing')}
                   value={hero.total > 0 ? `${hero.passingPct}%` : '—'}
                   sub={hero.total > 0 ? `${hero.passing} / ${hero.total}` : undefined}
                 />
                 <StatPill
-                  label={t('Total controls', 'Total controls')}
+                  label={t('Scored controls', 'Scored controls')}
                   value={hero.total > 0 ? String(hero.total) : '—'}
+                  sub={coverageAgg ? `${t('of', 'of')} ${coverageAgg.regTotal} ${t('auditable', 'auditable')}` : undefined}
+                />
+                <StatPill
+                  label={t('Regulation coverage', 'Regulation coverage')}
+                  value={coverageAgg && coverageAgg.regTotal > 0 ? `${Math.round((coverageAgg.covered / coverageAgg.regTotal) * 100)}%` : '—'}
+                  sub={coverageAgg ? `${coverageAgg.covered} / ${coverageAgg.regTotal} ${t('covered', 'covered')}` : undefined}
                 />
               </>
             }
@@ -526,6 +572,7 @@ export function AttestivFrameworksPage() {
               <FrameworkCard
                 key={framework.id}
                 framework={framework}
+                liveCovered={coverageByFw[framework.id]?.covered}
                 generating={generating === framework.id}
                 elapsed={generating === framework.id ? elapsed : 0}
                 onGenerate={() => generateReport(framework)}
@@ -541,12 +588,14 @@ export function AttestivFrameworksPage() {
 
 function FrameworkCard({
   framework,
+  liveCovered,
   generating,
   elapsed,
   onGenerate,
   onCancel,
 }: {
   framework: FrameworkPosture
+  liveCovered?: number
   generating: boolean
   elapsed: number
   onGenerate: () => void
@@ -595,7 +644,7 @@ function FrameworkCard({
           <ControlBreakdown framework={framework} />
         )}
       </div>
-      {framework.coverage ? <CoverageBlock coverage={framework.coverage} /> : null}
+      {framework.coverage ? <CoverageBlock coverage={framework.coverage} liveCovered={liveCovered} /> : null}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
           {framework.last_updated
@@ -688,7 +737,7 @@ function ControlBreakdown({ framework }: { framework: FrameworkPosture }) {
             </span>
           ))}
         <span style={{ marginLeft: 'auto', color: 'var(--color-text-tertiary)' }}>
-          {total} {t('total controls', 'total controls')}
+          {total} {t('scored controls', 'scored controls')}
         </span>
       </div>
     </div>
@@ -700,10 +749,14 @@ function ControlBreakdown({ framework }: { framework: FrameworkPosture }) {
 // auditor sees what is automated vs. what still needs manual
 // attestation. Coverage is a best-effort assessment until juriste-
 // reviewed (status=verified).
-function CoverageBlock({ coverage }: { coverage: Coverage }) {
+function CoverageBlock({ coverage, liveCovered }: { coverage: Coverage; liveCovered?: number }) {
   const { t } = useI18n()
   const total = coverage.regulation_total || 0
-  const covered = coverage.covered || 0
+  // Prefer the live register rollup (evidenced + attested) over the
+  // static `covered` field, which is hand-set in YAML and drifts as
+  // controls are promoted/wired. Falls back to the static value when the
+  // register rollup hasn't loaded.
+  const covered = typeof liveCovered === 'number' ? liveCovered : coverage.covered || 0
   const verified = (coverage.status || '').toLowerCase() === 'verified'
   const deferredCount = coverage.deferred?.length ?? 0
   const hasDetail = Boolean(coverage.statement) || deferredCount > 0
