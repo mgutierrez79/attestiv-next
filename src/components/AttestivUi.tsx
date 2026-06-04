@@ -553,13 +553,32 @@ export function FrameworkBar({
   name,
   percent,
   tone = 'auto',
+  passing,
+  regulationTotal,
+  covered,
 }: {
   name: string
+  // When the layered breakdown props (passing + regulationTotal) are
+  // supplied, percent is recomputed as the coverage-adjusted score
+  // (passing / regulationTotal). The legacy `percent` is still
+  // accepted as a fallback for callers that don't yet have the
+  // regulation_total wired.
   percent: number
   tone?: 'green' | 'amber' | 'red' | 'auto'
+  // Optional: pass these to render a layered bar
+  // (green passing · amber measured-not-passing · grey unevidenced)
+  // and override the percent display with the coverage-adjusted figure.
+  passing?: number
+  regulationTotal?: number
+  covered?: number
 }) {
+  const hasLayered = typeof passing === 'number' && typeof regulationTotal === 'number' && regulationTotal > 0
+  const displayPercent = hasLayered ? Math.round((passing! / regulationTotal!) * 100) : percent
+  const measuredNotPassing = hasLayered ? Math.max(0, (covered ?? passing!) - passing!) : 0
+  const passingPct = hasLayered ? Math.round((passing! / regulationTotal!) * 100) : 0
+  const measuredPct = hasLayered ? Math.round((measuredNotPassing / regulationTotal!) * 100) : 0
   const resolved = tone === 'auto'
-    ? percent >= 95 ? 'green' : percent >= 85 ? 'amber' : 'red'
+    ? displayPercent >= 95 ? 'green' : displayPercent >= 85 ? 'amber' : 'red'
     : tone
   const fillColor =
     resolved === 'green' ? 'var(--color-status-green-mid)' :
@@ -569,8 +588,12 @@ export function FrameworkBar({
     resolved === 'green' ? 'var(--color-status-green-deep)' :
     resolved === 'amber' ? 'var(--color-status-amber-text)' :
     'var(--color-status-red-deep)'
+  const tooltip = hasLayered
+    ? `${passing} passing · ${measuredNotPassing} measured but not passing · ${Math.max(0, regulationTotal! - (covered ?? passing!))} unevidenced of ${regulationTotal}`
+    : undefined
   return (
     <div
+      title={tooltip}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -589,12 +612,20 @@ export function FrameworkBar({
           borderRadius: 3,
           overflow: 'hidden',
           flexShrink: 0,
+          display: 'flex',
         }}
       >
-        <div style={{ height: '100%', borderRadius: 3, width: `${percent}%`, background: fillColor }} />
+        {hasLayered ? (
+          <>
+            <div style={{ height: '100%', width: `${passingPct}%`, background: 'var(--color-status-green-mid)' }} />
+            <div style={{ height: '100%', width: `${measuredPct}%`, background: 'var(--color-status-amber-mid)' }} />
+          </>
+        ) : (
+          <div style={{ height: '100%', borderRadius: 3, width: `${percent}%`, background: fillColor }} />
+        )}
       </div>
       <div style={{ fontSize: 11, fontWeight: 500, width: 32, textAlign: 'right', color: textColor }}>
-        {percent}%
+        {displayPercent}%
       </div>
     </div>
   )

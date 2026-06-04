@@ -52,7 +52,15 @@ type ConnectorsResponse = { connectors: ConnectorStatus[] }
 type FrameworkScore = {
   score?: number
   controls_score?: number
-  controls_summary?: { compliant?: number; total?: number }
+  // regulation_total + covered are the same shape as the lib-side
+  // FrameworkScore. Kept in sync so the Framework posture rows can
+  // grade against the full regulation denominator.
+  controls_summary?: {
+    compliant?: number
+    total?: number
+    regulation_total?: number
+    covered?: number
+  }
 }
 type DashboardSummary = {
   finding_count?: number
@@ -407,12 +415,25 @@ export function AttestivDashboardOverview() {
     return entries
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, score]) => {
-        const display = scoreToPercent(score)
+        const cs = score.controls_summary
+        const passing = cs?.compliant
+        const regulationTotal = cs?.regulation_total
+        const covered = cs?.covered
+        // Coverage-adjusted % when the backend payload carries
+        // regulation_total; otherwise fall back to the legacy
+        // score-of-scored-subset so older builds still render.
+        const display =
+          typeof passing === 'number' && typeof regulationTotal === 'number' && regulationTotal > 0
+            ? Math.round((passing / regulationTotal) * 100)
+            : scoreToPercent(score)
         return (
           <FrameworkBar
             key={key}
             name={FRAMEWORK_LABELS[key] || key.toUpperCase()}
             percent={display}
+            passing={passing}
+            regulationTotal={regulationTotal}
+            covered={covered}
             tone={tone(display)}
           />
         )

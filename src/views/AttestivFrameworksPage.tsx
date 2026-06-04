@@ -656,11 +656,18 @@ function FrameworkCard({
   } = useI18n();
 
   const noData = framework.status === 'no_data'
+  // Coverage-adjusted badge: passing / regulation_total — the same
+  // auditor-honest math the hero uses. Falls back to framework.overall
+  // (legacy score-of-scored-subset) when the coverage block isn't
+  // available so older payloads still render a badge.
+  const regTotal = framework.coverage?.regulation_total ?? 0
+  const passing = framework.passing_controls ?? 0
+  const coverageAdjusted = regTotal > 0 ? Math.round((passing / regTotal) * 100) : framework.overall
   const tone: 'green' | 'amber' | 'red' | 'gray' = noData
     ? 'gray'
-    : framework.overall >= 95
+    : coverageAdjusted >= 95
       ? 'green'
-      : framework.overall >= 85
+      : coverageAdjusted >= 85
         ? 'amber'
         : 'red'
   // ScoreBadge for evaluated frameworks (number + status dot reads
@@ -670,7 +677,7 @@ function FrameworkCard({
   const headerBadge = noData ? (
     <Badge tone="gray" dot>{t('not evaluated', 'not evaluated')}</Badge>
   ) : (
-    <ScoreBadge tone={tone} value={`${framework.overall}%`} />
+    <ScoreBadge tone={tone} value={`${coverageAdjusted}%`} />
   )
   return (
     <Card>
@@ -735,24 +742,33 @@ function FrameworkCard({
   );
 }
 
-// ControlBreakdown renders the real pass/warn/review/fail tally the
-// scoring engine emits. Three stacked horizontal segments + the raw
-// counts underneath; no fake control-area names, no DEMO data.
+// ControlBreakdown renders the real pass/review/warn/fail tally the
+// scoring engine emits. Four colored segments + an implicit grey
+// "unevidenced" rest when the regulation_total is known, so the bar
+// honestly conveys what fraction of the FULL regulation has each
+// verdict — instead of showing "53% passing of the 14 measured" which
+// hides the ~140 controls with no evidence at all.
 function ControlBreakdown({ framework }: { framework: FrameworkPosture }) {
   const { t } = useI18n()
-  const total = framework.total_controls ?? 0
+  const scoredTotal = framework.total_controls ?? 0
   const passing = framework.passing_controls ?? 0
   const review = framework.review_controls ?? 0
   const warn = framework.warn_controls ?? 0
   const fail = framework.fail_controls ?? 0
-  if (total === 0) {
+  // Honest denominator: the framework's regulation total when the
+  // coverage block has shipped, else fall back to the scored subset
+  // (legacy behaviour for frameworks without a coverage register).
+  const regTotal = framework.coverage?.regulation_total ?? 0
+  const denominator = regTotal > 0 ? regTotal : scoredTotal
+  const unevidenced = Math.max(0, denominator - scoredTotal)
+  if (denominator === 0) {
     return (
       <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 0' }}>
         {t('Framework has no controls loaded.', 'Framework has no controls loaded.')}
       </div>
     )
   }
-  const pct = (n: number) => (n / total) * 100
+  const pct = (n: number) => (n / denominator) * 100
   const segments: Array<{ key: string; pct: number; color: string; label: string; count: number }> = [
     { key: 'pass', pct: pct(passing), color: 'var(--color-status-green-mid)', label: t('Passing', 'Passing'), count: passing },
     { key: 'review', pct: pct(review), color: 'var(--color-status-blue-mid)', label: t('Review', 'Review'), count: review },
@@ -769,7 +785,7 @@ function ControlBreakdown({ framework }: { framework: FrameworkPosture }) {
           overflow: 'hidden',
           background: 'var(--color-background-tertiary)',
         }}
-        title={`${passing}/${total} ${t('passing', 'passing')}`}
+        title={`${passing}/${denominator} ${t('passing', 'passing')}${regTotal > 0 ? ` · ${unevidenced} ${t('unevidenced', 'unevidenced')}` : ''}`}
       >
         {segments.map((seg) =>
           seg.pct > 0 ? (
@@ -786,8 +802,16 @@ function ControlBreakdown({ framework }: { framework: FrameworkPosture }) {
               {seg.count} {seg.label.toLowerCase()}
             </span>
           ))}
+        {regTotal > 0 && unevidenced > 0 ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-background-tertiary)', border: '1px solid var(--color-border-tertiary)', display: 'inline-block' }} />
+            {unevidenced} {t('unevidenced', 'unevidenced')}
+          </span>
+        ) : null}
         <span style={{ marginLeft: 'auto', color: 'var(--color-text-tertiary)' }}>
-          {total} {t('scored controls', 'scored controls')}
+          {regTotal > 0
+            ? `${denominator} ${t('auditable controls', 'auditable controls')}`
+            : `${denominator} ${t('scored controls', 'scored controls')}`}
         </span>
       </div>
     </div>
