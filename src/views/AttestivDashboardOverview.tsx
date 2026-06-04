@@ -441,16 +441,31 @@ export function AttestivDashboardOverview() {
   const metricConnectorWarning =
     (summary?.connector_health?.warn ?? 0) + (summary?.connector_health?.error ?? 0)
   const lastEvidence = relativeTime(summary?.generated_at)
+  // Honest hero: the headline is regulation COVERAGE across all 682
+  // auditable units — NOT the 53% average of the 140 scored controls,
+  // which ignores the ~84% that's uncovered. The scored-control posture
+  // and a coverage-weighted figure move to labeled secondary lines.
+  const cov = coverage?.current
+  const coveragePct = cov ? Math.round(cov.covered_pct * 100) : null
+  const coverageValue = coveragePct != null ? `${coveragePct}%` : '—'
+  const coverageDenom = cov ? cov.total - cov.out_of_scope : 0
+  // Coverage-weighted = covered units × how well they score, counting the
+  // uncovered as 0 — the single most conservative "demonstrably satisfied".
+  const weightedPct =
+    cov && coverageDenom > 0
+      ? Math.round(((cov.evidenced * overall.percent) / 100 + cov.attested) / coverageDenom * 100)
+      : null
+  const heroPct = coveragePct ?? 0
   const postureColor =
-    overall.percent >= 85
+    heroPct >= 80
       ? 'var(--color-status-green-deep)'
-      : overall.percent >= 60
+      : heroPct >= 40
         ? 'var(--color-status-amber-text)'
         : 'var(--color-status-red-deep)'
   const postureFill =
-    overall.percent >= 85
+    heroPct >= 80
       ? 'var(--color-status-green-mid)'
-      : overall.percent >= 60
+      : heroPct >= 40
         ? 'var(--color-status-amber-mid)'
         : 'var(--color-status-red-mid)'
 
@@ -505,7 +520,7 @@ export function AttestivDashboardOverview() {
                 marginBottom: 12,
               }}
             >
-              {t('Overall posture', 'Overall posture')}
+              {t('Regulation coverage', 'Regulation coverage')}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
               <span
@@ -518,16 +533,15 @@ export function AttestivDashboardOverview() {
                   color: postureColor,
                 }}
               >
-                {overall.value}
+                {coverageValue}
               </span>
-              {overall.value !== '—' ? (
+              {cov ? (
                 <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
-                  {t('average across', 'average across')} {overall.count}{' '}
-                  {t('frameworks', 'frameworks')}
+                  {t('of', 'of')} {cov.total} {t('auditable units covered', 'auditable units covered')}
                 </span>
               ) : (
                 <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
-                  {t('No scoring run yet', 'No scoring run yet')}
+                  {t('Loading coverage…', 'Loading coverage…')}
                 </span>
               )}
             </div>
@@ -543,12 +557,25 @@ export function AttestivDashboardOverview() {
               <div
                 style={{
                   height: '100%',
-                  width: `${overall.percent}%`,
+                  width: `${heroPct}%`,
                   borderRadius: 999,
                   background: postureFill,
                   transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
                 }}
               />
+            </div>
+            {/* The optimistic + the harshest numbers, both labeled, so the
+                hero can't be read as "53% compliant". */}
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+              {t('Scored-control posture', 'Scored-control posture')}{' '}
+              <strong>{overall.value}</strong>{' '}
+              <span style={{ color: 'var(--color-text-tertiary)' }}>{t('(avg of 140 measured)', '(avg of 140 measured)')}</span>
+              {weightedPct != null ? (
+                <>
+                  {' · '}
+                  {t('coverage-weighted', 'coverage-weighted')} <strong>{weightedPct}%</strong>
+                </>
+              ) : null}
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
               {t('Last evidence', 'Last evidence')} {lastEvidence} · {connectors.length}{' '}
