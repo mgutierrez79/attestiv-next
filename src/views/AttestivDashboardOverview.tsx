@@ -441,33 +441,39 @@ export function AttestivDashboardOverview() {
   const metricConnectorWarning =
     (summary?.connector_health?.warn ?? 0) + (summary?.connector_health?.error ?? 0)
   const lastEvidence = relativeTime(summary?.generated_at)
-  // Honest hero: the headline is regulation COVERAGE across all 682
-  // auditable units — NOT the 53% average of the 140 scored controls,
-  // which ignores the ~84% that's uncovered. The scored-control posture
-  // and a coverage-weighted figure move to labeled secondary lines.
+  // Honest hero (matches /frameworks page): headline = POSTURE, the
+  // auditor-honest passing-rate against the FULL regulation denominator
+  // (passing / regulation_total). Layered bar decomposes it into:
+  //   green   — passing      (PASS verdict)
+  //   amber   — measured     (evidenced/attested, verdict not PASS)
+  //   grey    — unevidenced  (no signal at all — the rest of the bar)
+  // Coverage and the legacy scored-subset average are demoted to the
+  // secondary lines so neither can be misread as the headline.
   const cov = coverage?.current
-  const coveragePct = cov ? Math.round(cov.covered_pct * 100) : null
-  const coverageValue = coveragePct != null ? `${coveragePct}%` : '—'
-  const coverageDenom = cov ? cov.total - cov.out_of_scope : 0
-  // Coverage-weighted = covered units × how well they score, counting the
-  // uncovered as 0 — the single most conservative "demonstrably satisfied".
-  const weightedPct =
-    cov && coverageDenom > 0
-      ? Math.round(((cov.evidenced * overall.percent) / 100 + cov.attested) / coverageDenom * 100)
-      : null
-  const heroPct = coveragePct ?? 0
+  // Prefer the new dashboard-summary fields (passing + regulationTotal
+  // come from the analytics overlay when the backend has been updated);
+  // fall back to coverage.current when the new fields aren't there yet.
+  const auditableTotal = overall.regulationTotal > 0 ? overall.regulationTotal : cov?.total ?? 0
+  const passingCount = overall.passing
+  const coveredCount =
+    overall.covered > 0
+      ? overall.covered
+      : cov
+      ? (cov.evidenced ?? 0) + (cov.attested ?? 0)
+      : 0
+  const measuredNotPassing = Math.max(0, coveredCount - passingCount)
+  const unevidencedCount = Math.max(0, auditableTotal - coveredCount)
+  const posturePct = auditableTotal > 0 ? Math.round((passingCount / auditableTotal) * 100) : 0
+  const coveragePct = auditableTotal > 0 ? Math.round((coveredCount / auditableTotal) * 100) : null
+  const measuredPctOfBar = auditableTotal > 0 ? Math.round((measuredNotPassing / auditableTotal) * 100) : 0
+  const heroValue = auditableTotal > 0 ? `${posturePct}%` : overall.value
+  const heroPct = auditableTotal > 0 ? posturePct : overall.percent
   const postureColor =
     heroPct >= 80
       ? 'var(--color-status-green-deep)'
       : heroPct >= 40
         ? 'var(--color-status-amber-text)'
         : 'var(--color-status-red-deep)'
-  const postureFill =
-    heroPct >= 80
-      ? 'var(--color-status-green-mid)'
-      : heroPct >= 40
-        ? 'var(--color-status-amber-mid)'
-        : 'var(--color-status-red-mid)'
 
   return (
     <>
@@ -520,7 +526,7 @@ export function AttestivDashboardOverview() {
                 marginBottom: 12,
               }}
             >
-              {t('Regulation coverage', 'Regulation coverage')}
+              {t('Overall posture', 'Overall posture')}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
               <span
@@ -533,11 +539,11 @@ export function AttestivDashboardOverview() {
                   color: postureColor,
                 }}
               >
-                {coverageValue}
+                {heroValue}
               </span>
-              {cov ? (
+              {auditableTotal > 0 ? (
                 <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
-                  {t('of', 'of')} {cov.total} {t('auditable units covered', 'auditable units covered')}
+                  {passingCount} {t('passing of', 'passing of')} {auditableTotal} {t('auditable controls', 'auditable controls')}
                 </span>
               ) : (
                 <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
@@ -545,37 +551,75 @@ export function AttestivDashboardOverview() {
                 </span>
               )}
             </div>
-            <div
-              style={{
-                height: 10,
-                borderRadius: 999,
-                background: 'var(--color-background-tertiary)',
-                overflow: 'hidden',
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${heroPct}%`,
-                  borderRadius: 999,
-                  background: postureFill,
-                  transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
-                }}
-              />
-            </div>
-            {/* The optimistic + the harshest numbers, both labeled, so the
-                hero can't be read as "53% compliant". */}
+            {auditableTotal > 0 ? (
+              <>
+                <div
+                  style={{
+                    height: 10,
+                    borderRadius: 999,
+                    background: 'var(--color-background-tertiary)',
+                    overflow: 'hidden',
+                    marginBottom: 8,
+                    display: 'flex',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${heroPct}%`,
+                      background: 'var(--color-status-green-mid)',
+                      transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${measuredPctOfBar}%`,
+                      background: 'var(--color-status-amber-mid)',
+                      transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 14,
+                    marginBottom: 10,
+                    fontSize: 11,
+                    color: 'var(--color-text-tertiary)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--color-status-green-mid)' }} />
+                    {t('passing', 'passing')} {passingCount}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--color-status-amber-mid)' }} />
+                    {t('measured · not passing', 'measured · not passing')} {measuredNotPassing}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--color-background-tertiary)' }} />
+                    {t('unevidenced', 'unevidenced')} {unevidencedCount}
+                  </span>
+                </div>
+              </>
+            ) : null}
             <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
-              {t('Scored-control posture', 'Scored-control posture')}{' '}
-              <strong>{overall.value}</strong>{' '}
-              <span style={{ color: 'var(--color-text-tertiary)' }}>{t('(avg of 140 measured)', '(avg of 140 measured)')}</span>
-              {weightedPct != null ? (
+              {coveragePct != null ? (
                 <>
+                  {t('Regulation coverage', 'Regulation coverage')}{' '}
+                  <strong>{coveragePct}%</strong>{' '}
+                  <span style={{ color: 'var(--color-text-tertiary)' }}>
+                    ({coveredCount} {t('of', 'of')} {auditableTotal})
+                  </span>
                   {' · '}
-                  {t('coverage-weighted', 'coverage-weighted')} <strong>{weightedPct}%</strong>
                 </>
               ) : null}
+              {t('Subset score', 'Subset score')}{' '}
+              <strong>{overall.scoredAvg > 0 ? `${overall.scoredAvg}%` : overall.value}</strong>{' '}
+              <span style={{ color: 'var(--color-text-tertiary)' }}>{t('unweighted across frameworks', 'unweighted across frameworks')}</span>
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
               {t('Last evidence', 'Last evidence')} {lastEvidence} · {connectors.length}{' '}

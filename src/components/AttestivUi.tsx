@@ -315,12 +315,29 @@ export function StatPill({
 // progress bar on the left, and a grid of StatPills on the right. Used
 // at the top of the Dashboard, Frameworks, and other summary pages so
 // the primary number always reads the same way.
+// HeroSegment describes one slice of the layered posture bar. Used
+// when the headline metric has a meaningful three-way decomposition
+// (e.g. passing vs measured-but-not-passing vs unevidenced), where a
+// single-color bar would hide the gap between "measured" and "passing".
+export type HeroSegment = {
+  // 0..100 — width of this segment as a percentage of the bar.
+  percent: number
+  // CSS color value for the segment fill.
+  color: string
+  // Legend label (e.g. "passing", "measured · not passing"). Optional;
+  // when absent the segment renders without a legend entry.
+  label?: string
+  // Raw count (e.g. 47 passing controls). Shown next to the label.
+  count?: number
+}
+
 export function HeroBand({
   label,
   value,
   percent,
   caption,
   pills,
+  segments,
 }: {
   label: string
   value: string
@@ -330,6 +347,11 @@ export function HeroBand({
   percent?: number
   caption?: ReactNode
   pills?: ReactNode
+  // When provided, replaces the single-color bar with a layered
+  // composition. The bar's grey background is the implicit "rest" —
+  // segments should not sum to 100% unless the entire denominator is
+  // accounted for. A legend renders under the bar.
+  segments?: HeroSegment[]
 }) {
   const hasBar = typeof percent === 'number'
   const color = !hasBar
@@ -385,7 +407,43 @@ export function HeroBand({
             {value}
           </span>
         </div>
-        {hasBar ? (
+        {hasBar && segments && segments.length > 0 ? (
+          <>
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                background: 'var(--color-background-tertiary)',
+                overflow: 'hidden',
+                marginBottom: 8,
+                display: 'flex',
+              }}
+            >
+              {segments.map((seg, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    height: '100%',
+                    width: `${Math.max(0, Math.min(100, seg.percent))}%`,
+                    background: seg.color,
+                    transition: 'width 600ms cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 12, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+              {segments.filter((s) => s.label).map((seg, idx) => (
+                <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, display: 'inline-block' }} />
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {seg.label}
+                    {typeof seg.count === 'number' ? ` ${seg.count}` : ''}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </>
+        ) : hasBar ? (
           <div
             style={{
               height: 10,

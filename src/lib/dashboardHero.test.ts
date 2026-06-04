@@ -35,27 +35,58 @@ describe('scoreToPercent — handles both 0-1 fraction and 0-100 percent shapes'
   })
 })
 
-describe('deriveOverallPosture — average across evaluated frameworks', () => {
-  it('returns "—" when no frameworks have scored', () => {
-    expect(deriveOverallPosture(null)).toEqual({ value: '—', percent: 0, count: 0 })
-    expect(deriveOverallPosture({ framework_scores: {} })).toEqual({ value: '—', percent: 0, count: 0 })
+describe('deriveOverallPosture — coverage-adjusted across evaluated frameworks', () => {
+  it('returns "—" + zeros when no frameworks have scored', () => {
+    expect(deriveOverallPosture(null)).toEqual({
+      value: '—', percent: 0, count: 0, passing: 0, regulationTotal: 0, covered: 0, scoredAvg: 0,
+    })
+    expect(deriveOverallPosture({ framework_scores: {} })).toEqual({
+      value: '—', percent: 0, count: 0, passing: 0, regulationTotal: 0, covered: 0, scoredAvg: 0,
+    })
   })
-  it('averages the per-framework percents honestly', () => {
+  // The headline percent is now coverage-adjusted: passing /
+  // regulation_total. Without this pin, the dashboard would silently
+  // revert to the per-framework unweighted average — the misleading
+  // headline the pilot operator caught: 55% headline on a posture an
+  // auditor would honestly grade ~7%.
+  it('headline = passing / sum(regulation_total) × 100 (auditor-honest)', () => {
     const summary: DashboardSummary = {
       framework_scores: {
-        dora: { score: 0.6 },   // 60
-        nis2: { score: 80 },    // 80 (already percent)
-        iso27001: { score: 0.4 }, // 40
+        cis: { score: 53, controls_summary: { compliant: 4, total: 14, regulation_total: 153, covered: 24 } },
+        dora: { score: 58, controls_summary: { compliant: 11, total: 25, regulation_total: 23, covered: 8 } },
       },
     }
-    // (60 + 80 + 40) / 3 = 60
-    expect(deriveOverallPosture(summary)).toEqual({ value: '60%', percent: 60, count: 3 })
+    const hero = deriveOverallPosture(summary)
+    // 15 passing of 176 auditable = 9%
+    expect(hero.percent).toBe(9)
+    expect(hero.value).toBe('9%')
+    expect(hero.passing).toBe(15)
+    expect(hero.regulationTotal).toBe(176)
+    expect(hero.covered).toBe(32)
+    // scoredAvg preserves the legacy unweighted average for the
+    // demoted subtitle on the dashboard hero.
+    expect(hero.scoredAvg).toBe(Math.round((53 + 58) / 2))
   })
-  it('mixed shapes still average correctly (regression: no double-percent inflation)', () => {
+  it('falls back to the unweighted scored average when regulation_total is missing', () => {
     const summary: DashboardSummary = {
       framework_scores: {
-        a: { score: 0.5 },   // 50
-        b: { score: 50 },    // 50 (already percent — must NOT become 5000)
+        dora: { score: 0.6 },
+        nis2: { score: 80 },
+        iso27001: { score: 0.4 },
+      },
+    }
+    const hero = deriveOverallPosture(summary)
+    // (60 + 80 + 40) / 3 = 60 — back-compat for older backend payloads.
+    expect(hero.percent).toBe(60)
+    expect(hero.value).toBe('60%')
+    expect(hero.regulationTotal).toBe(0)
+    expect(hero.scoredAvg).toBe(60)
+  })
+  it('mixed score shapes still aggregate correctly (no double-percent inflation in fallback)', () => {
+    const summary: DashboardSummary = {
+      framework_scores: {
+        a: { score: 0.5 },
+        b: { score: 50 },
       },
     }
     expect(deriveOverallPosture(summary).percent).toBe(50)

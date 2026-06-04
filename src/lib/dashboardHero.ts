@@ -9,7 +9,19 @@
 export type FrameworkScore = {
   score?: number
   controls_score?: number
-  controls_summary?: { compliant?: number; total?: number }
+  controls_summary?: {
+    compliant?: number
+    total?: number
+    // regulation_total is the framework's FULL auditable count (CIS=153,
+    // DORA=23, …) and is distinct from `total` above which is the
+    // scored subset. When present, the dashboard hero grades against
+    // this denominator instead of averaging score-of-scored-subsets.
+    regulation_total?: number
+    // covered = evidenced + attested controls per the coverage register.
+    // Used to render the layered posture bar's amber "measured but not
+    // passing" segment.
+    covered?: number
+  }
 }
 
 export type DashboardSummary = {
@@ -30,24 +42,61 @@ export function scoreToPercent(score: FrameworkScore | undefined): number {
   return Math.max(0, Math.min(100, Math.round(pct)))
 }
 
-// deriveOverallPosture returns the trust-grade hero headline: the mean
-// posture across evaluated frameworks. Honest label: "—" when nothing
-// has scored yet, never a misleading 0%.
+// deriveOverallPosture returns the trust-grade hero headline.
+//
+// When the backend payload carries regulation_total + compliant counts,
+// the headline is the coverage-adjusted score: passing / regulation_total.
+// This is the auditor-honest "how much of the regulation is demonstrably
+// met?" number. It will be LOWER than the unweighted average of per-
+// framework scores because frameworks with thin coverage (1 scored
+// control passing of 200 auditable) previously inflated the average.
+//
+// When the backend doesn't carry regulation_total (older builds), we
+// fall back to the unweighted average so the hero doesn't go blank —
+// but the scoredAvg field is also returned so the view can render a
+// "(fallback)" marker if it wants.
+//
+// scoredAvg ALWAYS carries the legacy unweighted average so the view
+// can show it as a demoted subtitle ("X% of measured controls").
 export type OverallPosture = {
-  value: string   // "64%" or "—"
-  percent: number // 0..100 (0 when no data — caller decides what bar to render)
-  count: number   // number of evaluated frameworks averaged
+  value: string         // "7%" or "—"
+  percent: number       // 0..100 (0 when no data)
+  count: number         // evaluated frameworks
+  passing: number       // sum of compliant controls
+  regulationTotal: number  // sum of regulation_total; 0 if unknown
+  covered: number       // sum of covered (evidenced + attested); 0 if unknown
+  scoredAvg: number     // legacy unweighted-average — demoted subtitle
 }
 
 export function deriveOverallPosture(summary: DashboardSummary | null): OverallPosture {
   const scores = summary?.framework_scores ?? {}
   const entries = Object.entries(scores)
   if (entries.length === 0) {
-    return { value: '—', percent: 0, count: 0 }
+    return { value: '—', percent: 0, count: 0, passing: 0, regulationTotal: 0, covered: 0, scoredAvg: 0 }
   }
   const pcts = entries.map(([, s]) => scoreToPercent(s))
-  const avg = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
-  return { value: `${avg}%`, percent: avg, count: entries.length }
+  const scoredAvg = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)
+  let passing = 0
+  let regulationTotal = 0
+  let covered = 0
+  for (const [, s] of entries) {
+    const cs = s.controls_summary
+    if (cs) {
+      passing += cs.compliant ?? 0
+      regulationTotal += cs.regulation_total ?? 0
+      covered += cs.covered ?? 0
+    }
+  }
+  const headline = regulationTotal > 0 ? Math.round((passing / regulationTotal) * 100) : scoredAvg
+  return {
+    value: `${headline}%`,
+    percent: headline,
+    count: entries.length,
+    passing,
+    regulationTotal,
+    covered,
+    scoredAvg,
+  }
 }
 
 // deriveControlsPassing returns the cross-framework "% of controls

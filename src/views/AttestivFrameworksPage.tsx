@@ -520,9 +520,39 @@ export function AttestivFrameworksPage() {
             label={t('Overall posture', 'Overall posture')}
             value={hero.evaluatedCount > 0 ? `${hero.avg}%` : '—'}
             percent={hero.avg}
+            segments={
+              hero.regulationTotal > 0 && coverageAgg
+                ? [
+                    {
+                      // PASSING: controls with a PASS verdict, against the
+                      // full regulation. This is the auditor-honest "what
+                      // we can prove is met" segment.
+                      percent: Math.round((hero.passing / hero.regulationTotal) * 100),
+                      color: 'var(--color-status-green-mid)',
+                      label: t('passing', 'passing'),
+                      count: hero.passing,
+                    },
+                    {
+                      // MEASURED · NOT PASSING: we have evidence or a
+                      // signed attestation, but the verdict is WARN / REVIEW
+                      // / FAIL. Work-to-do that's already visible.
+                      percent: Math.round((Math.max(0, coverageAgg.covered - hero.passing) / hero.regulationTotal) * 100),
+                      color: 'var(--color-status-amber-mid)',
+                      label: t('measured · not passing', 'measured · not passing'),
+                      count: Math.max(0, coverageAgg.covered - hero.passing),
+                    },
+                    // The grey remainder of the bar is the implicit
+                    // UNEVIDENCED slice — controls with no signal at all.
+                    // The unevidenced count is shown in the caption so the
+                    // legend stays uncluttered.
+                  ]
+                : undefined
+            }
             caption={
               hero.evaluatedCount === 0
                 ? t('No scoring run yet', 'No scoring run yet')
+                : hero.regulationTotal > 0 && coverageAgg
+                ? `${hero.passing} ${t('passing', 'passing')} · ${Math.max(0, coverageAgg.covered - hero.passing)} ${t('measured but not passing', 'measured but not passing')} · ${Math.max(0, hero.regulationTotal - coverageAgg.covered)} ${t('unevidenced of', 'unevidenced of')} ${hero.regulationTotal} ${t('auditable controls', 'auditable controls')}`
                 : hero.regulationTotal > 0
                 ? `${hero.passing} ${t('passing of', 'passing of')} ${hero.regulationTotal} ${t('auditable controls across', 'auditable controls across')} ${hero.evaluatedCount} ${t('frameworks · subset score', 'frameworks · subset score')} ${hero.scoredAvg}% ${t('of the', 'of the')} ${hero.total} ${t('measured', 'measured')}`
                 : `${t('score of scored controls across', 'score of scored controls across')} ${hero.evaluatedCount} ${t('evaluated frameworks — coverage register not loaded', 'evaluated frameworks — coverage register not loaded')}`
