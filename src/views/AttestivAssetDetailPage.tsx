@@ -342,6 +342,18 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const lastBackup = (asset?.metadata?.['last_backup'] as LastBackup | undefined) ?? undefined
   const replication = (asset?.metadata?.['replication'] as Replication | undefined) ?? undefined
   const lastRestore = (asset?.metadata?.['last_restore'] as LastRestore | undefined) ?? undefined
+  // Cross-connector correlation surfaced by the inventory detail API:
+  // EDR posture (SentinelOne), switch ports (DNAC), backing SAN volumes
+  // (PowerStore). All optional — only render the card when present.
+  const edr = (asset?.metadata?.['edr'] as
+    | { installed?: boolean; source?: string; agent_version?: string; health?: string; active?: boolean; infected?: boolean; threats?: number; max_threat_severity?: string; last_active?: string }
+    | undefined) ?? undefined
+  const networkPorts = (asset?.metadata?.['network_ports'] as
+    | Array<{ switch?: string; interface?: string; vlan?: string; auth_method?: string; sub_type?: string }>
+    | undefined) ?? undefined
+  const storageVolumes = (asset?.metadata?.['storage_volumes'] as
+    | Array<{ volume?: string; wwn?: string; replicated?: boolean; mode?: string; role?: string; last_sync?: string }>
+    | undefined) ?? undefined
 
   return (
     <>
@@ -594,6 +606,85 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       </div>
                     </div>
                   ) : null}
+                </div>
+              </Card>
+            ) : null}
+
+            {edr ? (
+              <Card>
+                <CardTitle
+                  right={
+                    edr.installed ? (
+                      <Badge tone={edr.infected ? 'red' : edr.health === 'healthy' ? 'green' : 'amber'}>
+                        {edr.infected ? t('Infected', 'Infected') : edr.health ? edr.health : t('Installed', 'Installed')}
+                      </Badge>
+                    ) : (
+                      <Badge tone="red">{t('No EDR agent', 'No EDR agent')}</Badge>
+                    )
+                  }
+                >
+                  {t('Endpoint security (EDR)', 'Endpoint security (EDR)')}
+                </CardTitle>
+                {edr.installed ? (
+                  <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+                    <Stat label={t('Source', 'Source')} value={edr.source ?? 'sentinelone'} />
+                    {edr.agent_version ? <Stat label={t('Agent version', 'Agent version')} value={edr.agent_version} /> : null}
+                    {edr.health ? <Stat label={t('Health', 'Health')} value={edr.health} /> : null}
+                    <Stat label={t('Active', 'Active')} value={edr.active ? t('yes', 'yes') : t('no', 'no')} />
+                    <Stat label={t('Threats', 'Threats')} value={String(edr.threats ?? 0)} />
+                    {edr.max_threat_severity ? <Stat label={t('Max severity', 'Max severity')} value={edr.max_threat_severity} /> : null}
+                    {edr.last_active ? <Stat label={t('Last active', 'Last active')} value={edr.last_active} /> : null}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                    {t(
+                      'No EDR agent detected on this host (EDR is being collected for the fleet) — a coverage gap to remediate.',
+                      'No EDR agent detected on this host (EDR is being collected for the fleet) — a coverage gap to remediate.',
+                    )}
+                  </div>
+                )}
+              </Card>
+            ) : null}
+
+            {networkPorts && networkPorts.length > 0 ? (
+              <Card>
+                <CardTitle right={<Badge tone="navy">{networkPorts.length}</Badge>}>
+                  {t('Network ports', 'Network ports')}
+                </CardTitle>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {networkPorts.map((p, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{p.switch}</span>
+                      <code style={{ fontSize: 12 }}>{p.interface}</code>
+                      {p.vlan ? <Badge tone="gray">VLAN {p.vlan}</Badge> : null}
+                      {p.auth_method ? (
+                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{p.auth_method}</span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {storageVolumes && storageVolumes.length > 0 ? (
+              <Card>
+                <CardTitle right={<Badge tone="navy">{storageVolumes.length}</Badge>}>
+                  {t('Backing storage volumes', 'Backing storage volumes')}
+                </CardTitle>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {storageVolumes.map((v, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{v.volume}</span>
+                      <Badge tone={v.replicated ? 'green' : 'gray'}>
+                        {v.replicated ? t('replicated', 'replicated') : t('not replicated', 'not replicated')}
+                      </Badge>
+                      {v.mode ? <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{v.mode}</span> : null}
+                      {v.role ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({v.role})</span> : null}
+                      {v.last_sync ? (
+                        <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('synced', 'synced')} {v.last_sync}</span>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </Card>
             ) : null}
