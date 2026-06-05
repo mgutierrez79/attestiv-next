@@ -60,6 +60,7 @@ const SECRET_FIELD_NAMES = new Set([
   'access_token',
   'client_secret',
   'password',
+  'bnr_password',
   'secret',
   'secret_key',
   'session_token',
@@ -183,6 +184,15 @@ const CONNECTORS: ConnectorKind[] = [
     fields: [
       { key: 'client_id', label: 'OAuth client id', required: true },
       { key: 'client_secret', label: 'OAuth client secret', type: 'password', required: true },
+      // Optional Veeam Backup & Replication REST API (port 9419). Needed
+      // for tape jobs + repository (Data Domain) immutability, which
+      // Enterprise Manager (9398) does not expose. Leave blank for an
+      // all-in-one install — the backend derives <EM-host>:9419 and
+      // reuses the EM credentials. Fill these when B&R is a SEPARATE
+      // server or needs its own account.
+      { key: 'bnr_url', label: 'B&R server URL (optional)', hint: 'Veeam Backup & Replication REST API, e.g. https://vbr-host:9419. Blank = same host as Enterprise Manager (auto-detected).' },
+      { key: 'bnr_username', label: 'B&R username (optional)', hint: 'Blank = reuse the Enterprise Manager username. Use a domain-qualified, B&R-authorized account, e.g. ACME\\svc-veeam.' },
+      { key: 'bnr_password', label: 'B&R password (optional)', type: 'password', hint: 'Blank = reuse the Enterprise Manager password.' },
     ],
     pollDefault: 1800,
   },

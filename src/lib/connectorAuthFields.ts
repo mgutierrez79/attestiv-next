@@ -134,7 +134,22 @@ export type AuthMethod = {
 // pulled out of the auth list into a separate "common fields" bucket
 // so they don't get mistaken for mutually-exclusive auth methods (which
 // would render a method picker and hide them behind a tab).
-const NON_AUTH_FIELDS: ReadonlySet<string> = new Set(['serial', 'customer', 'perimeter', 'workspace_id', 'base_dn', 'site_ids'])
+const NON_AUTH_FIELDS: ReadonlySet<string> = new Set([
+  'serial',
+  'customer',
+  'perimeter',
+  'workspace_id',
+  'base_dn',
+  'site_ids',
+  // Veeam Backup & Replication REST (9419) overrides for a distributed
+  // topology (B&R on a different host than Enterprise Manager). These
+  // are optional connector config, NOT a separate auth method — keep
+  // them always-visible alongside the EM credentials rather than letting
+  // each become its own bogus single-field auth tab.
+  'bnr_url',
+  'bnr_username',
+  'bnr_password',
+])
 
 type AuthMethodDef = {
   key: string
