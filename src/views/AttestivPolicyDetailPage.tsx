@@ -24,6 +24,20 @@ import {
 import { PolicyDocUploadWidget } from '../components/PolicyDocUploadWidget'
 import { PolicyValidationPanel } from '../components/PolicyValidationPanel'
 import { apiFetch } from '../lib/api'
+import { loadSettings } from '../lib/settings'
+
+// resolveDocHref routes the document link correctly. The backend stamps an
+// internal blob path on upload ("/v1/policy-docs/{id}/blob"); the browser only
+// reaches the API through the proxy prefix (apiBaseUrl, default "/api"), so a
+// raw "/v1/..." href hits the Next app and 404s. Prefix internal paths with the
+// API base; leave external URL bookmarks untouched.
+function resolveDocHref(documentUrl: string): string {
+  if (!documentUrl) return ''
+  if (documentUrl.startsWith('/v1/')) {
+    return `${loadSettings().apiBaseUrl.replace(/\/+$/, '')}${documentUrl}`
+  }
+  return documentUrl
+}
 
 import { useI18n } from '../lib/i18n';
 
@@ -300,7 +314,7 @@ export function AttestivPolicyDetailPage() {
             </Field>
             {policy.document_url ? (
               <Field label={t('Document', 'Document')}>
-                <a href={policy.document_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-brand-blue)' }}>
+                <a href={resolveDocHref(policy.document_url)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-brand-blue)' }}>
                   {t('open document', 'open document')} <i className="ti ti-external-link" aria-hidden="true" />
                 </a>
               </Field>
