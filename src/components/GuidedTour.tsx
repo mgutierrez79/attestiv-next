@@ -454,6 +454,45 @@ function TourLauncher({
         </form>
       </div>
 
+      {/* Intro — shown before the first question so the assistant explains itself */}
+      {!answer && !query.trim() ? (
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border, #eee)' }}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--color-text-secondary)' }}>
+            {t(
+              "Hi — I'm the Attestiv assistant. I can explain how to use the platform, report your compliance posture, and count your inventory. I read your own data and never change anything.",
+              "Hi — I'm the Attestiv assistant. I can explain how to use the platform, report your compliance posture, and count your inventory. I read your own data and never change anything."
+            )}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+            {[
+              t('How do I add a connector?', 'How do I add a connector?'),
+              t('Which controls are failing?', 'Which controls are failing?'),
+              t('How many Windows machines?', 'How many Windows machines?'),
+            ].map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => {
+                  setQuery(ex);
+                  onAsk(ex);
+                }}
+                style={{
+                  fontSize: 11,
+                  padding: '5px 9px',
+                  borderRadius: 14,
+                  border: '1px solid var(--color-border, #ddd)',
+                  background: 'var(--color-background-secondary, #f6f6f4)',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* Assistant answer */}
       {answer ? (
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border, #eee)', background: 'var(--color-background-secondary, #f8f8f6)' }}>
