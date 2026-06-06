@@ -287,15 +287,27 @@ function ActiveFrameworkRegister({
         <CardTitle right={<Badge tone="navy">{filteredEntries.length}</Badge>}>
           {t('Register entries', 'Register entries')}
         </CardTitle>
+        <div style={{ maxHeight: '60vh', overflowY: 'auto', border: '0.5px solid var(--color-border-tertiary)', borderRadius: 'var(--border-radius-md)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ borderBottom: '0.5px solid var(--color-border-tertiary)', textAlign: 'left' }}>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Ref</th>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Name</th>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Category</th>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Mode</th>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Status</th>
-              <th style={{ padding: '6px 4px', fontWeight: 500, color: 'var(--color-text-tertiary)' }}>Score</th>
+            <tr style={{ textAlign: 'left' }}>
+              {['Ref', 'Name', 'Category', 'Mode', 'Status', 'Score'].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    padding: '6px 4px',
+                    fontWeight: 500,
+                    color: 'var(--color-text-tertiary)',
+                    position: 'sticky',
+                    top: 0,
+                    background: 'var(--color-background-primary)',
+                    borderBottom: '0.5px solid var(--color-border-tertiary)',
+                    zIndex: 1,
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -327,6 +339,7 @@ function ActiveFrameworkRegister({
             })}
           </tbody>
         </table>
+        </div>
         {/* Inline reasons for out-of-scope rows */}
         {filteredEntries.some((e) => e.effective_status === 'out-of-scope' && e.reason) ? (
           <details style={{ marginTop: 10 }}>
