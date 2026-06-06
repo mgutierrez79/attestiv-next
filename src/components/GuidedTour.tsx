@@ -35,6 +35,7 @@ type AskResult = {
   source: string;
   citations?: Citation[];
   suggested_tour?: { id: string; title: string } | null;
+  route?: string;
 };
 
 type Ctx = {
@@ -253,6 +254,10 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
                   onAsk={ask}
                   asking={asking}
                   answer={answer}
+                  onNavigate={(rt) => {
+                    setLauncherOpen(false);
+                    router.push(rt);
+                  }}
                   onClose={() => setLauncherOpen(false)}
                   t={t}
                 />
@@ -384,6 +389,7 @@ function TourLauncher({
   onAsk,
   asking,
   answer,
+  onNavigate,
   onClose,
   t,
 }: {
@@ -395,6 +401,7 @@ function TourLauncher({
   onAsk: (q: string) => void;
   asking: boolean;
   answer: AskResult | null;
+  onNavigate: (route: string) => void;
   onClose: () => void;
   t: (k: string, f?: string) => string;
 }) {
@@ -454,6 +461,10 @@ function TourLauncher({
           {answer.suggested_tour ? (
             <button type="button" onClick={() => onPick(answer.suggested_tour!.id)} style={{ ...primaryBtn, marginTop: 10 }}>
               <i className="ti ti-pointer" aria-hidden="true" /> {t('Show me', 'Show me')}: {answer.suggested_tour.title}
+            </button>
+          ) : answer.route ? (
+            <button type="button" onClick={() => onNavigate(answer.route!)} style={{ ...primaryBtn, marginTop: 10 }}>
+              <i className="ti ti-external-link" aria-hidden="true" /> {t('Open page', 'Open page')}
             </button>
           ) : null}
           {answer.citations && answer.citations.length > 0 ? (
