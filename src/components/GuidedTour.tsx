@@ -472,6 +472,8 @@ function TourLauncher({
         </form>
       </div>
 
+      {/* Scrollable body: thinking / intro / answer / guides all scroll here. */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
       {/* Live "thinking" status while the model works (CPU answers are slow). */}
       {asking ? (
         <div
@@ -598,6 +600,8 @@ function TourLauncher({
           )}
         </div>
       ) : null}
+      </div>
+
       <div style={{ padding: '8px 14px', borderTop: '1px solid var(--color-border, #eee)', textAlign: 'right' }}>
         <button type="button" onClick={onClose} style={ghostBtn}>
           {t('Close', 'Close')}
