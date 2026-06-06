@@ -25,6 +25,9 @@ type AIEngine = {
   config_source: string;
   extractor: string;
   doc_types: number;
+  llm_prompt: string;
+  default_prompt: string;
+  prompt_source: string;
 };
 
 type TestResult = { ok: boolean; reason?: string; endpoint?: string; model?: string; extractor?: string; elapsed_ms?: number };
@@ -45,6 +48,8 @@ export function AttestivAIEngineSettingsPage() {
   const [llmUrl, setLlmUrl] = useState('');
   const [llmModel, setLlmModel] = useState('');
   const [llmKey, setLlmKey] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [defaultPrompt, setDefaultPrompt] = useState('');
 
   async function load() {
     setLoading(true);
@@ -58,6 +63,8 @@ export function AttestivAIEngineSettingsPage() {
       setLlmUrl(body.llm_url || '');
       setLlmModel(body.llm_model || '');
       setLlmKey('');
+      setPrompt(body.llm_prompt || '');
+      setDefaultPrompt(body.default_prompt || '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -79,6 +86,9 @@ export function AttestivAIEngineSettingsPage() {
         enabled,
         llm_url: llmUrl.trim(),
         llm_model: llmModel.trim(),
+        // Send "" when the prompt equals the built-in default so we clear the
+        // override (prompt_source → "default") rather than storing a redundant copy.
+        llm_prompt: prompt.trim() === defaultPrompt.trim() ? '' : prompt,
       };
       // Only send the key when the admin typed one (write-only; blank = leave as-is is
       // not expressible, so blank means "clear" — make that explicit in the UI copy).
@@ -228,6 +238,32 @@ export function AttestivAIEngineSettingsPage() {
                 'Off by default. When on, an attested document judged incomplete is dropped from scoring evidence. Verify your model first.'
               )}
             </Hint>
+          </Field>
+
+          <Field label={t('Extraction prompt (advanced)', 'Extraction prompt (advanced)')}>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              disabled={!isAdmin || busy}
+              rows={6}
+              style={{ ...inputStyle, maxWidth: 720, fontFamily: 'var(--font-mono, monospace)', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              {isAdmin ? (
+                <GhostButton onClick={() => setPrompt(defaultPrompt)} disabled={busy}>
+                  <i className="ti ti-restore" aria-hidden="true" /> {t('Reset to default', 'Reset to default')}
+                </GhostButton>
+              ) : null}
+              <span style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)' }}>
+                {prompt.trim() === defaultPrompt.trim() ? t('Using default', 'Using default') : t('Custom', 'Custom')}
+              </span>
+            </div>
+            <Banner tone="warning">
+              {t(
+                'The prompt steers how the model judges evidence. The JSON response format is always enforced by the system, but a biased prompt can skew results — changes are audit-logged. Keep it to language/domain guidance; do not tell the model to pass everything.',
+                'The prompt steers how the model judges evidence. The JSON response format is always enforced by the system, but a biased prompt can skew results — changes are audit-logged. Keep it to language/domain guidance; do not tell the model to pass everything.'
+              )}
+            </Banner>
           </Field>
 
           {test ? (
