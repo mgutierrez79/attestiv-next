@@ -104,6 +104,7 @@ export function AttestivPolicyDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [suggestNote, setSuggestNote] = useState<string | null>(null)
 
   // Edit form state.
   const [title, setTitle] = useState('')
@@ -216,6 +217,54 @@ export function AttestivPolicyDetailPage() {
       await load()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to archive')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // AI-assisted: extract metadata from the uploaded document and pre-fill the
+  // Edit form. The values are SUGGESTIONS — the user reviews and clicks Save.
+  async function suggestFields() {
+    if (!id) return
+    setBusy(true)
+    setError(null)
+    setSuggestNote(null)
+    try {
+      const response = await apiFetch(`/policy-docs/${encodeURIComponent(id)}/suggest-fields`, { method: 'POST' })
+      if (!response.ok) {
+        const b = await response.json().catch(() => ({}))
+        throw new Error(b?.detail || `${response.status} ${response.statusText}`)
+      }
+      const body = await response.json()
+      const sugg = (body?.suggestions ?? {}) as Record<string, string>
+      const applied: string[] = []
+      if (sugg.title) {
+        setTitle(sugg.title)
+        applied.push(t('title', 'title'))
+      }
+      if (sugg.version) {
+        setVersion(sugg.version)
+        applied.push(t('version', 'version'))
+      }
+      if (sugg.category) {
+        setCategory(sugg.category)
+        applied.push(t('category', 'category'))
+      }
+      if (sugg.review_due_date) {
+        setReviewDueDate(sugg.review_due_date)
+        applied.push(t('review date', 'review date'))
+      }
+      if (applied.length > 0) {
+        setSuggestNote(
+          t('Suggested from the document: ', 'Suggested from the document: ') +
+            applied.join(', ') +
+            t('. Review and click Save changes to apply.', '. Review and click Save changes to apply.')
+        )
+      } else {
+        setSuggestNote(body?.note || t('No fields could be suggested from the document.', 'No fields could be suggested from the document.'))
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to suggest fields')
     } finally {
       setBusy(false)
     }
@@ -402,15 +451,23 @@ export function AttestivPolicyDetailPage() {
         <Card style={{ marginTop: 12 }}>
           <CardTitle
             right={
-              !approved ? (
-                <PrimaryButton onClick={approve} disabled={busy} data-tour-id="policy-approve-btn">
-                  <i className="ti ti-stamp" aria-hidden="true" /> {t('Approve policy', 'Approve policy')}
-                </PrimaryButton>
-              ) : null
+              <span style={{ display: 'flex', gap: 8 }}>
+                <GhostButton onClick={suggestFields} disabled={busy}>
+                  <i className="ti ti-sparkles" aria-hidden="true" /> {t('Suggest from document', 'Suggest from document')}
+                </GhostButton>
+                {!approved ? (
+                  <PrimaryButton onClick={approve} disabled={busy} data-tour-id="policy-approve-btn">
+                    <i className="ti ti-stamp" aria-hidden="true" /> {t('Approve policy', 'Approve policy')}
+                  </PrimaryButton>
+                ) : null}
+              </span>
             }
           >
             {t('Edit', 'Edit')}
           </CardTitle>
+          {suggestNote ? (
+            <Banner tone="info">{suggestNote}</Banner>
+          ) : null}
           <FormGrid>
             <FormRow label={t('Title', 'Title')}>
               <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle} />
