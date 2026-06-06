@@ -54,6 +54,16 @@ const CATEGORIES = [
   'backup',
   'encryption',
   'risk_management',
+  // Content-validated document types (internal/docvalidate rubrics) — enable
+  // the "Validate document" check on the policy detail page.
+  'business_continuity_plan',
+  'incident_response_plan',
+  'internal_audit',
+  'tlpt_result',
+  'firewall_rule_review',
+  'management_review',
+  'security_training',
+  'policy_acknowledgement',
 ]
 
 export function PolicyDocUploadWidget({

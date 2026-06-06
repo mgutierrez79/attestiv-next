@@ -63,6 +63,18 @@ const CATEGORIES = [
   'backup',
   'encryption',
   'system_validation',
+  // Document types that have a content-validation rubric (internal/docvalidate).
+  // Picking one of these enables the "Validate document" AI content check on
+  // the policy detail page. (Framework-scoring categories above have no content
+  // rubric, so validation reports "no content check for this type".)
+  'business_continuity_plan',
+  'incident_response_plan',
+  'internal_audit',
+  'tlpt_result',
+  'firewall_rule_review',
+  'management_review',
+  'security_training',
+  'policy_acknowledgement',
 ] as const
 
 export function AttestivPoliciesPage() {
