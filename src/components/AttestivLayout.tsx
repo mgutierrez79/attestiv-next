@@ -348,6 +348,7 @@ const sections: Record<SectionKey, Section> = {
       { to: '/settings/dr-drill',      label: 'DR drill status',  icon: 'ti-shield-check' },
       { to: '/settings/authentication', label: 'Authentication',   icon: 'ti-key' },
       { to: '/settings/auth-posture',  label: 'Auth posture',     icon: 'ti-lock-square' },
+      { to: '/settings/ai-engine',     label: 'AI engine',        icon: 'ti-sparkles' },
       { to: '/settings/support',     label: 'Support bundle',   icon: 'ti-file-zip' },
     ],
   },
