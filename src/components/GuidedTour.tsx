@@ -405,6 +405,24 @@ function TourLauncher({
   onClose: () => void;
   t: (k: string, f?: string) => string;
 }) {
+  // Rotating "thinking" status so a slow CPU-model answer doesn't look frozen.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!asking) {
+      setTick(0);
+      return;
+    }
+    const id = setInterval(() => setTick((x) => x + 1), 2500);
+    return () => clearInterval(id);
+  }, [asking]);
+  const thinkingMsgs = [
+    t('Thinking…', 'Thinking…'),
+    t('Reading your data…', 'Reading your data…'),
+    t('Composing the answer…', 'Composing the answer…'),
+    t('Still working — the local model runs on CPU, so this can take a moment…', 'Still working — the local model runs on CPU, so this can take a moment…'),
+  ];
+  const thinkingMsg = thinkingMsgs[Math.min(tick, thinkingMsgs.length - 1)];
+
   return (
     <div
       style={{
@@ -454,8 +472,38 @@ function TourLauncher({
         </form>
       </div>
 
+      {/* Live "thinking" status while the model works (CPU answers are slow). */}
+      {asking ? (
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid var(--color-border, #eee)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 12.5,
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              border: '2px solid var(--color-border, #ccc)',
+              borderTopColor: 'var(--color-brand-navy, #0d2e4d)',
+              display: 'inline-block',
+              animation: 'attestiv-spin 0.8s linear infinite',
+            }}
+          />
+          {thinkingMsg}
+          <style>{'@keyframes attestiv-spin{to{transform:rotate(360deg)}}'}</style>
+        </div>
+      ) : null}
+
       {/* Intro — shown before the first question so the assistant explains itself */}
-      {!answer && !query.trim() ? (
+      {!answer && !asking && !query.trim() ? (
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border, #eee)' }}>
           <div style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--color-text-secondary)' }}>
             {t(
@@ -514,13 +562,17 @@ function TourLauncher({
           ) : null}
         </div>
       ) : null}
-      <div style={{ overflowY: 'auto', padding: 8 }}>
-        {tours.length === 0 ? (
-          <div style={{ padding: 16, fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center' }}>
-            {isSearch ? t('No matching guide.', 'No matching guide.') : t('No guides available.', 'No guides available.')}
-          </div>
-        ) : (
-          tours.map((tour) => (
+      {/* Quick-link guides — hidden while answering or once an answer shows. */}
+      {!asking && !answer ? (
+        <div style={{ overflowY: 'auto', padding: 8 }}>
+          {tours.length === 0 ? (
+            isSearch ? (
+              <div style={{ padding: 16, fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center' }}>
+                {t('No matching guide — press Enter to ask the assistant.', 'No matching guide — press Enter to ask the assistant.')}
+              </div>
+            ) : null
+          ) : (
+            tours.map((tour) => (
             <button
               key={tour.id}
               type="button"
@@ -542,9 +594,10 @@ function TourLauncher({
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>{tour.title}</div>
               <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{tour.description}</div>
             </button>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      ) : null}
       <div style={{ padding: '8px 14px', borderTop: '1px solid var(--color-border, #eee)', textAlign: 'right' }}>
         <button type="button" onClick={onClose} style={ghostBtn}>
           {t('Close', 'Close')}
