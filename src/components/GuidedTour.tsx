@@ -29,6 +29,13 @@ type Tour = {
   steps: TourStep[];
 };
 type MatchResult = { tour: Tour; score: number };
+type Citation = { id: string; title: string; route?: string };
+type AskResult = {
+  answer: string;
+  source: string;
+  citations?: Citation[];
+  suggested_tour?: { id: string; title: string } | null;
+};
 
 type Ctx = {
   startTour: (id: string) => void;
@@ -55,6 +62,8 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
   const [tours, setTours] = useState<Tour[]>([]);
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState<MatchResult[] | null>(null);
+  const [answer, setAnswer] = useState<AskResult | null>(null);
+  const [asking, setAsking] = useState(false);
 
   const [active, setActive] = useState<Tour | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -110,6 +119,26 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
   );
 
   const openLauncher = useCallback(() => setLauncherOpen(true), []);
+
+  // Ask the AI help assistant a free-text question (grounded "manual").
+  const ask = useCallback(async (q: string) => {
+    const question = q.trim();
+    if (!question) return;
+    setAsking(true);
+    setAnswer(null);
+    try {
+      const res = await apiJson<AskResult>('/assistant/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+      setAnswer(res);
+    } catch {
+      setAnswer({ answer: 'Sorry — I could not reach the help assistant.', source: 'error' });
+    } finally {
+      setAsking(false);
+    }
+  }, []);
 
   const step = active?.steps[stepIndex] ?? null;
 
@@ -221,6 +250,9 @@ export function GuidedTourProvider({ children }: { children: React.ReactNode }) 
                   tours={visibleTours}
                   isSearch={!!matches}
                   onPick={startTour}
+                  onAsk={ask}
+                  asking={asking}
+                  answer={answer}
                   onClose={() => setLauncherOpen(false)}
                   t={t}
                 />
@@ -349,6 +381,9 @@ function TourLauncher({
   tours,
   isSearch,
   onPick,
+  onAsk,
+  asking,
+  answer,
   onClose,
   t,
 }: {
@@ -357,6 +392,9 @@ function TourLauncher({
   tours: Tour[];
   isSearch: boolean;
   onPick: (id: string) => void;
+  onAsk: (q: string) => void;
+  asking: boolean;
+  answer: AskResult | null;
   onClose: () => void;
   t: (k: string, f?: string) => string;
 }) {
@@ -380,23 +418,52 @@ function TourLauncher({
     >
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border, #eee)' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          <i className="ti ti-route" aria-hidden="true" /> {t('Show me how to…', 'Show me how to…')}
+          <i className="ti ti-sparkles" aria-hidden="true" /> {t('Ask for help', 'Ask for help')}
         </div>
-        <input
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('e.g. add a connector', 'e.g. add a connector')}
-          style={{
-            width: '100%',
-            padding: '8px 10px',
-            fontSize: 12.5,
-            border: '1px solid var(--color-border, #ddd)',
-            borderRadius: 6,
-            outline: 'none',
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onAsk(query);
           }}
-        />
+          style={{ display: 'flex', gap: 6 }}
+        >
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('e.g. how do I add a connector?', 'e.g. how do I add a connector?')}
+            style={{
+              flex: 1,
+              padding: '8px 10px',
+              fontSize: 12.5,
+              border: '1px solid var(--color-border, #ddd)',
+              borderRadius: 6,
+              outline: 'none',
+            }}
+          />
+          <button type="submit" disabled={asking || !query.trim()} style={primaryBtn}>
+            {asking ? <i className="ti ti-loader-2" aria-hidden="true" /> : t('Ask', 'Ask')}
+          </button>
+        </form>
       </div>
+
+      {/* Assistant answer */}
+      {answer ? (
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--color-border, #eee)', background: 'var(--color-background-secondary, #f8f8f6)' }}>
+          <div style={{ fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'var(--color-text-primary)' }}>{answer.answer}</div>
+          {answer.suggested_tour ? (
+            <button type="button" onClick={() => onPick(answer.suggested_tour!.id)} style={{ ...primaryBtn, marginTop: 10 }}>
+              <i className="ti ti-pointer" aria-hidden="true" /> {t('Show me', 'Show me')}: {answer.suggested_tour.title}
+            </button>
+          ) : null}
+          {answer.citations && answer.citations.length > 0 ? (
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+              {t('Source', 'Source')}: {answer.citations.map((c) => c.title).join(' · ')}
+              {answer.source?.startsWith('llm:') ? ' · AI' : answer.source === 'manual' ? ' · manual' : ''}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div style={{ overflowY: 'auto', padding: 8 }}>
         {tours.length === 0 ? (
           <div style={{ padding: 16, fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center' }}>
