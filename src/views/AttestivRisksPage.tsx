@@ -11,6 +11,7 @@
 // a glance which ones came from the scoring engine vs human entry.
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import {
@@ -89,6 +90,7 @@ export function AttestivRisksPage() {
   const [createBusy, setCreateBusy] = useState(false)
   const { canWrite } = useRoles()
   const [filter, setFilter] = useState<{ status?: string; source?: string; category?: string }>({})
+  const [selectedCell, setSelectedCell] = useState<{ likelihood: Level; impact: Level } | null>(null)
 
   async function refresh() {
     setError(null)
@@ -189,8 +191,57 @@ export function AttestivRisksPage() {
           <CardTitle right={<span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('likelihood × impact', 'likelihood × impact')}</span>}>
             {t('Risk heat-map', 'Risk heat-map')}
           </CardTitle>
-          <RiskMatrix matrix={matrix} onCellClick={(level) => setFilter((f) => ({ ...f, status: undefined }))} />
+          <RiskMatrix
+            matrix={matrix}
+            selected={selectedCell}
+            onCellClick={(likelihood, impact) =>
+              setSelectedCell((cur) =>
+                cur && cur.likelihood === likelihood && cur.impact === impact ? null : { likelihood, impact },
+              )
+            }
+          />
         </Card>
+
+        {selectedCell ? (
+          <Card style={{ marginTop: 12 }}>
+            <CardTitle
+              right={
+                <button
+                  onClick={() => setSelectedCell(null)}
+                  style={{ fontSize: 11, background: 'none', border: '0.5px solid var(--color-border-secondary)', color: 'var(--color-text-secondary)', padding: '4px 10px', borderRadius: 'var(--border-radius-md)', cursor: 'pointer' }}
+                >
+                  {t('Close', 'Close')}
+                </button>
+              }
+            >
+              {t('Risks in', 'Risks in')} {selectedCell.likelihood} × {selectedCell.impact}
+            </CardTitle>
+            {(() => {
+              const cellRisks = matrix[selectedCell.likelihood][selectedCell.impact]
+              if (cellRisks.length === 0) {
+                return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('No risks in this cell.', 'No risks in this cell.')}</div>
+              }
+              return (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {cellRisks.map((r) => (
+                    <li key={r.risk_id} style={{ padding: '8px 0', borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <Link
+                        href={`/risks/${encodeURIComponent(r.risk_id)}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--color-text-primary)', textDecoration: 'none', fontSize: 12 }}
+                      >
+                        <Badge tone={(r.score ?? 0) >= 12 ? 'red' : (r.score ?? 0) >= 6 ? 'amber' : 'gray'}>{r.score ?? 0}</Badge>
+                        <span style={{ flex: '1 1 280px', minWidth: 220, color: 'var(--color-brand-blue)' }}>{r.title || r.risk_id}</span>
+                        {frameworkLabel(r) ? (
+                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{frameworkLabel(r)}</span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )
+            })()}
+          </Card>
+        ) : null}
 
         <Card style={{ marginTop: 12 }}>
           <CardTitle
@@ -280,12 +331,19 @@ function SummaryCard({
   )
 }
 
+function frameworkLabel(r: Risk): string {
+  const fw = (r.metadata?.['framework_name'] as string | undefined) ?? r.source_framework_id ?? ''
+  return typeof fw === 'string' ? fw : ''
+}
+
 function RiskMatrix({
   matrix,
+  selected,
   onCellClick,
 }: {
   matrix: Record<Level, Record<Level, Risk[]>>
-  onCellClick: (level: Level) => void
+  selected: { likelihood: Level; impact: Level } | null
+  onCellClick: (likelihood: Level, impact: Level) => void
 }) {
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -341,13 +399,14 @@ function RiskMatrix({
                   const risks = matrix[likelihood][impact]
                   const score = scoreFor(likelihood) * scoreFor(impact)
                   const tone = cellTone(score)
+                  const isSelected = selected?.likelihood === likelihood && selected?.impact === impact
                   return (
                     <td
                       key={impact}
-                      onClick={() => onCellClick(likelihood)}
+                      onClick={() => risks.length > 0 && onCellClick(likelihood, impact)}
                       style={{
                         padding: 6,
-                        border: '0.5px solid var(--color-border-tertiary)',
+                        border: isSelected ? '2px solid var(--color-text-primary)' : '0.5px solid var(--color-border-tertiary)',
                         background: tone.bg,
                         verticalAlign: 'top',
                         minHeight: 60,
