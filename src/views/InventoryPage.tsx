@@ -36,6 +36,7 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
+import { useBackgroundTasks } from '../components/BackgroundTasks'
 
 import { useI18n } from '../lib/i18n'
 
@@ -124,7 +125,10 @@ export function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
+  const { run: runTask, isRunning } = useBackgroundTasks()
+  // Derived from the GLOBAL task registry so the button still shows "Updating…"
+  // if you navigate away and return while the update is in flight.
+  const importing = isRunning('inventory-refresh')
   // assetId currently mid-patch; suppresses concurrent edits to the
   // same row and shows a small busy state on the dropdown.
   const [assigningAssetId, setAssigningAssetId] = useState<string | null>(null)
@@ -474,19 +478,24 @@ export function InventoryPage() {
   }
 
   async function refreshFromConnectors() {
-    setImporting(true)
     setError(null)
     setInfo(null)
     try {
-      const response = await apiFetch('/inventory/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh: true, overwrite: false }),
+      // Run as a GLOBAL background task so the running indicator survives
+      // navigation and the button reflects "still updating" if you come back.
+      const body = await runTask('inventory-refresh', t('Updating inventory…', 'Updating inventory…'), async () => {
+        const response = await apiFetch('/inventory/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh: true, overwrite: false }),
+        })
+        const b = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(b?.detail || b?.error || `${response.status} ${response.statusText}`)
+        }
+        return b
       })
-      const body = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(body?.detail || body?.error || `${response.status} ${response.statusText}`)
-      }
+      if (body === undefined) return // an update was already running
       const imported = body?.imported ?? 0
       const updated = body?.updated ?? 0
       const skipped = body?.skipped ?? 0
@@ -500,8 +509,6 @@ export function InventoryPage() {
       await load()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to refresh inventory')
-    } finally {
-      setImporting(false)
     }
   }
 
@@ -629,12 +636,12 @@ export function InventoryPage() {
                 {importing ? (
                   <>
                     <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
-                    {t('Refreshing…', 'Refreshing…')}
+                    {t('Updating…', 'Updating…')}
                   </>
                 ) : (
                   <>
                     <i className="ti ti-refresh" aria-hidden="true" />
-                    {t('Refresh from connectors', 'Refresh from connectors')}
+                    {t('Update', 'Update')}
                   </>
                 )}
               </PrimaryButton>

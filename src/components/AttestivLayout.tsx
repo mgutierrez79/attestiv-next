@@ -25,6 +25,7 @@ import { loadSettings, saveSettings } from '../lib/settings'
 import { clearSessionMarker } from '../lib/session'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { GuidedTourProvider } from './GuidedTour'
+import { BackgroundTasksProvider } from './BackgroundTasks'
 
 // translateNavLabel: small helper that reuses the literal English label
 // as the translation key. So `Overview` becomes `t('Overview',
@@ -606,6 +607,7 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
   }
 
   return (
+    <BackgroundTasksProvider>
     <GuidedTourProvider>
     <div className="attestiv-shell">
       <div className="attestiv-rail">
@@ -650,6 +652,7 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
       <main className="attestiv-main">{children}</main>
     </div>
     </GuidedTourProvider>
+    </BackgroundTasksProvider>
   );
 }
 
