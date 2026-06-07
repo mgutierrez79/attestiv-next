@@ -223,31 +223,38 @@ export function AttestivRemediationPage() {
 
         {summaryStats && summaryStats.open_count + summaryStats.in_progress_count > 0 ? (
           <Card style={{ marginTop: 10 }}>
-            <CardTitle>{t('Aging buckets (open tasks)', 'Aging buckets (open tasks)')}</CardTitle>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                gap: 10,
-                marginTop: 8,
-              }}
-            >
-              {(['0-7d', '8-30d', '31-60d', '60+d'] as const).map((bucket) => {
-                const count = summaryStats.aging_buckets?.[bucket] ?? 0
-                const tone = bucket === '60+d' ? 'red' : bucket === '31-60d' ? 'amber' : 'navy'
-                return <SummaryCard key={bucket} label={t(`Open ${bucket}`, `Open ${bucket}`)} value={count} icon="ti-hourglass-low" tone={tone} />
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-              <span>
-                {t('Mean open age', 'Mean open age')}: <strong style={{ color: 'var(--color-text-primary)' }}>{summaryStats.mean_age_open_days.toFixed(1)}d</strong>
-              </span>
-              {summaryStats.oldest_open_task_id ? (
-                <span>
-                  {t('Oldest open', 'Oldest open')}: <code>{summaryStats.oldest_open_task_id.slice(0, 8)}</code> ({summaryStats.oldest_open_age_days}d)
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, listStyle: 'revert' }}>
+                {t('Aging buckets (open tasks)', 'Aging buckets (open tasks)')}
+                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 8 }}>
+                  {t('mean', 'mean')} {summaryStats.mean_age_open_days.toFixed(1)}d
                 </span>
-              ) : null}
-            </div>
+              </summary>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: 10,
+                  marginTop: 10,
+                }}
+              >
+                {(['0-7d', '8-30d', '31-60d', '60+d'] as const).map((bucket) => {
+                  const count = summaryStats.aging_buckets?.[bucket] ?? 0
+                  const tone = bucket === '60+d' ? 'red' : bucket === '31-60d' ? 'amber' : 'navy'
+                  return <SummaryCard key={bucket} label={t(`Open ${bucket}`, `Open ${bucket}`)} value={count} icon="ti-hourglass-low" tone={tone} />
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                <span>
+                  {t('Mean open age', 'Mean open age')}: <strong style={{ color: 'var(--color-text-primary)' }}>{summaryStats.mean_age_open_days.toFixed(1)}d</strong>
+                </span>
+                {summaryStats.oldest_open_task_id ? (
+                  <span>
+                    {t('Oldest open', 'Oldest open')}: <code>{summaryStats.oldest_open_task_id.slice(0, 8)}</code> ({summaryStats.oldest_open_age_days}d)
+                  </span>
+                ) : null}
+              </div>
+            </details>
           </Card>
         ) : null}
 
@@ -438,7 +445,7 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontSize: 13, fontWeight: 500, overflowWrap: 'anywhere' }} title={task.title}>
             {task.title}
           </span>
           {isAuto ? <Badge tone="navy" icon="ti-rocket">auto</Badge> : null}
