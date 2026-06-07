@@ -15,6 +15,7 @@
 //     is hard-coded for now; wires up when /dr lands in Phase C)
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Badge,
   Card,
@@ -27,6 +28,7 @@ import {
   Pulse,
   SourceRow,
   StatPill,
+  StatusBadge,
   Topbar,
 } from '../components/AttestivUi'
 import { ApiError, apiJson } from '../lib/api'
@@ -152,6 +154,21 @@ type AuditEntry = {
   details?: Record<string, unknown>
 }
 type AuditLogResponse = { items?: AuditEntry[] }
+
+type PrioritizedGap = {
+  framework_id: string
+  control_id: string
+  control_name?: string
+  control_area?: string
+  status: string
+  score: number
+  severity: string
+  finding_description?: string
+  remediation?: string
+  cross_framework_count: number
+  priority_score: number
+}
+type PrioritizedGapsResponse = { gaps?: PrioritizedGap[] }
 
 // humanizeAuditAction maps the backend's snake_case action strings to
 // a one-line title for the Recent activity feed. Anything unmapped
@@ -307,27 +324,51 @@ function CoverageCard({ data, t }: { data: CoverageTrend | null; t: (a: string, 
   )
 }
 
+const SEVERITY_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+  critical: 'red',
+  high: 'amber',
+  medium: 'navy',
+  low: 'gray',
+}
+
+const FRAMEWORK_SHORT: Record<string, string> = {
+  iso27001: 'ISO',
+  soc2: 'SOC 2',
+  nis2: 'NIS2',
+  dora: 'DORA',
+  gxp: 'GxP',
+  cis: 'CIS',
+  nist: 'NIST',
+  pci_dss: 'PCI',
+}
+
 export function AttestivDashboardOverview() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [coverage, setCoverage] = useState<CoverageTrend | null>(null)
   const [grc, setGRC] = useState<GRCMetrics>(EMPTY_GRC)
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
+  const [gaps, setGaps] = useState<PrioritizedGap[]>([])
   const [error, setError] = useState<ApiError | null>(null)
+  // connector name → controls_supported count from the coverage attestation
+  const [connectorCoverage, setConnectorCoverage] = useState<Record<string, number>>({})
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        const [connectorsResponse, summaryResponse, auditResponse, coverageResponse] = await Promise.allSettled([
+        const [connectorsResponse, summaryResponse, auditResponse, coverageResponse, gapsResponse, connCoverageResponse] = await Promise.allSettled([
           apiJson<ConnectorsResponse>('/connectors'),
           apiJson<DashboardSummary>('/dashboard/summary'),
           apiJson<AuditLogResponse>('/audit/log?limit=4'),
           apiJson<CoverageTrend>('/scoring/coverage-trend?weeks=12'),
+          apiJson<PrioritizedGapsResponse>('/scoring/prioritized-gaps?limit=5&min_severity=high'),
+          apiJson<{ connectors?: Array<{ name: string; controls_supported: number }> }>('/connectors/coverage'),
         ])
         if (cancelled) return
         if (connectorsResponse.status === 'fulfilled') {
@@ -341,6 +382,16 @@ export function AttestivDashboardOverview() {
         }
         if (auditResponse.status === 'fulfilled') {
           setAuditEntries(auditResponse.value.items || [])
+        }
+        if (gapsResponse.status === 'fulfilled') {
+          setGaps(gapsResponse.value.gaps ?? [])
+        }
+        if (connCoverageResponse.status === 'fulfilled') {
+          const map: Record<string, number> = {}
+          for (const c of connCoverageResponse.value.connectors ?? []) {
+            map[c.name] = c.controls_supported
+          }
+          setConnectorCoverage(map)
         }
         // Surface only critical-path errors. A summary failure is
         // tolerable (the page degrades gracefully); a connectors
@@ -387,9 +438,17 @@ export function AttestivDashboardOverview() {
     const barColor = status === 'OK'
       ? 'var(--color-status-green-mid)'
       : 'var(--color-status-amber-mid)'
-    const subtitle = connector.delivery_mode === 'stream'
+    const controlsSupported = connectorCoverage[connector.name] ?? 0
+    const baseSubtitle = connector.delivery_mode === 'stream'
       ? `Streaming · last: ${relativeTime(lastSeen)}`
       : `Polling · last: ${relativeTime(lastSeen)}`
+    // When stale/erroring and we know how many controls this feeds,
+    // surface the impact inline so the operator knows why they should act.
+    const subtitle = (status === 'Warn' && controlsSupported > 0)
+      ? `${baseSubtitle} · ⚠ feeds ${controlsSupported} control${controlsSupported === 1 ? '' : 's'} — evidence aging`
+      : controlsSupported > 0
+        ? `${baseSubtitle} · feeds ${controlsSupported} control${controlsSupported === 1 ? '' : 's'}`
+        : baseSubtitle
     return (
       <SourceRow
         logo={<ConnectorLogo name={connector.name} size={16} />}
@@ -718,6 +777,64 @@ export function AttestivDashboardOverview() {
             valueColor={grc.policiesOverdue && grc.policiesOverdue > 0 ? 'var(--color-status-amber-mid)' : undefined}
           />
         </div>
+
+        {/* Top issues — ranked failing controls the CISO should act on first */}
+        {gaps.length > 0 && (
+          <Card style={{ marginBottom: 20 }}>
+            <CardTitle
+              right={
+                <GhostButton onClick={() => router.push('/scoring/frameworks')}>
+                  {t('View all gaps', 'View all gaps')} <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
+                </GhostButton>
+              }
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <i className="ti ti-alert-triangle" aria-hidden="true" style={{ fontSize: 13, color: 'var(--color-status-amber-mid)' }} />
+                {t('Top issues — fix these first', 'Top issues — fix these first')}
+              </span>
+            </CardTitle>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: -4, marginBottom: 10 }}>
+              {t('Ranked by severity × failure depth × cross-framework leverage', 'Ranked by severity × failure depth × cross-framework leverage')}
+            </div>
+            {gaps.map((gap, i) => (
+              <div
+                key={`${gap.framework_id}-${gap.control_id}`}
+                onClick={() => router.push(`/scoring/frameworks/${gap.framework_id}/controls/${gap.control_id}`)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '9px 0',
+                  borderBottom: i < gaps.length - 1 ? '0.5px solid var(--color-border-tertiary)' : 'none',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                }}
+              >
+                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontVariantNumeric: 'tabular-nums', width: 16, flexShrink: 0 }}>
+                  {i + 1}
+                </span>
+                <Badge tone={SEVERITY_TONE[gap.severity] ?? 'gray'}>{gap.severity}</Badge>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {gap.control_name || gap.control_id}
+                  </div>
+                  {gap.finding_description ? (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>
+                      {gap.finding_description}
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <Badge tone="blue">{FRAMEWORK_SHORT[gap.framework_id] ?? gap.framework_id.toUpperCase()}</Badge>
+                  {gap.cross_framework_count > 1 && (
+                    <Badge tone="navy">+{gap.cross_framework_count - 1}</Badge>
+                  )}
+                  <StatusBadge status={gap.status} />
+                </div>
+              </div>
+            ))}
+          </Card>
+        )}
 
         <div style={{ marginBottom: 20 }}>
           <CoverageCard data={coverage} t={t} />

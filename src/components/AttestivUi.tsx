@@ -13,8 +13,9 @@ import type {
   PropsWithChildren,
   ReactNode,
   SelectHTMLAttributes,
+  ThHTMLAttributes,
 } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../lib/i18n'
 
 type Tone =
@@ -1268,10 +1269,12 @@ export function Banner({
   title,
   children,
   onDismiss,
+  onRetry,
 }: PropsWithChildren<{
   tone?: 'info' | 'success' | 'warning' | 'error'
   title?: string
   onDismiss?: () => void
+  onRetry?: () => void
 }>) {
   const {
     t
@@ -1303,6 +1306,26 @@ export function Banner({
         {title ? <div style={{ fontWeight: 500, marginBottom: children ? 4 : 0 }}>{title}</div> : null}
         {children}
       </div>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${entry.fg}40`,
+            borderRadius: 5,
+            color: entry.fg,
+            cursor: 'pointer',
+            padding: '2px 10px',
+            fontSize: 11,
+            fontWeight: 500,
+            fontFamily: 'inherit',
+            flexShrink: 0,
+          }}
+        >
+          {t('Retry', 'Retry')}
+        </button>
+      ) : null}
       {onDismiss ? (
         <button
           type="button"
@@ -1511,6 +1534,312 @@ export function Pagination({
           {t('Next', 'Next')} <i className="ti ti-chevron-right" aria-hidden="true" />
         </GhostButton>
       </div>
+    </div>
+  )
+}
+
+// Modal — accessible dialog with backdrop, Escape-key close, and
+// focus-trap. Renders above all content via fixed positioning (no
+// portal needed). The footer slot holds action buttons; pass null to
+// omit (e.g. for info-only modals).
+export function Modal({
+  open,
+  onClose,
+  title,
+  width = 520,
+  children,
+  footer,
+}: {
+  open: boolean
+  onClose: () => void
+  title: string
+  width?: number
+  children: ReactNode
+  footer?: ReactNode
+}) {
+  const { t } = useI18n()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Escape key support
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  // Focus the dialog on open
+  useEffect(() => {
+    if (open) dialogRef.current?.focus()
+  }, [open])
+
+  if (!open) return null
+
+  const backdropStyle: CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(3, 35, 74, 0.38)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    animation: 'attestiv-fade-in 160ms ease',
+  }
+  const dialogStyle: CSSProperties = {
+    background: 'var(--color-background-primary)',
+    borderRadius: 'var(--border-radius-lg)',
+    boxShadow: '0 8px 32px rgba(4, 44, 83, 0.22)',
+    width: '100%',
+    maxWidth: width,
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  }
+  return (
+    // Backdrop click closes the modal
+    <div style={backdropStyle} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        ref={dialogRef}
+        tabIndex={-1}
+        style={dialogStyle}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '0.5px solid var(--color-border-tertiary)',
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{title}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('Close', 'Close')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              padding: 4,
+              borderRadius: 6,
+              lineHeight: 1,
+            }}
+          >
+            <i className="ti ti-x" aria-hidden="true" style={{ fontSize: 16 }} />
+          </button>
+        </div>
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+          {children}
+        </div>
+        {/* Footer */}
+        {footer != null && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              padding: '12px 20px',
+              borderTop: '0.5px solid var(--color-border-tertiary)',
+              flexShrink: 0,
+            }}
+          >
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// SortableTable — generic table with sortable column headers and the
+// shared Pagination footer. Accepts typed column definitions so each
+// column knows its accessor, label, and whether it's sortable.
+//
+// Usage:
+//   <SortableTable
+//     columns={[{ key: 'title', label: 'Title', sortable: true }, ...]}
+//     rows={risks}
+//     rowKey={(r) => r.risk_id}
+//     renderCell={(row, col) => <span>{row[col.key]}</span>}
+//   />
+export type TableColumn<T> = {
+  key: keyof T & string
+  label: string
+  sortable?: boolean
+  width?: number | string
+  align?: 'left' | 'right' | 'center'
+  thProps?: ThHTMLAttributes<HTMLTableCellElement>
+}
+
+export function SortableTable<T extends Record<string, unknown>>({
+  columns,
+  rows,
+  rowKey,
+  renderCell,
+  defaultPageSize = 20,
+  pageSizes = [10, 20, 50, 100],
+  empty,
+  label,
+  onRowClick,
+}: {
+  columns: TableColumn<T>[]
+  rows: T[]
+  rowKey: (row: T, index: number) => string
+  renderCell: (row: T, column: TableColumn<T>, index: number) => ReactNode
+  defaultPageSize?: number
+  pageSizes?: number[]
+  empty?: ReactNode
+  label?: string
+  onRowClick?: (row: T) => void
+}) {
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(defaultPageSize)
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return rows
+    return [...rows].sort((a, b) => {
+      const av = a[sortKey] ?? ''
+      const bv = b[sortKey] ?? ''
+      const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [rows, sortKey, sortDir])
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const current = Math.min(page, pageCount - 1)
+  const slice = useMemo(
+    () => sorted.slice(current * pageSize, (current + 1) * pageSize),
+    [sorted, current, pageSize],
+  )
+
+  const handleSort = useCallback((key: string) => {
+    setSortKey((prev) => {
+      if (prev === key) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+        return key
+      }
+      setSortDir('asc')
+      return key
+    })
+    setPage(0)
+  }, [])
+
+  if (rows.length === 0) {
+    return <>{empty ?? null}</>
+  }
+
+  const thBase: CSSProperties = {
+    padding: '8px 12px',
+    fontSize: 10,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--color-text-tertiary)',
+    borderBottom: '0.5px solid var(--color-border-secondary)',
+    textAlign: 'left',
+    whiteSpace: 'nowrap',
+    userSelect: 'none',
+    background: 'var(--color-background-secondary)',
+  }
+  const tdBase: CSSProperties = {
+    padding: '9px 12px',
+    fontSize: 12,
+    borderBottom: '0.5px solid var(--color-border-tertiary)',
+    verticalAlign: 'middle',
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ overflowX: 'auto', borderRadius: 'var(--border-radius-md)', border: '0.5px solid var(--color-border-tertiary)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  {...col.thProps}
+                  style={{
+                    ...thBase,
+                    width: col.width,
+                    textAlign: col.align ?? 'left',
+                    cursor: col.sortable ? 'pointer' : 'default',
+                    ...(col.thProps?.style ?? {}),
+                  }}
+                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  aria-sort={
+                    sortKey === col.key
+                      ? sortDir === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : col.sortable
+                        ? 'none'
+                        : undefined
+                  }
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {col.label}
+                    {col.sortable && (
+                      <i
+                        className={`ti ${
+                          sortKey === col.key
+                            ? sortDir === 'asc'
+                              ? 'ti-sort-ascending'
+                              : 'ti-sort-descending'
+                            : 'ti-selector'
+                        }`}
+                        aria-hidden="true"
+                        style={{ fontSize: 11, opacity: sortKey === col.key ? 1 : 0.35 }}
+                      />
+                    )}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {slice.map((row, i) => (
+              <tr
+                key={rowKey(row, current * pageSize + i)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={{ cursor: onRowClick ? 'pointer' : 'default' }}
+                className={onRowClick ? 'attestiv-table-row-hover' : undefined}
+              >
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    style={{ ...tdBase, textAlign: col.align ?? 'left' }}
+                  >
+                    {renderCell(row, col, current * pageSize + i)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pagination
+        page={current}
+        pageSize={pageSize}
+        total={sorted.length}
+        onPageChange={setPage}
+        onPageSizeChange={(s) => { setPageSize(s); setPage(0) }}
+        pageSizes={pageSizes}
+        label={label}
+      />
     </div>
   )
 }

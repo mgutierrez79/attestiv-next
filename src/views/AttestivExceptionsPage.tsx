@@ -13,7 +13,7 @@
 // the scoring engine flips the control's status to PASS but leaves the
 // numeric score untouched.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import {
@@ -84,6 +84,37 @@ export function AttestivExceptionsPage() {
   const [createBusy, setCreateBusy] = useState(false)
   const { canWrite } = useRoles()
   const [filter, setFilter] = useState<{ status?: string; severity?: string; framework_id?: string }>({})
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
+  const exportCSV = useCallback((rows: Exception[]) => {
+    const targets = selected.size > 0 ? rows.filter((e) => selected.has(e.id)) : rows
+    const header = ['id', 'title', 'framework_id', 'control_id', 'severity', 'status', 'accepted_by_user_id', 'expires_at', 'created_at']
+    const csv = [
+      header.join(','),
+      ...targets.map((e) =>
+        header.map((k) => {
+          const v = (e as Record<string, unknown>)[k] ?? ''
+          const s = String(v)
+          return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+        }).join(',')
+      ),
+    ].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `exceptions-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [selected])
 
   async function refresh() {
     setError(null)
@@ -163,7 +194,7 @@ export function AttestivExceptionsPage() {
         }
       />
       <div className="attestiv-content">
-        {error ? <Banner tone="error">{error}</Banner> : null}
+        {error ? <Banner tone="error" onRetry={refresh}>{error}</Banner> : null}
         {expiring.length > 0 ? (
           <Banner tone="warning" title={`${expiring.length} exception${expiring.length === 1 ? '' : 's'} expiring in 14 days`}>
             {t(
@@ -187,7 +218,42 @@ export function AttestivExceptionsPage() {
         </div>
 
         <Card style={{ marginTop: 12 }}>
-          <CardTitle right={<FilterBar value={filter} onChange={setFilter} />}>{t('Exceptions', 'Exceptions')}</CardTitle>
+          <CardTitle
+            right={
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {selected.size > 0 && (
+                  <>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                      {selected.size} {t('selected', 'selected')}
+                    </span>
+                    <GhostButton onClick={() => exportCSV(items)}>
+                      <i className="ti ti-download" aria-hidden="true" style={{ fontSize: 12 }} /> {t('Export CSV', 'Export CSV')}
+                    </GhostButton>
+                    <GhostButton onClick={() => setSelected(new Set())}>
+                      {t('Clear', 'Clear')}
+                    </GhostButton>
+                  </>
+                )}
+                {selected.size === 0 && (
+                  <GhostButton onClick={() => exportCSV(items)}>
+                    <i className="ti ti-download" aria-hidden="true" style={{ fontSize: 12 }} /> {t('Export CSV', 'Export CSV')}
+                  </GhostButton>
+                )}
+                <FilterBar value={filter} onChange={setFilter} />
+              </div>
+            }
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                aria-label={t('Select all exceptions', 'Select all exceptions')}
+                checked={items.length > 0 && selected.size === items.length}
+                onChange={(e) => setSelected(e.target.checked ? new Set(items.map((ex) => ex.id)) : new Set())}
+                style={{ cursor: 'pointer' }}
+              />
+              {t('Exceptions', 'Exceptions')}
+            </div>
+          </CardTitle>
           {loading ? (
             <Skeleton lines={5} height={42} />
           ) : items.length === 0 ? (
@@ -207,11 +273,22 @@ export function AttestivExceptionsPage() {
           ) : (
             <div>
               {items.map((e) => (
-                <ExceptionRow
-                  key={e.id}
-                  exception={e}
-                  onOpen={() => router.push(`/exceptions/${encodeURIComponent(e.id)}`)}
-                />
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(e.id)}
+                    onChange={() => toggleSelected(e.id)}
+                    onClick={(ev) => ev.stopPropagation()}
+                    aria-label={`Select ${e.title}`}
+                    style={{ cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <ExceptionRow
+                      exception={e}
+                      onOpen={() => router.push(`/exceptions/${encodeURIComponent(e.id)}`)}
+                    />
+                  </div>
+                </div>
               ))}
             </div>
           )}

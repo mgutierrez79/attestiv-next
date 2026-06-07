@@ -525,7 +525,15 @@ export function AttestivFrameworksPage() {
         }
       />
       <div className="attestiv-content">
-        {error ? <Banner tone="error">{error}</Banner> : null}
+        {usingDemo ? (
+          <Banner tone="warning" title={t('Showing demo data', 'Showing demo data')}>
+            {t(
+              'The scoring engine has no run summaries yet — these are illustrative percentages, not your actual posture. Connect your infrastructure and run Re-evaluate to see real scores.',
+              'The scoring engine has no run summaries yet — these are illustrative percentages, not your actual posture. Connect your infrastructure and run Re-evaluate to see real scores.',
+            )}
+          </Banner>
+        ) : null}
+        {error ? <Banner tone="error" onRetry={() => setReloadKey((k) => k + 1)}>{error}</Banner> : null}
         {reevalDone ? (
           <Banner tone="success" title={t('Scoring refreshed', 'Scoring refreshed')}>
             <span>
@@ -657,6 +665,7 @@ export function AttestivFrameworksPage() {
                 elapsed={generating === framework.id ? elapsed : 0}
                 onGenerate={() => generateReport(framework)}
                 onCancel={() => void cancelGenerate()}
+                demoMode={usingDemo}
               />
             ))}
           </div>
@@ -673,6 +682,7 @@ function FrameworkCard({
   elapsed,
   onGenerate,
   onCancel,
+  demoMode = false,
 }: {
   framework: FrameworkPosture
   liveCovered?: number
@@ -680,6 +690,7 @@ function FrameworkCard({
   elapsed: number
   onGenerate: () => void
   onCancel: () => void
+  demoMode?: boolean
 }) {
   const {
     t
@@ -693,6 +704,11 @@ function FrameworkCard({
   const regTotal = framework.coverage?.regulation_total ?? 0
   const passing = framework.passing_controls ?? 0
   const coverageAdjusted = regTotal > 0 ? Math.round((passing / regTotal) * 100) : framework.overall
+  // Source-split counts: how many controls are backed by live connector
+  // evidence vs. signed management attestation only.
+  const attestedOnly = framework.attested_synthetic_count ?? 0
+  const totalCovered = typeof liveCovered === 'number' ? liveCovered : (framework.coverage?.covered ?? 0)
+  const measuredCount = Math.max(0, totalCovered - attestedOnly)
   const tone: 'green' | 'amber' | 'red' | 'gray' = noData
     ? 'gray'
     : coverageAdjusted >= 95
@@ -732,6 +748,33 @@ function FrameworkCard({
         )}
       </div>
       {framework.coverage ? <CoverageBlock coverage={framework.coverage} liveCovered={liveCovered} /> : null}
+      {totalCovered > 0 ? (
+        <div
+          style={{
+            marginBottom: 10,
+            fontSize: 11,
+            color: 'var(--color-text-tertiary)',
+            display: 'flex',
+            gap: 14,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            <i className="ti ti-plug" aria-hidden="true" style={{ marginRight: 3, fontSize: 10 }} />
+            <strong style={{ color: 'var(--color-text-secondary)' }}>{measuredCount}</strong>
+            {' '}{t('connector-measured', 'connector-measured')}
+          </span>
+          <span style={{ color: 'var(--color-border-secondary)' }}>·</span>
+          <span>
+            <i className="ti ti-writing-sign" aria-hidden="true" style={{ marginRight: 3, fontSize: 10 }} />
+            <strong style={{ color: attestedOnly > 0 ? 'var(--color-status-amber-deep, var(--color-text-secondary))' : 'var(--color-text-secondary)' }}>
+              {attestedOnly}
+            </strong>
+            {' '}{t('manually attested', 'manually attested')}
+          </span>
+        </div>
+      ) : null}
       <AttestationSplit framework={framework} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
@@ -754,7 +797,11 @@ function FrameworkCard({
               {t('Cancel', 'Cancel')}
             </GhostButton>
           ) : null}
-          <PrimaryButton onClick={onGenerate} disabled={generating}>
+          <span title={demoMode ? t('Not available on demo data — run Re-evaluate first', 'Not available on demo data — run Re-evaluate first') : undefined}>
+          <PrimaryButton
+            onClick={onGenerate}
+            disabled={generating || demoMode}
+          >
             {generating ? (
               <>
                 <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
@@ -763,10 +810,11 @@ function FrameworkCard({
             ) : (
               <>
                 <i className="ti ti-file-export" aria-hidden="true" />
-                {t('Generate report', 'Generate report')}
+                {demoMode ? t('Demo — no report', 'Demo — no report') : t('Generate report', 'Generate report')}
               </>
             )}
           </PrimaryButton>
+          </span>
         </div>
       </div>
     </Card>

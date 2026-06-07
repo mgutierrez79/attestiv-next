@@ -10,7 +10,7 @@
 // Auto-created risks are tagged visually so the auditor can tell at
 // a glance which ones came from the scoring engine vs human entry.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -91,6 +91,37 @@ export function AttestivRisksPage() {
   const { canWrite } = useRoles()
   const [filter, setFilter] = useState<{ status?: string; source?: string; category?: string }>({})
   const [selectedCell, setSelectedCell] = useState<{ likelihood: Level; impact: Level } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
+  const exportCSV = useCallback((rows: Risk[]) => {
+    const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.risk_id)) : rows
+    const header = ['risk_id', 'title', 'category', 'likelihood', 'impact', 'score', 'status', 'source', 'owner', 'created_at']
+    const csv = [
+      header.join(','),
+      ...targets.map((r) =>
+        header.map((k) => {
+          const v = (r as Record<string, unknown>)[k] ?? ''
+          const s = String(v)
+          return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+        }).join(',')
+      ),
+    ].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `risks-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [selected])
 
   async function refresh() {
     setError(null)
@@ -172,7 +203,7 @@ export function AttestivRisksPage() {
         }
       />
       <div className="attestiv-content">
-        {error ? <Banner tone="error">{error}</Banner> : null}
+        {error ? <Banner tone="error" onRetry={refresh}>{error}</Banner> : null}
 
         <div
           style={{
@@ -246,14 +277,43 @@ export function AttestivRisksPage() {
         <Card style={{ marginTop: 12 }}>
           <CardTitle
             right={
-              <FilterBar
-                value={filter}
-                onChange={setFilter}
-                summary={summary}
-              />
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {selected.size > 0 && (
+                  <>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                      {selected.size} {t('selected', 'selected')}
+                    </span>
+                    <GhostButton onClick={() => exportCSV(risks)}>
+                      <i className="ti ti-download" aria-hidden="true" style={{ fontSize: 12 }} /> {t('Export CSV', 'Export CSV')}
+                    </GhostButton>
+                    <GhostButton onClick={() => setSelected(new Set())}>
+                      {t('Clear', 'Clear')}
+                    </GhostButton>
+                  </>
+                )}
+                {selected.size === 0 && (
+                  <GhostButton onClick={() => exportCSV(risks)}>
+                    <i className="ti ti-download" aria-hidden="true" style={{ fontSize: 12 }} /> {t('Export CSV', 'Export CSV')}
+                  </GhostButton>
+                )}
+                <FilterBar
+                  value={filter}
+                  onChange={setFilter}
+                  summary={summary}
+                />
+              </div>
             }
           >
-            {t('Risks', 'Risks')}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                aria-label={t('Select all risks', 'Select all risks')}
+                checked={risks.length > 0 && selected.size === risks.length}
+                onChange={(e) => setSelected(e.target.checked ? new Set(risks.map((r) => r.risk_id)) : new Set())}
+                style={{ cursor: 'pointer' }}
+              />
+              {t('Risks', 'Risks')}
+            </div>
           </CardTitle>
           {loading ? (
             <Skeleton lines={5} height={42} />
@@ -271,10 +331,22 @@ export function AttestivRisksPage() {
               items={risks}
               itemKey={(risk) => risk.risk_id}
               renderItem={(risk) => (
-                <RiskRow
-                  risk={risk}
-                  onOpen={() => router.push(`/risks/${encodeURIComponent(risk.risk_id)}`)}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(risk.risk_id)}
+                    onChange={() => toggleSelected(risk.risk_id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Select ${risk.title}`}
+                    style={{ cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <RiskRow
+                      risk={risk}
+                      onOpen={() => router.push(`/risks/${encodeURIComponent(risk.risk_id)}`)}
+                    />
+                  </div>
+                </div>
               )}
               label={t('Risks', 'Risks')}
             />
