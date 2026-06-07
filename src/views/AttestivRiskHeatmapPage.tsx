@@ -24,12 +24,20 @@ import {
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 
+type HeatmapRisk = {
+  risk_id: string
+  title?: string
+  framework_name?: string
+  score: number
+}
+
 type Cell = {
   likelihood: string
   impact: string
   score: number
   count: number
   risk_ids?: string[]
+  risks?: HeatmapRisk[]
 }
 
 type HeatmapResponse = {
@@ -212,14 +220,31 @@ export function AttestivRiskHeatmapPage() {
             </CardTitle>
             {(() => {
               const cell = cellMap.get(selected)
-              if (!cell || !cell.risk_ids || cell.risk_ids.length === 0) {
+              // Prefer the human-readable risks[] (title + framework + score);
+              // fall back to opaque risk_ids only for older backends.
+              const rows: HeatmapRisk[] =
+                cell?.risks && cell.risks.length > 0
+                  ? cell.risks
+                  : (cell?.risk_ids || []).map((id) => ({ risk_id: id, score: cell?.score ?? 0 }))
+              if (rows.length === 0) {
                 return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('No risks in this cell.', 'No risks in this cell.')}</div>
               }
               return (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {cell.risk_ids.map((id) => (
-                    <li key={id} style={{ padding: '6px 0', borderTop: '0.5px solid var(--color-border-tertiary)' }}>
-                      <Link href={`/risks/${encodeURIComponent(id)}`} style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-brand-blue)' }}>{id}</Link>
+                  {rows.map((rk) => (
+                    <li key={rk.risk_id} style={{ padding: '8px 0', borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <Link
+                        href={`/risks/${encodeURIComponent(rk.risk_id)}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--color-text-primary)', textDecoration: 'none', fontSize: 12 }}
+                      >
+                        <Badge tone={rk.score >= 12 ? 'red' : rk.score >= 6 ? 'amber' : 'gray'}>{rk.score}</Badge>
+                        <span style={{ flex: '1 1 280px', minWidth: 220, color: 'var(--color-brand-blue)' }}>
+                          {rk.title || rk.risk_id}
+                        </span>
+                        {rk.framework_name ? (
+                          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rk.framework_name}</span>
+                        ) : null}
+                      </Link>
                     </li>
                   ))}
                 </ul>
