@@ -442,7 +442,8 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
   const statusTone = STATUS_TONE[status] ?? 'gray'
   const priorityTone = PRIORITY_TONE[priority] ?? 'gray'
   const isAuto = (task.source || 'manual').toLowerCase() === 'auto'
-  const days = daysUntil(task.due_date)
+  const hasDue = hasRealDay(task.due_date)
+  const days = hasDue ? daysUntil(task.due_date) : null
   const isOverdue = days !== null && days < 0 && (status === 'open' || status === 'in_progress')
   const daysLabel = days !== null ? (days < 0 ? `${Math.abs(days)}d past` : `${days}d left`) : ''
 
@@ -488,7 +489,7 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
             ))}
           </select>
           <span style={{ fontSize: 11, color: isOverdue ? 'var(--color-status-red-mid)' : 'var(--color-text-tertiary)', whiteSpace: 'nowrap' }}>
-            {task.due_date ? task.due_date.slice(0, 10) : '—'}{daysLabel ? ` · ${daysLabel}` : ''}
+            {fmtDay(task.due_date)}{daysLabel ? ` · ${daysLabel}` : ''}
           </span>
         </div>
       </div>
@@ -519,10 +520,10 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
             <DetailField label={t('Status', 'Status')}>{status.replace(/_/g, ' ')}</DetailField>
             <DetailField label={t('Source', 'Source')}>{(task.source || 'manual').toLowerCase()}</DetailField>
             <DetailField label={t('Assignee', 'Assignee')}>{task.assigned_to_user_id || t('unassigned', 'unassigned')}</DetailField>
-            <DetailField label={t('Due date', 'Due date')}>{task.due_date ? task.due_date.slice(0, 10) : '—'}</DetailField>
-            <DetailField label={t('Created', 'Created')}>{task.created_at ? task.created_at.slice(0, 10) : '—'}</DetailField>
-            <DetailField label={t('Updated', 'Updated')}>{task.updated_at ? task.updated_at.slice(0, 10) : '—'}</DetailField>
-            {task.resolved_at ? <DetailField label={t('Resolved', 'Resolved')}>{task.resolved_at.slice(0, 10)}</DetailField> : null}
+            <DetailField label={t('Due date', 'Due date')}>{fmtDay(task.due_date)}</DetailField>
+            <DetailField label={t('Created', 'Created')}>{fmtDay(task.created_at)}</DetailField>
+            <DetailField label={t('Updated', 'Updated')}>{fmtDay(task.updated_at)}</DetailField>
+            {hasRealDay(task.resolved_at) ? <DetailField label={t('Resolved', 'Resolved')}>{fmtDay(task.resolved_at)}</DetailField> : null}
           </div>
           {task.resolution_notes ? (
             <DetailField label={t('Resolution notes', 'Resolution notes')}>{task.resolution_notes}</DetailField>
@@ -734,4 +735,18 @@ function daysUntil(iso?: string): number | null {
   const target = new Date(iso).getTime()
   if (!Number.isFinite(target)) return null
   return Math.floor((target - Date.now()) / (24 * 60 * 60 * 1000))
+}
+
+// fmtDay renders an ISO date as YYYY-MM-DD, treating an empty value or Go's
+// zero time ("0001-01-01T00:00:00Z", which time.Time marshals for an unset
+// field even with omitempty) as "no date". Without this an unresolved task
+// showed "Resolved: 0001-01-01".
+function fmtDay(iso?: string): string {
+  if (!iso) return '—'
+  const day = iso.slice(0, 10)
+  return day.startsWith('0001-') ? '—' : day
+}
+
+function hasRealDay(iso?: string): boolean {
+  return fmtDay(iso) !== '—'
 }
