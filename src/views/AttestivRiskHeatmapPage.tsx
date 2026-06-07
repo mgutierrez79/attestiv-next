@@ -38,6 +38,8 @@ type HeatmapResponse = {
   impact_order: string[]
   cells: Cell[]
   total_open: number
+  frameworks?: string[]
+  framework?: string
 }
 
 export function AttestivRiskHeatmapPage() {
@@ -48,12 +50,14 @@ export function AttestivRiskHeatmapPage() {
   const [selected, setSelected] = useState<string | null>(null)
   const [rederiving, setRederiving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [framework, setFramework] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const r = await apiFetch('/risks/heatmap')
+      const q = framework ? `?framework=${encodeURIComponent(framework)}` : ''
+      const r = await apiFetch(`/risks/heatmap${q}`)
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
       const body = (await r.json()) as HeatmapResponse
       setData(body)
@@ -62,9 +66,11 @@ export function AttestivRiskHeatmapPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [framework])
 
-  useEffect(() => { void load() }, [load])
+  // Reload when the framework filter changes; clear any open cell drill-down
+  // since its risk list no longer applies.
+  useEffect(() => { setSelected(null); void load() }, [load])
 
   // Re-derive axes: recompute likelihood (from how long each control has
   // been failing) and impact (from control weight) across every open
@@ -106,7 +112,33 @@ export function AttestivRiskHeatmapPage() {
     <>
       <Topbar
         title={t('Risk heatmap', 'Risk heatmap')}
-        left={data ? <Badge tone={data.total_open === 0 ? 'green' : 'amber'}>{data.total_open} {t('open', 'open')}</Badge> : null}
+        left={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {data ? <Badge tone={data.total_open === 0 ? 'green' : 'amber'}>{data.total_open} {t('open', 'open')}</Badge> : null}
+            {data?.frameworks && data.frameworks.length > 0 ? (
+              <select
+                value={framework}
+                onChange={(e) => setFramework(e.target.value)}
+                title={t('Filter by framework', 'Filter by framework')}
+                style={{
+                  fontSize: 12,
+                  padding: '5px 8px',
+                  border: '0.5px solid var(--color-border-secondary)',
+                  borderRadius: 'var(--border-radius-md)',
+                  background: 'var(--color-background-primary)',
+                  color: 'var(--color-text-primary)',
+                  fontFamily: 'inherit',
+                  maxWidth: 280,
+                }}
+              >
+                <option value="">{t('All frameworks', 'All frameworks')}</option>
+                {data.frameworks.map((fw) => (
+                  <option key={fw} value={fw}>{fw}</option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+        }
         right={
           <button
             onClick={() => void rederive()}
