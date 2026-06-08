@@ -18,7 +18,7 @@
 // 30 seconds and after every retry.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { ApiError, apiFetch, apiJson } from '../lib/api'
 import { Badge, Card, GhostButton, PrimaryButton, Topbar } from '../components/AttestivUi'
 import { formatTimestamp } from '../lib/time'
@@ -129,9 +129,16 @@ export function AttestivIssuesPage() {
     t
   } = useI18n();
 
-  const searchParams = useSearchParams()
-  const initialTab = (searchParams?.get('tab') as Tab | null) ?? 'dlq'
-  const [tab, setTab] = useState<Tab>(initialTab)
+  const [tab, setTab] = useState<Tab>('dlq')
+
+  // Read ?tab= from URL on mount — avoids useSearchParams (which needs
+  // a Suspense boundary for Next.js static export).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('tab') as Tab | null
+    const valid: Tab[] = ['dlq', 'stale', 'controls', 'risks', 'expiring']
+    if (t && valid.includes(t)) setTab(t)
+  }, [])
   const [dlq, setDlq] = useState<DLQRecord[]>([])
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
   const [risks, setRisks] = useState<RiskRow[]>([])
