@@ -32,7 +32,7 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { ApiError, apiJson } from '../lib/api'
-import { deriveControlsPassing, deriveOverallPosture, deriveTopFramework, scoreToPercent } from '../lib/dashboardHero'
+import { deriveControlsPassing, deriveOverallPosture, deriveTopFramework, frameworkPosturePercent, scoreToPercent } from '../lib/dashboardHero'
 import { ConnectorLogo, connectorBrandHex } from '../components/ConnectorLogo'
 
 import { useI18n } from '../lib/i18n';
@@ -97,6 +97,115 @@ function tone(percent: number): 'green' | 'amber' | 'red' {
   if (percent >= 95) return 'green'
   if (percent >= 85) return 'amber'
   return 'red'
+}
+
+function PostureNarrative({
+  posturePct,
+  passingCount,
+  auditableTotal,
+  summary,
+}: {
+  posturePct: number
+  passingCount: number
+  auditableTotal: number
+  summary: DashboardSummary | null
+}) {
+  const { t } = useI18n()
+  const router = useRouter()
+  if (auditableTotal === 0) return null
+
+  const scores = summary?.framework_scores ?? {}
+  const ranked = Object.entries(scores)
+    .map(([key, score]) => ({ key, pct: frameworkPosturePercent(score) }))
+    .sort((a, b) => b.pct - a.pct)
+
+  const best = ranked[0]
+  const worst = ranked.length > 1 ? ranked[ranked.length - 1] : null
+
+  const toneColor =
+    posturePct >= 80
+      ? 'var(--color-status-green-deep)'
+      : posturePct >= 40
+        ? 'var(--color-status-amber-text)'
+        : 'var(--color-status-red-deep)'
+  const toneBg =
+    posturePct >= 80
+      ? 'var(--color-status-green-bg)'
+      : posturePct >= 40
+        ? 'var(--color-status-amber-bg)'
+        : 'var(--color-status-red-bg)'
+
+  const sep = (
+    <span style={{ color: 'var(--color-border-secondary)', userSelect: 'none', flexShrink: 0 }}>|</span>
+  )
+
+  return (
+    <div
+      style={{
+        background: toneBg,
+        borderRadius: 'var(--border-radius-md)',
+        padding: '9px 16px',
+        marginBottom: 16,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        fontSize: 13,
+        flexWrap: 'wrap',
+        lineHeight: 1.4,
+      }}
+    >
+      <span style={{ fontWeight: 700, color: toneColor, fontSize: 15, letterSpacing: '-0.01em' }}>
+        {posturePct}%
+      </span>
+      <span style={{ color: 'var(--color-text-secondary)' }}>
+        {passingCount} {t('of', 'of')} {auditableTotal} {t('auditable controls', 'auditable controls')} {t('passing', 'passing')}
+      </span>
+      {best ? (
+        <>
+          {sep}
+          <span style={{ color: 'var(--color-text-secondary)' }}>
+            <span style={{ fontWeight: 600, color: 'var(--color-status-green-deep)' }}>
+              {FRAMEWORK_LABELS[best.key] || best.key.toUpperCase()}
+            </span>{' '}
+            {best.pct}% ↑
+          </span>
+        </>
+      ) : null}
+      {worst && worst.key !== best?.key ? (
+        <>
+          {sep}
+          <span style={{ color: 'var(--color-text-secondary)' }}>
+            <span style={{ fontWeight: 600, color: 'var(--color-status-red-deep)' }}>
+              {FRAMEWORK_LABELS[worst.key] || worst.key.toUpperCase()}
+            </span>{' '}
+            {worst.pct}% ↓
+          </span>
+        </>
+      ) : null}
+      <div style={{ flex: 1 }} />
+      {posturePct < 80 ? (
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard/issues?tab=controls')}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${toneColor}`,
+            borderRadius: 'var(--border-radius-sm)',
+            color: toneColor,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: '3px 10px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {t('dashboard.narrative.fix_cta', 'Fix failing controls')} →
+        </button>
+      ) : null}
+    </div>
+  )
 }
 
 // loadGRCMetrics fans out to the four Phase-2 endpoints and squashes
@@ -248,13 +357,20 @@ function CoverageChip({ label, value, deep, bg }: { label: string; value: number
 // filled area chart. Pure SVG (no chart lib in this project), viewBox
 // stretched to the card width via preserveAspectRatio="none".
 function CoverageSparkline({ points }: { points: CoverageTrendPoint[] }) {
+  const {
+    t
+  } = useI18n();
+
   const n = points.length
   if (n < 2) {
     return (
       <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '12px 0' }}>
-        Not enough history yet — the trend fills in as weekly snapshots accrue.
+        {t(
+          'Not enough history yet — the trend fills in as weekly snapshots accrue.',
+          'Not enough history yet — the trend fills in as weekly snapshots accrue.'
+        )}
       </div>
-    )
+    );
   }
   const W = 100
   const H = 36
@@ -579,6 +695,13 @@ export function AttestivDashboardOverview() {
             </div>
           </Card>
         ) : null}
+
+        <PostureNarrative
+          posturePct={posturePct}
+          passingCount={passingCount}
+          auditableTotal={auditableTotal}
+          summary={summary}
+        />
 
         {/* Hero posture band — the trust-grade headline: overall
             compliance posture as one big number, with the four

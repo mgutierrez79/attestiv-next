@@ -18,7 +18,7 @@
 // 30 seconds and after every retry.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, apiFetch, apiJson } from '../lib/api'
 import { Badge, Card, GhostButton, PrimaryButton, Topbar } from '../components/AttestivUi'
 import { formatTimestamp } from '../lib/time'
@@ -129,7 +129,9 @@ export function AttestivIssuesPage() {
     t
   } = useI18n();
 
-  const [tab, setTab] = useState<Tab>('dlq')
+  const searchParams = useSearchParams()
+  const initialTab = (searchParams?.get('tab') as Tab | null) ?? 'dlq'
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [dlq, setDlq] = useState<DLQRecord[]>([])
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
   const [risks, setRisks] = useState<RiskRow[]>([])
@@ -142,7 +144,7 @@ export function AttestivIssuesPage() {
   // connector-derived synthetic stand-in).
   const [failing, setFailing] = useState<any[]>([])
   const [assigningKey, setAssigningKey] = useState<string | null>(null)
-  const [assignMsg, setAssignMsg] = useState<string | null>(null)
+  const [assignResult, setAssignResult] = useState<{ text: string; ok: boolean } | null>(null)
   const router = useRouter()
 
   const reload = useCallback(async () => {
@@ -228,7 +230,7 @@ export function AttestivIssuesPage() {
     if (!c.framework_id || !c.control_id) return
     const key = `${c.framework_id}/${c.control_id}`
     setAssigningKey(key)
-    setAssignMsg(null)
+    setAssignResult(null)
     try {
       await apiFetch('/remediation', {
         method: 'POST',
@@ -240,9 +242,9 @@ export function AttestivIssuesPage() {
           description: c.detail,
         }),
       })
-      setAssignMsg(`Remediation task created for ${c.control}. See Remediation to track it.`)
+      setAssignResult({ text: c.control, ok: true })
     } catch {
-      setAssignMsg(`Could not create a remediation task for ${c.control}.`)
+      setAssignResult({ text: c.control, ok: false })
     } finally {
       setAssigningKey(null)
     }
@@ -346,8 +348,9 @@ export function AttestivIssuesPage() {
                 router.push(`/scoring/frameworks/${encodeURIComponent(c.framework_id)}/controls/${encodeURIComponent(c.control_id)}`)
               }
             }}
+            onGoToRemediation={() => router.push('/remediation?status=open')}
             assigningKey={assigningKey}
-            assignMsg={assignMsg}
+            assignResult={assignResult}
           />
         ) : null}
         {tab === 'risks' ? <RisksTab risks={risks} /> : null}
@@ -684,18 +687,18 @@ function ControlsTab({
   controls,
   onAssign,
   onView,
+  onGoToRemediation,
   assigningKey,
-  assignMsg,
+  assignResult,
 }: {
   controls: ControlIssue[]
   onAssign: (c: ControlIssue) => void
   onView: (c: ControlIssue) => void
+  onGoToRemediation: () => void
   assigningKey: string | null
-  assignMsg: string | null
+  assignResult: { text: string; ok: boolean } | null
 }) {
-  const {
-    t
-  } = useI18n();
+  const { t } = useI18n()
 
   if (!controls.length) {
     return (
@@ -707,7 +710,7 @@ function ControlsTab({
           )}
         </div>
       </Card>
-    );
+    )
   }
   return (
     <>
@@ -717,25 +720,48 @@ function ControlsTab({
           'Controls that are failing or under review. Each requires attention to maintain your compliance posture.'
         )}
       </p>
-      {assignMsg ? (
+      {assignResult ? (
         <div
           style={{
             fontSize: 12,
-            color: 'var(--color-status-blue-deep)',
-            background: 'var(--color-status-blue-bg)',
+            color: assignResult.ok ? 'var(--color-status-green-deep)' : 'var(--color-status-red-deep)',
+            background: assignResult.ok ? 'var(--color-status-green-bg)' : 'var(--color-status-red-bg)',
             padding: '8px 12px',
             borderRadius: 6,
             marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
         >
-          {assignMsg}
+          <span>
+            {assignResult.ok
+              ? `${t('Remediation task created for', 'Remediation task created for')} ${assignResult.text}.`
+              : `${t('Could not create a remediation task for', 'Could not create a remediation task for')} ${assignResult.text}.`}
+          </span>
+          {assignResult.ok ? (
+            <button
+              type="button"
+              onClick={onGoToRemediation}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--color-status-green-deep)',
+                borderRadius: 4,
+                color: 'var(--color-status-green-deep)',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                flexShrink: 0,
+              }}
+            >
+              {t('View in Remediation', 'View in Remediation')} →
+            </button>
+          ) : null}
         </div>
       ) : null}
       {controls.map((control, index) => {
-        const {
-          t
-        } = useI18n();
-
         return (
           <Card key={`${control.framework}-${control.control}-${index}`}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>

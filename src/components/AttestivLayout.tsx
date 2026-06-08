@@ -124,26 +124,35 @@ const railTop: RailItem[] = [
   // { key: 'management', label: 'Management', icon: 'ti-briefcase',        prefix: '/management' },
   { key: 'connectors', label: 'Connectors', icon: 'ti-plug',             prefix: '/connectors' },
   { key: 'evidence',   label: 'Evidence',   icon: 'ti-lock',             prefix: '/evidence' },
-  { key: 'frameworks', label: 'Frameworks', icon: 'ti-shield-check',     prefix: '/frameworks' },
   // Apps + Sites moved INSIDE the Inventory page as tabs — a single
   // entry point for "everything in scope" instead of three parallel
   // sections in the rail. Direct routes /apps/{id} + /sites/{id}
   // still resolve (used by deep links from detail pages and the
   // Inventory "App tier" column).
   { key: 'inventory',  label: 'Inventory',  icon: 'ti-database',         prefix: '/inventory' },
+  { key: 'incidents',  label: 'Incidents',  icon: 'ti-radar-2',          prefix: '/incidents' },
   { key: 'risks',      label: 'Risk',       icon: 'ti-alert-octagon',    prefix: '/risks' },
   { key: 'policies',   label: 'Policies',   icon: 'ti-file-text',        prefix: '/policies' },
-  { key: 'exceptions', label: 'Exceptions', icon: 'ti-shield-off', prefix: '/exceptions' },
-  { key: 'remediation', label: 'Remediation', icon: 'ti-checklist',       prefix: '/remediation' },
-  { key: 'incidents',  label: 'Incidents',  icon: 'ti-radar-2',          prefix: '/incidents' },
+  { key: 'exceptions', label: 'Exceptions', icon: 'ti-shield-off',       prefix: '/exceptions' },
+  { key: 'remediation', label: 'Remediation', icon: 'ti-checklist',      prefix: '/remediation' },
   // Third parties moved INSIDE the Inventory section — vendors are
   // managed objects like apps and sites, kept alongside them so the
   // rail isn't crowded with parallel CMDB-ish entries.
   { key: 'dr',         label: 'DR Testing', icon: 'ti-refresh-alert',    prefix: '/dr' },
+  { key: 'frameworks', label: 'Frameworks', icon: 'ti-shield-check',     prefix: '/frameworks' },
   { key: 'audit',      label: 'Audit',      icon: 'ti-file-certificate', prefix: '/audit' },
 ]
 const railBottom: RailItem[] = [
   { key: 'settings', label: 'Settings', icon: 'ti-settings', prefix: '/settings' },
+]
+
+// Three intent groups that divide the rail visually.
+// Keys must match SectionKey values in railTop.
+type RailGroup = { labelKey: string; label: string; keys: SectionKey[] }
+const RAIL_GROUPS: RailGroup[] = [
+  { labelKey: 'nav.group.monitor', label: 'Monitor', keys: ['dashboard', 'connectors', 'evidence', 'inventory', 'incidents'] },
+  { labelKey: 'nav.group.act',     label: 'Act',     keys: ['risks', 'policies', 'exceptions', 'remediation', 'dr'] },
+  { labelKey: 'nav.group.report',  label: 'Report',  keys: ['frameworks', 'audit'] },
 ]
 
 // Each section's three sub-pages. Order is the order they appear in
@@ -614,7 +623,21 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
         <div className="attestiv-rail-logo">
           <AttestivLogo />
         </div>
-        {railTop.filter((item) => canSeeSection(item.key, roles)).map(renderRailButton)}
+        {RAIL_GROUPS.map((group) => {
+          const items = group.keys
+            .map((k) => railTop.find((r) => r.key === k))
+            .filter((r): r is RailItem => !!r && canSeeSection(r.key, roles))
+          if (items.length === 0) return null
+          const groupLabel = t(group.labelKey, group.label)
+          return (
+            <div key={group.label} style={{ display: 'contents' }}>
+              <div className="attestiv-rail-group">
+                <span className="attestiv-rail-group-text">{groupLabel}</span>
+              </div>
+              {items.map(renderRailButton)}
+            </div>
+          )
+        })}
         <div className="attestiv-rail-spacer" />
         {railBottom.filter((item) => canSeeSection(item.key, roles)).map(renderRailButton)}
       </div>
