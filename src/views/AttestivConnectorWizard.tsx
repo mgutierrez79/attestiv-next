@@ -296,28 +296,6 @@ const CONNECTORS: ConnectorKind[] = [
     endpointOptional: true,
   },
   {
-    value: 'cisco_catalyst',
-    label: 'Cisco Catalyst 9000 (RESTCONF)',
-    category: 'Network',
-    endpointHint: 'https://sw-paris-core-01.acme.internal',
-    fields: [
-      { key: 'username', label: 'Username', required: true, hint: 'Local user (priv 15). Suggested: attestiv. Enable on the switch with `restconf` + `ip http secure-server`.' },
-      { key: 'password', label: 'Password', type: 'password', required: true },
-    ],
-    pollDefault: 21600,
-  },
-  {
-    value: 'cisco_catalyst_netconf',
-    label: 'Cisco Catalyst 9000 (NETCONF/SSH)',
-    category: 'Network',
-    endpointHint: 'sw-paris-core-01.acme.internal:830',
-    fields: [
-      { key: 'username', label: 'Username', required: true },
-      { key: 'password', label: 'Password', type: 'password', required: true },
-    ],
-    pollDefault: 21600,
-  },
-  {
     value: 'cisco_dna_center',
     label: 'Cisco DNA Center',
     category: 'Network',
@@ -588,8 +566,6 @@ export function AttestivConnectorWizard() {
       powerstore: 'dell_powerstore',
       veeam_enterprise_manager: 'veeam_em',
       dnac: 'cisco_dna_center',
-      restconf: 'cisco_catalyst',
-      netconf: 'cisco_catalyst_netconf',
     }
     const aliased = aliasToCard[kind]
     if (aliased) {
@@ -963,43 +939,6 @@ function PickStep({ kind, onChange }: { kind: string; onChange: (next: string) =
           'Each connector pulls a different evidence shape (firewall config, snapshot lineage, vCenter inventory, observability incidents, SOC vulnerabilities) into the same signed pipeline.'
         )}
       />
-      {/* Bulk-import callout — for operators whose DNA Center / Panorama
-          already discovered N switches. Skips the per-switch wizard
-          slog and writes one cisco_restconf row whose devices array
-          covers the whole fleet in one shot. */}
-      <button
-        type="button"
-        onClick={() => router.push('/connectors/bulk-restconf')}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          gap: 10,
-          padding: '10px 12px',
-          marginBottom: 12,
-          background: 'var(--color-status-blue-bg)',
-          border: '0.5px solid var(--color-status-blue-mid)',
-          borderRadius: 'var(--border-radius-md)',
-          fontFamily: 'inherit',
-          color: 'var(--color-status-blue-deep)',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-          <i className="ti ti-plug-connected" aria-hidden="true" style={{ fontSize: 16 }} />
-          <span>
-            <strong>{t('Bulk-import Cisco RESTCONF', 'Bulk-import Cisco RESTCONF')}</strong>
-            {' — '}
-            {t(
-              'auto-fan-out one credential pair across every network_device already in inventory.',
-              'auto-fan-out one credential pair across every network_device already in inventory.',
-            )}
-          </span>
-        </span>
-        <i className="ti ti-arrow-right" aria-hidden="true" style={{ fontSize: 14, flexShrink: 0 }} />
-      </button>
       {renderCategorisedConnectors(CONNECTORS, kind, onChange)}
     </>
   );
