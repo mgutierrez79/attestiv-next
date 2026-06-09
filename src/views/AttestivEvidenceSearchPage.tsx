@@ -286,10 +286,6 @@ export function AttestivEvidenceSearchPage() {
 }
 
 function EvidenceHitRow({ hit }: { hit: EvidenceHit }) {
-  const {
-    t
-  } = useI18n();
-
   const [expanded, setExpanded] = useState(false)
   return (
     <div
@@ -323,8 +319,8 @@ function EvidenceHitRow({ hit }: { hit: EvidenceHit }) {
         ) : null}
         {hit.signature ? (
           <span title={hit.signature}>
-            {t('Ed25519 ·', 'Ed25519 ·')} {hit.signature.slice(0, 12)}…
-                      </span>
+            Ed25519 · {hit.signature.slice(0, 12)}…
+          </span>
         ) : null}
         <button
           type="button"
@@ -366,7 +362,7 @@ function EvidenceHitRow({ hit }: { hit: EvidenceHit }) {
         </div>
       ) : null}
     </div>
-  );
+  )
 }
 
 function formatTimestamp(value: string): string {

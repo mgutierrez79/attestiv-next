@@ -75,10 +75,6 @@ export function AttestivRetentionPolicyPage() {
   }, [])
 
   async function savePolicy() {
-    const {
-      t
-    } = useI18n();
-
     if (!editing) return
     setSaving(true)
     setError(null)
@@ -104,10 +100,6 @@ export function AttestivRetentionPolicyPage() {
   }
 
   async function forget() {
-    const {
-      t
-    } = useI18n();
-
     if (!forgetID.trim()) return
     setForgetting(true)
     setError(null)
@@ -204,10 +196,6 @@ export function AttestivRetentionPolicyPage() {
               </thead>
               <tbody>
                 {sortedKinds.map((kind) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const period = displayed[kind]
                   return (
                     <tr key={kind} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
@@ -285,7 +273,7 @@ export function AttestivRetentionPolicyPage() {
                 value={forgetID}
                 onChange={(e) => setForgetID(e.target.value)}
                 style={{ ...inputStyle, width: '100%' }}
-                placeholder={t('cve-scan-20260519T085504.889Z', 'cve-scan-20260519T085504.889Z')}
+                placeholder="cve-scan-20260519T085504.889Z"
               />
             </div>
             <div>
@@ -318,7 +306,7 @@ export function AttestivRetentionPolicyPage() {
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 const cellHeaderStyle: React.CSSProperties = {

@@ -77,10 +77,6 @@ export function AttestivAIEngineSettingsPage() {
   }, []);
 
   async function save() {
-    const {
-      t
-    } = useI18n();
-
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -216,7 +212,7 @@ export function AttestivAIEngineSettingsPage() {
           </Field>
 
           <Field label={t('Model name', 'Model name')}>
-            <input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} disabled={!isAdmin || busy} placeholder={t('qwen2.5-7b-instruct', 'qwen2.5-7b-instruct')} style={inputStyle} />
+            <input value={llmModel} onChange={(e) => setLlmModel(e.target.value)} disabled={!isAdmin || busy} placeholder="qwen2.5-7b-instruct" style={inputStyle} />
           </Field>
 
           <Field label={t('Bearer key (optional)', 'Bearer key (optional)')}>

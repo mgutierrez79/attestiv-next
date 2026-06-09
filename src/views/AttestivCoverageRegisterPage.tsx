@@ -377,19 +377,15 @@ function Headline({ label, value, tone }: { label: string; value: number; tone: 
 }
 
 function StatusBadge({ status }: { status: EffectiveStatus }) {
-  const {
-    t
-  } = useI18n();
-
   switch (status) {
     case 'evidenced':
       return <Badge tone="green">evidenced</Badge>
     case 'attested':
       return <Badge tone="navy">attested</Badge>
     case 'out-of-scope':
-      return <Badge tone="gray">{t('out of scope', 'out of scope')}</Badge>;
+      return <Badge tone="gray">out of scope</Badge>
     case 'not-evidenced':
     default:
-      return <Badge tone="amber">{t('not evidenced', 'not evidenced')}</Badge>;
+      return <Badge tone="amber">not evidenced</Badge>
   }
 }

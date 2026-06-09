@@ -93,10 +93,6 @@ export function AttestivScoringPollSettingsPage() {
   }
 
   function onSaveInterval() {
-    const {
-      t
-    } = useI18n();
-
     const parsed = input.trim() === '' ? 0 : Number(input)
     if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
       setError(t('Interval must be a non-negative integer (0 clears the override).', 'Interval must be a non-negative integer (0 clears the override).'))
@@ -119,19 +115,11 @@ export function AttestivScoringPollSettingsPage() {
   }
 
   function onClearInterval() {
-    const {
-      t
-    } = useI18n();
-
     setInput('')
     void save({ interval_seconds: 0 }, t('Override cleared.', 'Override cleared.'))
   }
 
   function onToggleEnabled(next: boolean) {
-    const {
-      t
-    } = useI18n();
-
     void save(
       { enabled: next },
       next
@@ -141,10 +129,6 @@ export function AttestivScoringPollSettingsPage() {
   }
 
   function onClearEnabledOverride() {
-    const {
-      t
-    } = useI18n();
-
     void save({ enabled: null }, t('Enable override cleared. Falls back to env default.', 'Enable override cleared. Falls back to env default.'))
   }
 

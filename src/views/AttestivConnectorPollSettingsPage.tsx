@@ -66,10 +66,6 @@ export function AttestivConnectorPollSettingsPage() {
   }, [refresh])
 
   async function save(rawSeconds: number) {
-    const {
-      t
-    } = useI18n();
-
     setBusy(true)
     setError(null)
     setInfo(null)
@@ -98,10 +94,6 @@ export function AttestivConnectorPollSettingsPage() {
   }
 
   function onSave() {
-    const {
-      t
-    } = useI18n();
-
     const parsed = input.trim() === '' ? 0 : Number(input)
     if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
       setError(t('Interval must be a non-negative integer (0 clears the override).', 'Interval must be a non-negative integer (0 clears the override).'))

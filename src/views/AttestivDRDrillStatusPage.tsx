@@ -112,10 +112,6 @@ export function AttestivDRDrillStatusPage() {
   }, [])
 
   async function recordDrill() {
-    const {
-      t
-    } = useI18n();
-
     setPosting(true)
     setError(null)
     setSuccess(null)
@@ -174,10 +170,6 @@ export function AttestivDRDrillStatusPage() {
   }
 
   async function pollBackupJob(jobID: string) {
-    const {
-      t
-    } = useI18n();
-
     const POLL_MS = 2000
     const MAX_MS = 30 * 60 * 1000 // 30 min cap — bigger DBs take a while
     const startedAt = Date.now()
@@ -309,10 +301,7 @@ export function AttestivDRDrillStatusPage() {
             {!recSuccess ? (
               <div style={{ marginTop: 8 }}>
                 <label style={labelStyle}>{t('Failure reason', 'Failure reason')}</label>
-                <input type="text" value={recFailure} onChange={(e) => setRecFailure(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder={t(
-                  'e.g. postgres restore failed at index rebuild',
-                  'e.g. postgres restore failed at index rebuild'
-                )} />
+                <input type="text" value={recFailure} onChange={(e) => setRecFailure(e.target.value)} style={{ ...inputStyle, width: '100%' }} placeholder="e.g. postgres restore failed at index rebuild" />
               </div>
             ) : null}
             <div style={{ marginTop: 8 }}>
@@ -381,7 +370,7 @@ export function AttestivDRDrillStatusPage() {
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 function Headline({ label, value, icon }: { label: string; value: number | string | undefined | null; icon: string }) {

@@ -88,7 +88,7 @@ export function AttestivDocumentationPage() {
         </Banner>
 
         <Card>
-          <CardTitle right={<Badge tone="navy">{t('signed PDF', 'signed PDF')}</Badge>}>
+          <CardTitle right={<Badge tone="navy">signed PDF</Badge>}>
             {t('Generate & download', 'Generate & download')}
           </CardTitle>
           <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 0 }}>
@@ -153,7 +153,7 @@ export function AttestivDocumentationPage() {
           <CardTitle>{t('Public endpoint', 'Public endpoint')}</CardTitle>
           <ul style={listStyle}>
             <li>
-              <code>{t('GET /v1/documentation/dat', 'GET /v1/documentation/dat')}</code>{' '}
+              <code>GET /v1/documentation/dat</code>{' '}
               {t(
                 '— authenticated (reader, reporter, admin); returns the rendered PDF inline and records a',
                 '— authenticated (reader, reporter, admin); returns the rendered PDF inline and records a',
@@ -165,7 +165,7 @@ export function AttestivDocumentationPage() {
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 const listStyle: React.CSSProperties = {

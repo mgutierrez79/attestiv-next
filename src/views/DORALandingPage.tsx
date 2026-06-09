@@ -1,4 +1,4 @@
-'use client';;
+'use client';
 // DORA-first landing page — public-facing /dora route.
 //
 // Audience: EU bank / insurer / investment firm IT + risk + ICT
@@ -15,13 +15,7 @@
 import Link from 'next/link'
 import { AttestivLogo } from '../components/AttestivLayout'
 
-import { useI18n } from '../lib/i18n';
-
 export function DORALandingPage() {
-  const {
-    t
-  } = useI18n();
-
   return (
     <div style={pageStyle}>
       <header style={headerStyle}>
@@ -32,186 +26,169 @@ export function DORALandingPage() {
           <span style={brandLabelStyle}>Attestiv</span>
         </Link>
         <nav style={navStyle}>
-          <Link href="/gxp" style={navLinkStyle}>{t('GxP', 'GxP')}</Link>
-          <Link href="/trust-center" style={navLinkStyle}>{t('Trust center', 'Trust center')}</Link>
-          <Link href="/login" style={ctaLinkStyle}>{t('Open console →', 'Open console →')}</Link>
+          <Link href="/gxp" style={navLinkStyle}>GxP</Link>
+          <Link href="/trust-center" style={navLinkStyle}>Trust center</Link>
+          <Link href="/login" style={ctaLinkStyle}>Open console →</Link>
         </nav>
       </header>
+
       <section style={heroStyle}>
-        <div style={heroBadgeStyle}>{t('DORA · Reg. (EU) 2022/2554', 'DORA · Reg. (EU) 2022/2554')}</div>
+        <div style={heroBadgeStyle}>DORA · Reg. (EU) 2022/2554</div>
         <h1 style={h1Style}>
-          {t(
-            'A DORA evidence pipeline that ships your auditor a signed packet they verify offline.',
-            'A DORA evidence pipeline that ships your auditor a signed packet they verify offline.'
-          )}
+          A DORA evidence pipeline that ships your auditor a signed packet they verify offline.
         </h1>
         <p style={leadStyle}>
-          {t(
-            'DORA didn\'t ask for slideware. Articles 5–17 ask for evidence\n          of an ICT risk management framework; Articles 17–19 ask for\n          incident classification under a 24h / 72h / 30d clock;\n          Article 28 asks for a Register of Information your supervisor\n          can pull. Attestiv generates each of those as machine-readable,\n          signed artifacts — and bundles them for a third-party auditor.',
-            'DORA didn\'t ask for slideware. Articles 5–17 ask for evidence\n          of an ICT risk management framework; Articles 17–19 ask for\n          incident classification under a 24h / 72h / 30d clock;\n          Article 28 asks for a Register of Information your supervisor\n          can pull. Attestiv generates each of those as machine-readable,\n          signed artifacts — and bundles them for a third-party auditor.'
-          )}
+          DORA didn't ask for slideware. Articles 5–17 ask for evidence
+          of an ICT risk management framework; Articles 17–19 ask for
+          incident classification under a 24h / 72h / 30d clock;
+          Article 28 asks for a Register of Information your supervisor
+          can pull. Attestiv generates each of those as machine-readable,
+          signed artifacts — and bundles them for a third-party auditor.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket?framework=dora" style={primaryButtonStyle}>
-            {t('Generate a signed DORA packet', 'Generate a signed DORA packet')}
+            Generate a signed DORA packet
           </Link>
           <Link href="/trust-center" style={secondaryButtonStyle}>
-            {t('Verify a manifest →', 'Verify a manifest →')}
+            Verify a manifest →
           </Link>
         </div>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t(
-          'What the platform produces for a DORA scope',
-          'What the platform produces for a DORA scope'
-        )}</h2>
+        <h2 style={h2Style}>What the platform produces for a DORA scope</h2>
         <p style={sectionLeadStyle}>
-          {t(
-            'Each card below maps to a specific DORA article and a real\n          route in the console. The pre-packet is the same evidence,\n          frozen at a point in time, signed, and ready for offline\n          verification.',
-            'Each card below maps to a specific DORA article and a real\n          route in the console. The pre-packet is the same evidence,\n          frozen at a point in time, signed, and ready for offline\n          verification.'
-          )}
+          Each card below maps to a specific DORA article and a real
+          route in the console. The pre-packet is the same evidence,
+          frozen at a point in time, signed, and ready for offline
+          verification.
         </p>
         <div style={gridStyle}>
           <Feature
-            title={t('ICT risk register', 'ICT risk register')}
+            title="ICT risk register"
             clause="Art.5 / Art.6 — ICT risk mgmt framework"
             body="Per-tenant risk register with auto-creation from scoring transitions. Severity weighting, owner assignment, and policy-attachment links so every risk traces back to the control it derives from."
             link="/risks"
           />
           <Feature
-            title={t(
-              'Incident detector + 24h/72h/30d clock',
-              'Incident detector + 24h/72h/30d clock'
-            )}
+            title="Incident detector + 24h/72h/30d clock"
             clause="Art.17 / Art.18 / Art.19"
             body="Four built-in incident triggers fire automatically from connector signals (HA failover, signature mismatch, DLQ saturation, evidence-emission stall). Pre-filled notification templates with deadline countdowns for initial / intermediate / final reports."
             link="/incidents"
           />
           <Feature
-            title={t(
-              'Third-party Register of Information',
-              'Third-party Register of Information'
-            )}
+            title="Third-party Register of Information"
             clause="Art.28 — Third-party arrangements"
             body="Each third-party arrangement is captured with core-1.1 RoI fields (provider, function, criticality, support country, exit-strategy reference). Exportable as CSV or JSON when your supervisor asks for the register."
             link="/third-parties"
           />
           <Feature
-            title={t('Concentration-risk calculation', 'Concentration-risk calculation')}
+            title="Concentration-risk calculation"
             clause="Art.29 — Concentration of ICT services"
             body="Site Registry computes geographic proximity and provider concentration across critical functions. Triggers a scoring re-evaluation when a new CCR creates a new concentration band."
             link="/sites"
           />
           <Feature
-            title={t('DR testing with approval gates', 'DR testing with approval gates')}
+            title="DR testing with approval gates"
             clause="Art.24 — Digital operational resilience testing"
             body="Scheduled DR runs require a single-use approval token (24h TTL, maintenance window). Run records carry RTO/RPO, approver chain, and evidence of which dependencies recovered in which order."
             link="/dr"
           />
           <Feature
-            title={t('ICT business continuity', 'ICT business continuity')}
+            title="ICT business continuity"
             clause="Art.11 / Art.12 — Response and recovery"
             body="App Registry's cascade-impact engine ranks dependencies for recovery; Site Registry's recovery order enforces invariants like NTP-before-AD. Verifiable order, not a wishlist."
             link="/apps"
           />
         </div>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t('What goes into a DORA pre-packet', 'What goes into a DORA pre-packet')}</h2>
+        <h2 style={h2Style}>What goes into a DORA pre-packet</h2>
         <ol style={orderedListStyle}>
           <li>
-            <strong>framework_summary.json</strong> {t(
-              '— DORA\'s overall\n            score plus PASS / REVIEW / WARN / FAIL counts.',
-              '— DORA\'s overall\n            score plus PASS / REVIEW / WARN / FAIL counts.'
-            )}
+            <strong>framework_summary.json</strong> — DORA's overall
+            score plus PASS / REVIEW / WARN / FAIL counts.
           </li>
           <li>
-            <strong>controls.csv</strong> {t(
-              '— every DORA control, one\n            row each: status, score, weight, evidence count, last\n            evaluation timestamp.',
-              '— every DORA control, one\n            row each: status, score, weight, evidence count, last\n            evaluation timestamp.'
-            )}
+            <strong>controls.csv</strong> — every DORA control, one
+            row each: status, score, weight, evidence count, last
+            evaluation timestamp.
           </li>
           <li>
-            <strong>gaps.csv</strong> {t(
-              '— only the non-passing controls\n            with the finding code your auditor will reference and a\n            remediation hint.',
-              '— only the non-passing controls\n            with the finding code your auditor will reference and a\n            remediation hint.'
-            )}
+            <strong>gaps.csv</strong> — only the non-passing controls
+            with the finding code your auditor will reference and a
+            remediation hint.
           </li>
           <li>
-            <strong>remediation_open.json</strong> {t(
-              '— open tasks tied to\n            the gap controls, with owner, priority, due date. The work\n            in flight.',
-              '— open tasks tied to\n            the gap controls, with owner, priority, due date. The work\n            in flight.'
-            )}
+            <strong>remediation_open.json</strong> — open tasks tied to
+            the gap controls, with owner, priority, due date. The work
+            in flight.
           </li>
           <li>
-            <strong>{t('Signed manifest + public keys.', 'Signed manifest + public keys.')}</strong> {t(
-              'Ed25519\n            over the manifest, with the public key embedded in the\n            packet so verification needs no network access to the\n            platform.',
-              'Ed25519\n            over the manifest, with the public key embedded in the\n            packet so verification needs no network access to the\n            platform.'
-            )}
+            <strong>Signed manifest + public keys.</strong> Ed25519
+            over the manifest, with the public key embedded in the
+            packet so verification needs no network access to the
+            platform.
           </li>
         </ol>
         <p style={callOutStyle}>
-          {t(
-            'The supervisor (or the bank\'s external auditor) downloads\n          the zip, verifies it offline against the embedded public key,\n          and walks into the engagement already knowing the answer to\n          "what\'s outstanding?" — not still building the inventory.',
-            'The supervisor (or the bank\'s external auditor) downloads\n          the zip, verifies it offline against the embedded public key,\n          and walks into the engagement already knowing the answer to\n          "what\'s outstanding?" — not still building the inventory.'
-          )}
+          The supervisor (or the bank's external auditor) downloads
+          the zip, verifies it offline against the embedded public key,
+          and walks into the engagement already knowing the answer to
+          "what's outstanding?" — not still building the inventory.
         </p>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t('What this isn\'t', 'What this isn\'t')}</h2>
+        <h2 style={h2Style}>What this isn't</h2>
         <ul style={listStyle}>
           <li>
-            {t(
-              'A replacement for your ICT risk policy document or your\n            internal-audit working papers — the platform produces\n            evidence; humans still set policy.',
-              'A replacement for your ICT risk policy document or your\n            internal-audit working papers — the platform produces\n            evidence; humans still set policy.'
-            )}
+            A replacement for your ICT risk policy document or your
+            internal-audit working papers — the platform produces
+            evidence; humans still set policy.
           </li>
           <li>
-            {t(
-              'A SIEM or an XDR. If you need security-event correlation,\n            Attestiv reads from your existing SOC (or your SOC\n            provider — pilots run with Advens for example) and\n            produces the compliance evidence side.',
-              'A SIEM or an XDR. If you need security-event correlation,\n            Attestiv reads from your existing SOC (or your SOC\n            provider — pilots run with Advens for example) and\n            produces the compliance evidence side.'
-            )}
+            A SIEM or an XDR. If you need security-event correlation,
+            Attestiv reads from your existing SOC (or your SOC
+            provider — pilots run with Advens for example) and
+            produces the compliance evidence side.
           </li>
           <li>
-            {t(
-              'A TLPT vendor (Art.25). The platform records that a test\n            happened and what the scope was; the test itself is run\n            by your accredited red team.',
-              'A TLPT vendor (Art.25). The platform records that a test\n            happened and what the scope was; the test itself is run\n            by your accredited red team.'
-            )}
+            A TLPT vendor (Art.25). The platform records that a test
+            happened and what the scope was; the test itself is run
+            by your accredited red team.
           </li>
         </ul>
       </section>
+
       <section style={ctaSectionStyle}>
-        <h2 style={ctaH2Style}>{t(
-          'Walk into your next DORA review with the answer pre-built',
-          'Walk into your next DORA review with the answer pre-built'
-        )}</h2>
+        <h2 style={ctaH2Style}>Walk into your next DORA review with the answer pre-built</h2>
         <p style={ctaCopyStyle}>
-          {t(
-            'A working tenant can produce a real, signed DORA packet\n          right now. If you don\'t have one yet, the trust-center page\n          publishes a sample manifest you can verify with the\n          platform\'s published Ed25519 key.',
-            'A working tenant can produce a real, signed DORA packet\n          right now. If you don\'t have one yet, the trust-center page\n          publishes a sample manifest you can verify with the\n          platform\'s published Ed25519 key.'
-          )}
+          A working tenant can produce a real, signed DORA packet
+          right now. If you don't have one yet, the trust-center page
+          publishes a sample manifest you can verify with the
+          platform's published Ed25519 key.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket?framework=dora" style={primaryButtonStyle}>
-            {t('Download a DORA packet', 'Download a DORA packet')}
+            Download a DORA packet
           </Link>
           <Link href="/trust-center" style={secondaryButtonStyle}>
-            {t('See the trust center', 'See the trust center')}
+            See the trust center
           </Link>
         </div>
       </section>
+
       <footer style={footerStyle}>
-        <span>{t(
-          '© Attestiv — compliantly-go pilot build',
-          '© Attestiv — compliantly-go pilot build'
-        )}</span>
+        <span>© Attestiv — compliantly-go pilot build</span>
         <span style={{ flex: 1 }} />
-        <Link href="/gxp" style={footerLinkStyle}>{t('GxP scope', 'GxP scope')}</Link>
-        <Link href="/trust-center" style={footerLinkStyle}>{t('Trust center', 'Trust center')}</Link>
-        <Link href="/login" style={footerLinkStyle}>{t('Console login', 'Console login')}</Link>
+        <Link href="/gxp" style={footerLinkStyle}>GxP scope</Link>
+        <Link href="/trust-center" style={footerLinkStyle}>Trust center</Link>
+        <Link href="/login" style={footerLinkStyle}>Console login</Link>
       </footer>
     </div>
-  );
+  )
 }
 
 function Feature({ title, clause, body, link }: { title: string; clause: string; body: string; link: string }) {

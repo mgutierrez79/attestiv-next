@@ -300,32 +300,26 @@ export function AttestivRiskDetailPage() {
               {t('Open remediation work on this risk’s control.', 'Open remediation work on this risk’s control.')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {data.related_remediation.map(tk => {
-                const {
-                  t
-                } = useI18n();
-
-                return (
-                  <Link
-                    key={tk.id}
-                    href="/remediation"
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--color-text-primary)', textDecoration: 'none', fontSize: 12 }}
-                  >
-                    <Badge tone={tk.priority === 'critical' ? 'red' : tk.priority === 'high' ? 'amber' : tk.priority === 'medium' ? 'navy' : 'gray'}>
-                      {tk.priority}
-                    </Badge>
-                    <span style={{ flex: '1 1 240px', minWidth: 200 }}>{tk.title}</span>
-                    <Badge tone={tk.status === 'open' ? 'amber' : tk.status === 'in_progress' ? 'navy' : 'gray'}>
-                      {tk.status.replace(/_/g, ' ')}
-                    </Badge>
-                    {tk.due_date ? (
-                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap' }}>
-                        {t('due', 'due')} {tk.due_date.slice(0, 10)}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
+              {data.related_remediation.map((tk) => (
+                <Link
+                  key={tk.id}
+                  href="/remediation"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--color-text-primary)', textDecoration: 'none', fontSize: 12 }}
+                >
+                  <Badge tone={tk.priority === 'critical' ? 'red' : tk.priority === 'high' ? 'amber' : tk.priority === 'medium' ? 'navy' : 'gray'}>
+                    {tk.priority}
+                  </Badge>
+                  <span style={{ flex: '1 1 240px', minWidth: 200 }}>{tk.title}</span>
+                  <Badge tone={tk.status === 'open' ? 'amber' : tk.status === 'in_progress' ? 'navy' : 'gray'}>
+                    {tk.status.replace(/_/g, ' ')}
+                  </Badge>
+                  {tk.due_date ? (
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', whiteSpace: 'nowrap' }}>
+                      {t('due', 'due')} {tk.due_date.slice(0, 10)}
+                    </span>
+                  ) : null}
+                </Link>
+              ))}
             </div>
           </Card>
         ) : null}
@@ -419,47 +413,43 @@ function GuidanceSection({ guidance }: { guidance: Guidance }) {
           </p>
         ) : null}
       </Card>
+
       {expectations.length > 0 ? (
         <Card style={{ marginTop: 12 }}>
           <CardTitle>{t('What this control expects', 'What this control expects')}</CardTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {expectations.map((exp, index) => {
-              const {
-                t
-              } = useI18n();
-
-              return (
-                <div
-                  key={`${exp.tag}-${index}`}
-                  style={{
-                    padding: '10px 0',
-                    borderBottom: index < expectations.length - 1 ? '0.5px solid var(--color-border-tertiary)' : 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{exp.evidence || exp.tag}</span>
-                    {exp.mandatory ? <Badge tone="red">{t('mandatory', 'mandatory')}</Badge> : <Badge tone="gray">{t('contributes', 'contributes')}</Badge>}
-                    <code style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{exp.tag}</code>
-                  </div>
-                  {exp.criteria ? (
-                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                      <i className="ti ti-target-arrow" aria-hidden="true" style={{ marginRight: 4 }} />
-                      {t('Passing criteria:', 'Passing criteria:')} <strong>{exp.criteria}</strong>
-                    </div>
-                  ) : null}
-                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
-                    {exp.freshness ? <span><i className="ti ti-clock" aria-hidden="true" /> {exp.freshness}</span> : null}
-                    {exp.frequency ? <span><i className="ti ti-repeat" aria-hidden="true" /> {exp.frequency}</span> : null}
-                    {exp.sources && exp.sources.length > 0 ? (
-                      <span><i className="ti ti-plug" aria-hidden="true" /> {exp.sources.join(', ')}</span>
-                    ) : null}
-                  </div>
+            {expectations.map((exp, index) => (
+              <div
+                key={`${exp.tag}-${index}`}
+                style={{
+                  padding: '10px 0',
+                  borderBottom: index < expectations.length - 1 ? '0.5px solid var(--color-border-tertiary)' : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{exp.evidence || exp.tag}</span>
+                  {exp.mandatory ? <Badge tone="red">{t('mandatory', 'mandatory')}</Badge> : <Badge tone="gray">{t('contributes', 'contributes')}</Badge>}
+                  <code style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{exp.tag}</code>
                 </div>
-              );
-            })}
+                {exp.criteria ? (
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    <i className="ti ti-target-arrow" aria-hidden="true" style={{ marginRight: 4 }} />
+                    {t('Passing criteria:', 'Passing criteria:')} <strong>{exp.criteria}</strong>
+                  </div>
+                ) : null}
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  {exp.freshness ? <span><i className="ti ti-clock" aria-hidden="true" /> {exp.freshness}</span> : null}
+                  {exp.frequency ? <span><i className="ti ti-repeat" aria-hidden="true" /> {exp.frequency}</span> : null}
+                  {exp.sources && exp.sources.length > 0 ? (
+                    <span><i className="ti ti-plug" aria-hidden="true" /> {exp.sources.join(', ')}</span>
+                  ) : null}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       ) : null}
+
       {remediation.length > 0 ? (
         <Card style={{ marginTop: 12 }}>
           <CardTitle>{t('How to remediate', 'How to remediate')}</CardTitle>
@@ -473,7 +463,7 @@ function GuidanceSection({ guidance }: { guidance: Guidance }) {
         </Card>
       ) : null}
     </>
-  );
+  )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

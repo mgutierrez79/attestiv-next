@@ -293,32 +293,26 @@ export function AttestivROIPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(scenarioResult?.projected.regulatory_exposure ?? summary.regulatory_exposure).map((e, i) => {
-                      const {
-                        t
-                      } = useI18n();
-
-                      return (
-                        <tr key={`${e.framework_id}-${i}`} style={{ borderTop: i ? '0.5px solid var(--color-border-tertiary)' : 'none' }}>
-                          <td style={{ padding: '6px 8px' }}>
-                            <code style={{ fontSize: 11 }}>{e.framework_id.toUpperCase()}</code>
-                          </td>
-                          <td style={{ padding: '6px 8px' }}>
-                            <Badge tone={e.kind === 'regulatory_fine' ? 'red' : 'amber'}>
-                              {e.kind === 'regulatory_fine' ? t('Statutory fine', 'Statutory fine') : t('Remediation', 'Remediation')}
-                            </Badge>
-                          </td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtEUR(e.max_exposure_eur)}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtEUR(e.current_exposure_eur)}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--color-status-green-mid)' }}>
-                            {fmtEUR(Math.max(0, e.max_exposure_eur - e.current_exposure_eur))}
-                          </td>
-                          <td style={{ padding: '6px 8px', fontSize: 10, color: 'var(--color-text-tertiary)' }} title={e.assumption}>
-                            {e.citation}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {(scenarioResult?.projected.regulatory_exposure ?? summary.regulatory_exposure).map((e, i) => (
+                      <tr key={`${e.framework_id}-${i}`} style={{ borderTop: i ? '0.5px solid var(--color-border-tertiary)' : 'none' }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          <code style={{ fontSize: 11 }}>{e.framework_id.toUpperCase()}</code>
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <Badge tone={e.kind === 'regulatory_fine' ? 'red' : 'amber'}>
+                            {e.kind === 'regulatory_fine' ? t('Statutory fine', 'Statutory fine') : t('Remediation', 'Remediation')}
+                          </Badge>
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtEUR(e.max_exposure_eur)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtEUR(e.current_exposure_eur)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--color-status-green-mid)' }}>
+                          {fmtEUR(Math.max(0, e.max_exposure_eur - e.current_exposure_eur))}
+                        </td>
+                        <td style={{ padding: '6px 8px', fontSize: 10, color: 'var(--color-text-tertiary)' }} title={e.assumption}>
+                          {e.citation}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
@@ -444,7 +438,7 @@ export function AttestivROIPage() {
         )}
       </div>
     </>
-  );
+  )
 }
 
 function inferCurrentScore(summary: ROISummary, frameworkID: string): number {

@@ -86,10 +86,6 @@ export function AttestivRiskHeatmapPage() {
   // 403 surfaced as a notice. The scoring loop also runs this every tick,
   // so this is the "fix the heatmap now" shortcut.
   const rederive = useCallback(async () => {
-    const {
-      t
-    } = useI18n();
-
     setRederiving(true)
     setNotice(null)
     setError(null)
@@ -223,10 +219,6 @@ export function AttestivRiskHeatmapPage() {
               {t('Risks in', 'Risks in')} {selected}
             </CardTitle>
             {(() => {
-              const {
-                t
-              } = useI18n();
-
               const cell = cellMap.get(selected)
               // Prefer the human-readable risks[] (title + framework + score);
               // fall back to opaque risk_ids only for older backends.
@@ -262,7 +254,7 @@ export function AttestivRiskHeatmapPage() {
         ) : null}
       </div>
     </>
-  );
+  )
 }
 
 function RowSliver({ likelihood, impacts, cellMap, selected, setSelected, t }: {

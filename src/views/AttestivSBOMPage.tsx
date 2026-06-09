@@ -164,10 +164,6 @@ export function AttestivSBOMPage() {
   }
 
   async function remove(id: string) {
-    const {
-      t
-    } = useI18n();
-
     if (!window.confirm(t('Delete this SBOM? This cannot be undone.', 'Delete this SBOM? This cannot be undone.'))) return
     try {
       const resp = await apiFetch(`/sbom/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -415,33 +411,27 @@ export function AttestivSBOMPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {selected.vulnerabilities.map(v => {
-                        const {
-                          t
-                        } = useI18n();
-
-                        return (
-                          <tr key={v.id} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
-                            <td style={{ padding: '4px 8px' }}>
-                              <code style={{ fontSize: 10 }}>{v.id}</code>
-                            </td>
-                            <td style={{ padding: '4px 8px' }}>
-                              <Badge tone={severityTone(v.severity)}>{v.severity || '—'}</Badge>
-                            </td>
-                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>{v.cvss_score?.toFixed(1) ?? '—'}</td>
-                            <td style={{ padding: '4px 8px' }}>
-                              {v.kev_matched ? (
-                                <Badge tone="red" icon="ti-flame">{t('KEV', 'KEV')}</Badge>
-                              ) : (
-                                <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10 }}>—</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '4px 8px', color: 'var(--color-text-tertiary)' }}>
-                              {(v.description || '').slice(0, 80)}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {selected.vulnerabilities.map((v) => (
+                        <tr key={v.id} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                          <td style={{ padding: '4px 8px' }}>
+                            <code style={{ fontSize: 10 }}>{v.id}</code>
+                          </td>
+                          <td style={{ padding: '4px 8px' }}>
+                            <Badge tone={severityTone(v.severity)}>{v.severity || '—'}</Badge>
+                          </td>
+                          <td style={{ padding: '4px 8px', textAlign: 'right' }}>{v.cvss_score?.toFixed(1) ?? '—'}</td>
+                          <td style={{ padding: '4px 8px' }}>
+                            {v.kev_matched ? (
+                              <Badge tone="red" icon="ti-flame">{t('KEV', 'KEV')}</Badge>
+                            ) : (
+                              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 10 }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '4px 8px', color: 'var(--color-text-tertiary)' }}>
+                            {(v.description || '').slice(0, 80)}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -455,7 +445,7 @@ export function AttestivSBOMPage() {
         ) : null}
       </div>
     </>
-  );
+  )
 }
 
 function Field({ label, value }: { label: string; value: string }) {

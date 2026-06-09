@@ -191,80 +191,68 @@ export function AttestivScoringCrosswalkPage() {
             </div>
           ) : (
             <div>
-              {summary.rows.map(row => {
-                const {
-                  t
-                } = useI18n();
-
-                return (
-                  <div key={row.evidence_type}>
-                    <button
-                      type="button"
-                      onClick={() => loadDetail(row.evidence_type)}
-                      style={rowButtonStyle(expanded === row.evidence_type)}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <code style={{ fontSize: 12, color: 'var(--color-text-primary)' }}>
-                          {row.evidence_type}
-                        </code>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {row.frameworks.map((fwId) => (
-                          <Badge key={fwId} tone={FRAMEWORK_TONE[fwId] ?? 'gray'}>
-                            {fwId} · {row.controls_by_framework[fwId]}
-                          </Badge>
-                        ))}
-                      </div>
-                      <div style={{ minWidth: 80, textAlign: 'right' }}>
-                        <span style={{ fontSize: 14, fontWeight: 600 }}>{row.controls_count}</span>
-                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}> {t('controls', 'controls')}</span>
-                      </div>
-                      <i
-                        className={`ti ${expanded === row.evidence_type ? 'ti-chevron-down' : 'ti-chevron-right'}`}
-                        aria-hidden="true"
-                        style={{ color: 'var(--color-text-tertiary)' }}
-                      />
-                    </button>
-                    {expanded === row.evidence_type ? (
-                      <div style={detailWrapperStyle}>
-                        {detailLoading ? (
-                          <Skeleton lines={4} height={28} />
-                        ) : detail && detail.evidence_type === row.evidence_type ? (
-                          <div>
-                            {detail.hits.map(hit => {
-                              const {
-                                t
-                              } = useI18n();
-
-                              return (
-                                <div key={`${hit.framework_id}-${hit.control_id}`} style={hitRowStyle}>
-                                  <Badge tone={FRAMEWORK_TONE[hit.framework_id] ?? 'gray'}>{hit.framework_id}</Badge>
-                                  <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{hit.control_id}</code>
-                                  <div style={{ flex: 1, fontSize: 12 }}>{hit.control_name}</div>
-                                  {hit.matched_tag ? (
-                                    <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                                      {t('via', 'via')} <code>{hit.matched_tag}</code>
-                                    </span>
-                                  ) : null}
-                                  <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', minWidth: 50, textAlign: 'right' }}>
-                                    {t('w=', 'w=')}{hit.weight}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {summary.rows.map((row) => (
+                <div key={row.evidence_type}>
+                  <button
+                    type="button"
+                    onClick={() => loadDetail(row.evidence_type)}
+                    style={rowButtonStyle(expanded === row.evidence_type)}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <code style={{ fontSize: 12, color: 'var(--color-text-primary)' }}>
+                        {row.evidence_type}
+                      </code>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {row.frameworks.map((fwId) => (
+                        <Badge key={fwId} tone={FRAMEWORK_TONE[fwId] ?? 'gray'}>
+                          {fwId} · {row.controls_by_framework[fwId]}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div style={{ minWidth: 80, textAlign: 'right' }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>{row.controls_count}</span>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}> {t('controls', 'controls')}</span>
+                    </div>
+                    <i
+                      className={`ti ${expanded === row.evidence_type ? 'ti-chevron-down' : 'ti-chevron-right'}`}
+                      aria-hidden="true"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                    />
+                  </button>
+                  {expanded === row.evidence_type ? (
+                    <div style={detailWrapperStyle}>
+                      {detailLoading ? (
+                        <Skeleton lines={4} height={28} />
+                      ) : detail && detail.evidence_type === row.evidence_type ? (
+                        <div>
+                          {detail.hits.map((hit) => (
+                            <div key={`${hit.framework_id}-${hit.control_id}`} style={hitRowStyle}>
+                              <Badge tone={FRAMEWORK_TONE[hit.framework_id] ?? 'gray'}>{hit.framework_id}</Badge>
+                              <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{hit.control_id}</code>
+                              <div style={{ flex: 1, fontSize: 12 }}>{hit.control_name}</div>
+                              {hit.matched_tag ? (
+                                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                                  {t('via', 'via')} <code>{hit.matched_tag}</code>
+                                </span>
+                              ) : null}
+                              <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', minWidth: 50, textAlign: 'right' }}>
+                                {t('w=', 'w=')}{hit.weight}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
             </div>
           )}
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 function HeadlineCard({

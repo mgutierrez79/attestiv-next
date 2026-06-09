@@ -1,4 +1,4 @@
-'use client';;
+'use client';
 // GxP-first landing page — public-facing /gxp route.
 //
 // Audience: pharma / biotech / medical-device IT + quality compliance.
@@ -17,13 +17,7 @@
 import Link from 'next/link'
 import { AttestivLogo } from '../components/AttestivLayout'
 
-import { useI18n } from '../lib/i18n';
-
 export function GxPLandingPage() {
-  const {
-    t
-  } = useI18n();
-
   return (
     <div style={pageStyle}>
       <header style={headerStyle}>
@@ -35,167 +29,149 @@ export function GxPLandingPage() {
         </Link>
         <nav style={navStyle}>
           <Link href="/dora" style={navLinkStyle}>DORA</Link>
-          <Link href="/trust-center" style={navLinkStyle}>{t('Trust center', 'Trust center')}</Link>
-          <Link href="/login" style={ctaLinkStyle}>{t('Open console →', 'Open console →')}</Link>
+          <Link href="/trust-center" style={navLinkStyle}>Trust center</Link>
+          <Link href="/login" style={ctaLinkStyle}>Open console →</Link>
         </nav>
       </header>
+
       <section style={heroStyle}>
-        <div style={heroBadgeStyle}>{t(
-          'GxP · GMP Annex 11 · 21 CFR Part 11',
-          'GxP · GMP Annex 11 · 21 CFR Part 11'
-        )}</div>
+        <div style={heroBadgeStyle}>GxP · GMP Annex 11 · 21 CFR Part 11</div>
         <h1 style={h1Style}>
-          {t(
-            'Signed, audit-ready evidence across your GxP-validated systems.',
-            'Signed, audit-ready evidence across your GxP-validated systems.'
-          )}
+          Signed, audit-ready evidence across your GxP-validated systems.
         </h1>
         <p style={leadStyle}>
-          {t(
-            'A computer-systems validation team shouldn\'t spend six weeks\n          re-assembling the same screenshots every audit cycle. Attestiv\n          continuously collects evidence from your MES, LIMS, historian,\n          domain controllers, and storage — then ships an external\n          auditor a single signed packet they verify offline.',
-            'A computer-systems validation team shouldn\'t spend six weeks\n          re-assembling the same screenshots every audit cycle. Attestiv\n          continuously collects evidence from your MES, LIMS, historian,\n          domain controllers, and storage — then ships an external\n          auditor a single signed packet they verify offline.'
-          )}
+          A computer-systems validation team shouldn't spend six weeks
+          re-assembling the same screenshots every audit cycle. Attestiv
+          continuously collects evidence from your MES, LIMS, historian,
+          domain controllers, and storage — then ships an external
+          auditor a single signed packet they verify offline.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket" style={primaryButtonStyle}>
-            {t('Generate a signed packet', 'Generate a signed packet')}
+            Generate a signed packet
           </Link>
           <Link href="/trust-center" style={secondaryButtonStyle}>
-            {t('Verify a manifest →', 'Verify a manifest →')}
+            Verify a manifest →
           </Link>
         </div>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t(
-          'What the platform produces for a GxP scope',
-          'What the platform produces for a GxP scope'
-        )}</h2>
+        <h2 style={h2Style}>What the platform produces for a GxP scope</h2>
         <p style={sectionLeadStyle}>
-          {t(
-            'Every line below is a capability you can hit today against\n          a tenant\'s validated systems — not a roadmap promise. Click\n          through to see what the auditor would see.',
-            'Every line below is a capability you can hit today against\n          a tenant\'s validated systems — not a roadmap promise. Click\n          through to see what the auditor would see.'
-          )}
+          Every line below is a capability you can hit today against
+          a tenant's validated systems — not a roadmap promise. Click
+          through to see what the auditor would see.
         </p>
         <div style={gridStyle}>
           <Feature
-            title={t('GxP scope filter', 'GxP scope filter')}
+            title="GxP scope filter"
             clause="Annex 11 §4 — Validation"
             body="Only validated applications score against GxP controls. Non-validated apps are excluded by scope rule, so a GxP score reflects ONLY the systems whose validation status the tenant declared."
             link="/scoring"
           />
           <Feature
-            title={t('Immutable audit trail', 'Immutable audit trail')}
+            title="Immutable audit trail"
             clause="Annex 11 §9 / Part 11 §11.10(e)"
             body="Audit log writes are guarded by a Postgres trigger that refuses updates and deletes. Operators can read; nobody can rewrite. Signed per-event with the same Ed25519 key that signs the evidence."
             link="/audit"
           />
           <Feature
-            title={t('Electronic-signature surrogate', 'Electronic-signature surrogate')}
+            title="Electronic-signature surrogate"
             clause="Part 11 §11.50 / §11.70"
             body="Every evidence envelope is sealed with an Ed25519 detached signature plus a manifest binding the signature to the underlying record. Public key published at /v1/public/keys — the auditor verifies offline."
             link="/evidence/verify"
           />
           <Feature
-            title={t('500ms NTP ceiling', '500ms NTP ceiling')}
+            title="500ms NTP ceiling"
             clause="Annex 11 §10 — System security / time"
             body="Site Registry enforces a hard 500ms drift ceiling on time sync. A GxP-validated site that breaches it fails the time-control check independent of any other signal."
             link="/sites"
           />
           <Feature
-            title={t('DR with approval gate', 'DR with approval gate')}
+            title="DR with approval gate"
             clause="Annex 11 §16 / Part 11 §11.10(d)"
             body="Every DR run has a single-use approval token with a 24h TTL and a maintenance-window constraint. Servers reject runs outside the window — the change-control envelope is enforced, not advisory."
             link="/dr"
           />
           <Feature
-            title={t('Periodic review evidence', 'Periodic review evidence')}
+            title="Periodic review evidence"
             clause="Annex 11 §11 — Periodic evaluation"
             body="Scoring engine re-evaluates every framework hourly against fresh evidence. The audit packet includes the per-control evaluated_at timestamp so the auditor can see the cadence isn't manual."
             link="/scoring/trend"
           />
         </div>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t('What the auditor walks away with', 'What the auditor walks away with')}</h2>
+        <h2 style={h2Style}>What the auditor walks away with</h2>
         <ol style={orderedListStyle}>
           <li>
-            <strong>{t('A signed zip.', 'A signed zip.')}</strong> {t(
-              'Manifest with per-file SHA256.\n            Ed25519 signature over the manifest. Public-key block so\n            verification happens offline with no network access to your\n            platform.',
-              'Manifest with per-file SHA256.\n            Ed25519 signature over the manifest. Public-key block so\n            verification happens offline with no network access to your\n            platform.'
-            )}
+            <strong>A signed zip.</strong> Manifest with per-file SHA256.
+            Ed25519 signature over the manifest. Public-key block so
+            verification happens offline with no network access to your
+            platform.
           </li>
           <li>
-            <strong>{t('controls.csv.', 'controls.csv.')}</strong> {t(
-              'Every GxP control on one row:\n            status, score, weight, evidence count, evaluation timestamp.',
-              'Every GxP control on one row:\n            status, score, weight, evidence count, evaluation timestamp.'
-            )}
+            <strong>controls.csv.</strong> Every GxP control on one row:
+            status, score, weight, evidence count, evaluation timestamp.
           </li>
           <li>
-            <strong>{t('gaps.csv.', 'gaps.csv.')}</strong> {t(
-              'Only the non-passing rows, with\n            the finding code, description, and remediation hint. This is\n            the row set the auditor reads first.',
-              'Only the non-passing rows, with\n            the finding code, description, and remediation hint. This is\n            the row set the auditor reads first.'
-            )}
+            <strong>gaps.csv.</strong> Only the non-passing rows, with
+            the finding code, description, and remediation hint. This is
+            the row set the auditor reads first.
           </li>
           <li>
-            <strong>{t('remediation_open.json.', 'remediation_open.json.')}</strong> {t(
-              'Open and in-progress\n            tasks tied to the controls in gaps.csv — the work currently\n            in flight, with owner, priority, and due date.',
-              'Open and in-progress\n            tasks tied to the controls in gaps.csv — the work currently\n            in flight, with owner, priority, and due date.'
-            )}
+            <strong>remediation_open.json.</strong> Open and in-progress
+            tasks tied to the controls in gaps.csv — the work currently
+            in flight, with owner, priority, and due date.
           </li>
         </ol>
         <p style={callOutStyle}>
-          {t(
-            'The auditor opens the packet on their laptop, runs the\n          verification recipe in the bundled README, and reads the\n          posture in under fifteen minutes. They arrive at the\n          walkthrough already knowing what to ask about — not still\n          searching the index.',
-            'The auditor opens the packet on their laptop, runs the\n          verification recipe in the bundled README, and reads the\n          posture in under fifteen minutes. They arrive at the\n          walkthrough already knowing what to ask about — not still\n          searching the index.'
-          )}
+          The auditor opens the packet on their laptop, runs the
+          verification recipe in the bundled README, and reads the
+          posture in under fifteen minutes. They arrive at the
+          walkthrough already knowing what to ask about — not still
+          searching the index.
         </p>
       </section>
+
       <section style={sectionStyle}>
-        <h2 style={h2Style}>{t('What this isn\'t', 'What this isn\'t')}</h2>
+        <h2 style={h2Style}>What this isn't</h2>
         <ul style={listStyle}>
-          <li>{t(
-            'A replacement for your validation master plan or your IQ/OQ/PQ deliverables.',
-            'A replacement for your validation master plan or your IQ/OQ/PQ deliverables.'
-          )}</li>
-          <li>{t(
-            'A document-management system. Existing controlled-document libraries stay where they are; Attestiv reads metadata, not full text.',
-            'A document-management system. Existing controlled-document libraries stay where they are; Attestiv reads metadata, not full text.'
-          )}</li>
-          <li>{t(
-            'An auditor. A human still has to read the gaps and decide what\'s a finding vs an observation — the platform just makes the evidence verifiable.',
-            'An auditor. A human still has to read the gaps and decide what\'s a finding vs an observation — the platform just makes the evidence verifiable.'
-          )}</li>
+          <li>A replacement for your validation master plan or your IQ/OQ/PQ deliverables.</li>
+          <li>A document-management system. Existing controlled-document libraries stay where they are; Attestiv reads metadata, not full text.</li>
+          <li>An auditor. A human still has to read the gaps and decide what's a finding vs an observation — the platform just makes the evidence verifiable.</li>
         </ul>
       </section>
+
       <section style={ctaSectionStyle}>
-        <h2 style={ctaH2Style}>{t('See it on your own scope', 'See it on your own scope')}</h2>
+        <h2 style={ctaH2Style}>See it on your own scope</h2>
         <p style={ctaCopyStyle}>
-          {t(
-            'A working tenant can produce a real, signed GxP packet in\n          one click. If you don\'t have a tenant yet, the trust-center\n          page below has a public sample manifest you can verify with\n          the platform\'s published key.',
-            'A working tenant can produce a real, signed GxP packet in\n          one click. If you don\'t have a tenant yet, the trust-center\n          page below has a public sample manifest you can verify with\n          the platform\'s published key.'
-          )}
+          A working tenant can produce a real, signed GxP packet in
+          one click. If you don't have a tenant yet, the trust-center
+          page below has a public sample manifest you can verify with
+          the platform's published key.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket" style={primaryButtonStyle}>
-            {t('Open the packet downloader', 'Open the packet downloader')}
+            Open the packet downloader
           </Link>
           <Link href="/trust-center" style={secondaryButtonStyle}>
-            {t('See the trust center', 'See the trust center')}
+            See the trust center
           </Link>
         </div>
       </section>
+
       <footer style={footerStyle}>
-        <span>{t(
-          '© Attestiv — compliantly-go pilot build',
-          '© Attestiv — compliantly-go pilot build'
-        )}</span>
+        <span>© Attestiv — compliantly-go pilot build</span>
         <span style={{ flex: 1 }} />
-        <Link href="/dora" style={footerLinkStyle}>{t('DORA scope', 'DORA scope')}</Link>
-        <Link href="/trust-center" style={footerLinkStyle}>{t('Trust center', 'Trust center')}</Link>
-        <Link href="/login" style={footerLinkStyle}>{t('Console login', 'Console login')}</Link>
+        <Link href="/dora" style={footerLinkStyle}>DORA scope</Link>
+        <Link href="/trust-center" style={footerLinkStyle}>Trust center</Link>
+        <Link href="/login" style={footerLinkStyle}>Console login</Link>
       </footer>
     </div>
-  );
+  )
 }
 
 function Feature({ title, clause, body, link }: { title: string; clause: string; body: string; link: string }) {

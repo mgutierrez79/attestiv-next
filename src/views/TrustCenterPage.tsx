@@ -126,10 +126,6 @@ export function TrustCenterPage() {
   }
 
   const verificationLabel = () => {
-    const {
-      t
-    } = useI18n();
-
     if (!verifyStatus) return t('Not checked', 'Not checked')
     if (!verifyStatus.enabled) return t('Verification not configured', 'Verification not configured')
     if (!verifyStatus.present) return t('Signature missing', 'Signature missing')
@@ -159,6 +155,7 @@ export function TrustCenterPage() {
           <Link href="/login" style={ctaLinkStyle}>{t('Open console →', 'Open console →')}</Link>
         </nav>
       </header>
+
       <section style={heroStyle}>
         <div style={heroBadgeStyle}>{t('Public — no account required', 'Public — no account required')}</div>
         <h1 style={h1Style}>{t('Trust center', 'Trust center')}</h1>
@@ -175,6 +172,7 @@ export function TrustCenterPage() {
           </PrimaryButton>
         </div>
       </section>
+
       <div style={mainStyle}>
         {error ? <Banner tone="error" title={t('Trust center error', 'Trust center error')}>{error}</Banner> : null}
 
@@ -189,25 +187,19 @@ export function TrustCenterPage() {
             )}
           </p>
           <div style={gridStyle}>
-            {(data?.frameworks || []).map(framework => {
-              const {
-                t
-              } = useI18n();
-
-              return (
-                <div key={framework.key} style={frameworkCardStyle}>
-                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--color-brand-blue)' }}>
-                    {framework.key}
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>
-                    {framework.name || framework.key.toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
-                    {framework.version ? `${t('Version', 'Version')} ${framework.version}` : t('Version pending', 'Version pending')}
-                  </div>
+            {(data?.frameworks || []).map((framework) => (
+              <div key={framework.key} style={frameworkCardStyle}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--color-brand-blue)' }}>
+                  {framework.key}
                 </div>
-              );
-            })}
+                <div style={{ fontSize: 15, fontWeight: 600, marginTop: 4 }}>
+                  {framework.name || framework.key.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 6 }}>
+                  {framework.version ? `${t('Version', 'Version')} ${framework.version}` : t('Version pending', 'Version pending')}
+                </div>
+              </div>
+            ))}
             {!loading && (data?.frameworks?.length ?? 0) === 0 ? (
               <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
                 {t('No frameworks published yet.', 'No frameworks published yet.')}
@@ -279,15 +271,16 @@ export function TrustCenterPage() {
           </div>
         </Card>
       </div>
+
       <footer style={footerStyle}>
-        <span>{t('© Attestiv', '© Attestiv')}</span>
+        <span>© Attestiv</span>
         <span style={{ flex: 1 }} />
         <Link href="/gxp" style={footerLinkStyle}>{t('GxP', 'GxP')}</Link>
         <Link href="/dora" style={footerLinkStyle}>{t('DORA', 'DORA')}</Link>
         <Link href="/login" style={footerLinkStyle}>{t('Console login', 'Console login')}</Link>
       </footer>
     </div>
-  );
+  )
 }
 
 const pageStyle: React.CSSProperties = {

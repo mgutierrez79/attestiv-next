@@ -67,10 +67,6 @@ export function AttestivAppCreatePage() {
   const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
-    const {
-      t
-    } = useI18n();
-
     e.preventDefault()
     setError(null)
 
@@ -179,7 +175,7 @@ export function AttestivAppCreatePage() {
                   }}
                   required
                   style={inputStyle}
-                  placeholder={t('Microsoft SQL Server — Finance', 'Microsoft SQL Server — Finance')}
+                  placeholder="Microsoft SQL Server — Finance"
                 />
               </Field>
               <Field
@@ -279,7 +275,7 @@ export function AttestivAppCreatePage() {
                 onChange={(e) => setVmNames(e.target.value)}
                 required
                 style={inputStyle}
-                placeholder={t('VRWMSQLA01, VRWMSQLA02', 'VRWMSQLA01, VRWMSQLA02')}
+                placeholder="VRWMSQLA01, VRWMSQLA02"
               />
             </Field>
           </Card>
@@ -340,7 +336,7 @@ export function AttestivAppCreatePage() {
                     value={gxpQualityOwner}
                     onChange={(e) => setGxpQualityOwner(e.target.value)}
                     style={inputStyle}
-                    placeholder={t('QA Director', 'QA Director')}
+                    placeholder="QA Director"
                   />
                 </Field>
               </div>
@@ -366,7 +362,7 @@ export function AttestivAppCreatePage() {
         </form>
       </div>
     </>
-  );
+  )
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

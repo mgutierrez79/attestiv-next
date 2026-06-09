@@ -220,10 +220,6 @@ export function AttestivTrustStorePage() {
   }, [refresh, refreshPlatformCerts, refreshClientCerts, refreshStaged])
 
   async function stageCustomCert() {
-    const {
-      t
-    } = useI18n();
-
     if (!stageCertPem.trim() || !stageKeyPem.trim()) {
       setError(t('Both the certificate and private key (PEM) are required.', 'Both the certificate and private key (PEM) are required.'))
       return
@@ -251,10 +247,6 @@ export function AttestivTrustStorePage() {
   }
 
   async function discardStaged(role: string) {
-    const {
-      t
-    } = useI18n();
-
     setBusy(true)
     setError(null)
     setInfo(null)
@@ -274,10 +266,6 @@ export function AttestivTrustStorePage() {
   }
 
   async function issueClientCert() {
-    const {
-      t
-    } = useI18n();
-
     if (!clientCertLabel.trim()) {
       setError(t('A label is required to issue a client certificate.', 'A label is required to issue a client certificate.'))
       return
@@ -306,10 +294,6 @@ export function AttestivTrustStorePage() {
   }
 
   async function revokeClientCert(fingerprint: string, label: string) {
-    const {
-      t
-    } = useI18n();
-
     if (typeof window !== 'undefined') {
       const ok = window.confirm(
         t('Revoke client certificate "{label}"? Any caller presenting it will be rejected at the TLS handshake.', 'Revoke client certificate "{label}"? Any caller presenting it will be rejected at the TLS handshake.').replace('{label}', label),
@@ -415,10 +399,6 @@ export function AttestivTrustStorePage() {
   }
 
   async function upload() {
-    const {
-      t
-    } = useI18n();
-
     if (!labelInput.trim() || !pemInput.trim()) {
       setError(t('Label and PEM are required.', 'Label and PEM are required.'))
       return
@@ -451,10 +431,6 @@ export function AttestivTrustStorePage() {
   }
 
   async function remove(bundleID: string, label: string) {
-    const {
-      t
-    } = useI18n();
-
     if (typeof window !== 'undefined') {
       const ok = window.confirm(
         t('Remove the CA "{label}"? Connectors that relied on it will fail TLS verification again.', 'Remove the CA "{label}"? Connectors that relied on it will fail TLS verification again.').replace('{label}', label),
@@ -571,10 +547,6 @@ export function AttestivTrustStorePage() {
                   </thead>
                   <tbody>
                     {platformCerts.certificates.map((cert) => {
-                      const {
-                        t
-                      } = useI18n();
-
                       const tone: 'red' | 'amber' | 'navy' =
                         cert.expiry_status === 'expired' || cert.expiry_status === 'critical'
                           ? 'red'
@@ -681,36 +653,30 @@ export function AttestivTrustStorePage() {
                 </tr>
               </thead>
               <tbody>
-                {clientCerts.map(cert => {
-                  const {
-                    t
-                  } = useI18n();
-
-                  return (
-                    <tr key={cert.fingerprint_sha256} style={{ borderTop: '1px solid var(--color-border)' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>
-                        {cert.label}
-                        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{cert.common_name}</div>
-                      </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <Badge tone={cert.revoked ? 'red' : 'navy'}>
-                          {cert.revoked ? t('Revoked', 'Revoked') : t('Active', 'Active')}
-                        </Badge>
-                      </td>
-                      <td style={{ padding: '8px 12px', fontSize: 13 }}>{cert.expires_at.slice(0, 10)}</td>
-                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11 }}>
-                        {cert.fingerprint_sha256.slice(0, 16)}…{cert.fingerprint_sha256.slice(-8)}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                        {cert.revoked ? null : (
-                          <GhostButton onClick={() => void revokeClientCert(cert.fingerprint_sha256, cert.label)} disabled={busy}>
-                            <i className="ti ti-ban" aria-hidden="true" /> {t('Revoke', 'Revoke')}
-                          </GhostButton>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {clientCerts.map((cert) => (
+                  <tr key={cert.fingerprint_sha256} style={{ borderTop: '1px solid var(--color-border)' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 600 }}>
+                      {cert.label}
+                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{cert.common_name}</div>
+                    </td>
+                    <td style={{ padding: '8px 12px' }}>
+                      <Badge tone={cert.revoked ? 'red' : 'navy'}>
+                        {cert.revoked ? t('Revoked', 'Revoked') : t('Active', 'Active')}
+                      </Badge>
+                    </td>
+                    <td style={{ padding: '8px 12px', fontSize: 13 }}>{cert.expires_at.slice(0, 10)}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11 }}>
+                      {cert.fingerprint_sha256.slice(0, 16)}…{cert.fingerprint_sha256.slice(-8)}
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                      {cert.revoked ? null : (
+                        <GhostButton onClick={() => void revokeClientCert(cert.fingerprint_sha256, cert.label)} disabled={busy}>
+                          <i className="ti ti-ban" aria-hidden="true" /> {t('Revoke', 'Revoke')}
+                        </GhostButton>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
@@ -782,24 +748,18 @@ export function AttestivTrustStorePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stagedCerts.map(cert => {
-                    const {
-                      t
-                    } = useI18n();
-
-                    return (
-                      <tr key={cert.role} style={{ borderTop: '1px solid var(--color-border)' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{cert.label || cert.role}</td>
-                        <td style={{ padding: '8px 12px', fontSize: 13 }}>{cert.subject}</td>
-                        <td style={{ padding: '8px 12px', fontSize: 13 }}>{(cert.not_after || '').slice(0, 10)}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                          <GhostButton onClick={() => void discardStaged(cert.role)} disabled={busy}>
-                            <i className="ti ti-x" aria-hidden="true" /> {t('Discard', 'Discard')}
-                          </GhostButton>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {stagedCerts.map((cert) => (
+                    <tr key={cert.role} style={{ borderTop: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{cert.label || cert.role}</td>
+                      <td style={{ padding: '8px 12px', fontSize: 13 }}>{cert.subject}</td>
+                      <td style={{ padding: '8px 12px', fontSize: 13 }}>{(cert.not_after || '').slice(0, 10)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        <GhostButton onClick={() => void discardStaged(cert.role)} disabled={busy}>
+                          <i className="ti ti-x" aria-hidden="true" /> {t('Discard', 'Discard')}
+                        </GhostButton>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}
@@ -1041,10 +1001,6 @@ export function AttestivTrustStorePage() {
               </thead>
               <tbody>
                 {bundles.map((bundle) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const expiry = new Date(bundle.not_after)
                   const daysLeft = Math.round((expiry.getTime() - now.getTime()) / 86400000)
                   let tone: 'red' | 'amber' | 'navy' = 'navy'
@@ -1084,7 +1040,7 @@ export function AttestivTrustStorePage() {
         )}
       </div>
     </>
-  );
+  )
 }
 
 // extractMessage reads body.detail first (the platform's writeError

@@ -349,10 +349,6 @@ export function InventoryPage() {
   // topologies. Host rows don't trigger a cascade — the backend
   // derives VM sites automatically when a host's site changes.
   async function assignSite(asset: InventoryAsset, siteID: string) {
-    const {
-      t
-    } = useI18n();
-
     if (assigningAssetId) return
     setError(null)
 
@@ -417,10 +413,6 @@ export function InventoryPage() {
   // ids, marking them in/out of compliance evaluation scope. Used
   // for PCI CDE segmentation, GxP scope rules, ISO27001 SoA scope.
   async function bulkScopeToggle(inScope: boolean) {
-    const {
-      t
-    } = useI18n();
-
     if (selected.size === 0) return
     setBulkBusy(true)
     setError(null)
@@ -486,10 +478,6 @@ export function InventoryPage() {
   }
 
   async function refreshFromConnectors() {
-    const {
-      t
-    } = useI18n();
-
     setError(null)
     setInfo(null)
     try {
@@ -1149,7 +1137,7 @@ function AssetRow({
           // Stretched cluster: multiple member-host sites. The
           // cluster has no single canonical site; the badge lists
           // every site the cluster spans plus a "stretched" flag.
-          (<span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
             <Badge tone="amber" icon="ti-arrows-shuffle">
               {t('Stretched', 'Stretched')}
             </Badge>
@@ -1171,13 +1159,13 @@ function AssetRow({
                 </span>
               )
             })}
-          </span>)
+          </span>
         ) : isLinkAsset ? (
           // Network link: render BOTH endpoint sites with an arrow
           // so the operator immediately sees "paris ↔ lyon" for
           // intersite bundles. Same-site bundles collapse to a
           // single label. Empty side renders as "?".
-          ((() => {
+          (() => {
             const siteA = String(asset.metadata?.['site_a'] ?? '').trim()
             const siteB = String(asset.metadata?.['site_b'] ?? '').trim()
             if (!siteA && !siteB) {
@@ -1201,26 +1189,30 @@ function AssetRow({
                 </span>
               </span>
             )
-          })())
+          })()
         ) : isStorageVolume ? (
           // Storage volume: render the parent array's name (e.g.
           // "POWERSTOREA01") as the location identity. Backend
           // stamps metadata.array_name at emission time. Site lives
           // on the array row itself; repeating it 100+ times per
           // volume isn't useful.
-          (storageVolumeArrayName ? (<span
-            style={{
-              fontSize: 11,
-              padding: '2px 6px',
-              background: 'var(--color-background-secondary)',
-              borderRadius: 'var(--border-radius-sm)',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--color-text-primary)',
-            }}
-            title={t('Storage array', 'Storage array')}
-          >
-            {storageVolumeArrayName}
-          </span>) : (<span style={{ color: 'var(--color-text-tertiary)' }}>—</span>))
+          storageVolumeArrayName ? (
+            <span
+              style={{
+                fontSize: 11,
+                padding: '2px 6px',
+                background: 'var(--color-background-secondary)',
+                borderRadius: 'var(--border-radius-sm)',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+              }}
+              title={t('Storage array', 'Storage array')}
+            >
+              {storageVolumeArrayName}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+          )
         ) : isDerivedVMSite && !overrideVMSite ? (
           // VM with derived location: cluster is the primary,
           // stable identity (VM never leaves its cluster). Site
@@ -1229,7 +1221,7 @@ function AssetRow({
           // misleading there. Override link lets the operator
           // pin a manual site if they need one anyway — with a
           // tooltip warning about vMotion staleness.
-          (<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11, flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11, flexWrap: 'wrap' }}>
             {vmClusterName ? (
               <span
                 style={{
@@ -1275,7 +1267,7 @@ function AssetRow({
             >
               {t('Override', 'Override')}
             </button>
-          </span>)
+          </span>
         ) : (
           <select
             value={currentSite}
@@ -1298,7 +1290,7 @@ function AssetRow({
                 loaded sites list (e.g. a legacy datacenter_id that
                 no longer maps to a registered site). */}
             {currentSite && !sites.some((s) => s.site_id === currentSite) ? (
-              <option value={currentSite}>{currentSite} {t('(not registered)', '(not registered)')}</option>
+              <option value={currentSite}>{currentSite} (not registered)</option>
             ) : null}
             {sites.map((s) => (
               <option key={s.site_id} value={s.site_id}>
@@ -1354,7 +1346,7 @@ function AssetRow({
         )}
       </td>
     </tr>
-  );
+  )
 }
 
 // CMDBGapTile is a special SummaryTile variant for the "Not in CMDB"
@@ -1636,10 +1628,6 @@ function LinkAssetEndpoint({
   }
   const ifaceKey = side === 'a' ? 'interface_a' : 'interface_b'
   const ifaceSummary = (() => {
-    const {
-      t
-    } = useI18n();
-
     if (memberCount > 1) return `${memberCount} ${t('members', 'members')}`
     if (members[0]) return String(members[0][ifaceKey] ?? '')
     return ''
@@ -1841,10 +1829,6 @@ function RegistryTabs({
       }}
     >
       {chips.map((c) => {
-        const {
-          t
-        } = useI18n();
-
         const active = c.key === tab
         return (
           <button
@@ -1943,7 +1927,7 @@ function RegistryTabs({
         )
       })}
     </div>
-  );
+  )
 }
 
 // RegistryItem is the unified row shape returned by

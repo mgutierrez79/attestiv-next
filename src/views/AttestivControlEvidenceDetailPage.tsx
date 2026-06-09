@@ -151,10 +151,6 @@ export function AttestivControlEvidenceDetailPage({
   }, [frameworkId, controlId, activeAsOf])
 
   function applyReplay() {
-    const {
-      t
-    } = useI18n();
-
     if (!asOfInput) return
     // datetime-local emits "2026-04-15T12:00" (no tz). Convert via Date
     // to a real UTC ISO so the backend's RFC3339 parser accepts it.
@@ -415,27 +411,21 @@ export function AttestivControlEvidenceDetailPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {data.requirements.map((r, i) => {
-                      const {
-                        t
-                      } = useI18n();
-
-                      return (
-                        <tr key={r.tag + ':' + i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
-                          <td style={{ padding: '6px 8px' }}><code style={{ fontSize: 11 }}>{r.tag}</code></td>
-                          <td style={{ padding: '6px 8px', fontSize: 10, color: 'var(--color-text-tertiary)' }}>{r.type}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: scoreColor(r.combined_score) }}>{(r.combined_score * 100).toFixed(0)}%</td>
-                          <td style={cellStyle()}>{fmtAxis(r.presence_score)}</td>
-                          <td style={cellStyle()}>{fmtAxis(r.freshness_score)}</td>
-                          <td style={cellStyle()}>{fmtAxis(r.frequency_score)}</td>
-                          <td style={cellStyle()}>{fmtAxis(r.threshold_score)}</td>
-                          <td style={cellStyle()}>{fmtAxis(r.field_match_score)}</td>
-                          <td style={{ padding: '6px 8px' }}>
-                            {r.gate_failed ? <Badge tone="red">{t('FAILED', 'FAILED')}</Badge> : <Badge tone="gray">—</Badge>}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {data.requirements.map((r, i) => (
+                      <tr key={r.tag + ':' + i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                        <td style={{ padding: '6px 8px' }}><code style={{ fontSize: 11 }}>{r.tag}</code></td>
+                        <td style={{ padding: '6px 8px', fontSize: 10, color: 'var(--color-text-tertiary)' }}>{r.type}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: scoreColor(r.combined_score) }}>{(r.combined_score * 100).toFixed(0)}%</td>
+                        <td style={cellStyle()}>{fmtAxis(r.presence_score)}</td>
+                        <td style={cellStyle()}>{fmtAxis(r.freshness_score)}</td>
+                        <td style={cellStyle()}>{fmtAxis(r.frequency_score)}</td>
+                        <td style={cellStyle()}>{fmtAxis(r.threshold_score)}</td>
+                        <td style={cellStyle()}>{fmtAxis(r.field_match_score)}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          {r.gate_failed ? <Badge tone="red">{t('FAILED', 'FAILED')}</Badge> : <Badge tone="gray">—</Badge>}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
@@ -475,7 +465,7 @@ export function AttestivControlEvidenceDetailPage({
         )}
       </div>
     </>
-  );
+  )
 }
 
 function PaginatedEvidenceRecords({
@@ -503,39 +493,37 @@ function PaginatedEvidenceRecords({
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ maxHeight: 560, overflowY: 'auto' }}>
-        {pageRows.map((rec, i) => {
-          return (
-            <div
-              key={rec.evidence_id + ':' + (pageStart + i)}
-              style={{
-                padding: '8px 0',
-                borderTop: i === 0 && currentPage === 0 ? 'none' : '0.5px solid var(--color-border-tertiary)',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{rec.evidence_id}</code>
-                <Badge tone="gray">{rec.type}</Badge>
-                {rec.source ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('via', 'via')} <strong>{rec.source}</strong></span> : null}
-                {rec.timestamp ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rec.timestamp}</span> : <span style={{ fontSize: 11, color: 'var(--color-status-red-mid)' }}>{t('rolled off', 'rolled off')}</span>}
-              </div>
-              {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
-                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                  {t('Satisfies', 'Satisfies')}: {rec.satisfies_tags.map((tag) => <code key={tag} style={{ marginRight: 6, fontSize: 10 }}>{tag}</code>)}
-                </div>
-              ) : null}
-              {rec.payload_preview && Object.keys(rec.payload_preview).length > 0 ? (
-                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-secondary)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2px 12px' }}>
-                  {Object.entries(rec.payload_preview).map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                      <span style={{ color: 'var(--color-text-tertiary)' }}>{k}:</span>
-                      <span style={{ fontFamily: 'var(--font-family-mono, monospace)', fontSize: 10 }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+        {pageRows.map((rec, i) => (
+          <div
+            key={rec.evidence_id + ':' + (pageStart + i)}
+            style={{
+              padding: '8px 0',
+              borderTop: i === 0 && currentPage === 0 ? 'none' : '0.5px solid var(--color-border-tertiary)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <code style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{rec.evidence_id}</code>
+              <Badge tone="gray">{rec.type}</Badge>
+              {rec.source ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('via', 'via')} <strong>{rec.source}</strong></span> : null}
+              {rec.timestamp ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rec.timestamp}</span> : <span style={{ fontSize: 11, color: 'var(--color-status-red-mid)' }}>{t('rolled off', 'rolled off')}</span>}
             </div>
-          );
-        })}
+            {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                {t('Satisfies', 'Satisfies')}: {rec.satisfies_tags.map((tag) => <code key={tag} style={{ marginRight: 6, fontSize: 10 }}>{tag}</code>)}
+              </div>
+            ) : null}
+            {rec.payload_preview && Object.keys(rec.payload_preview).length > 0 ? (
+              <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-text-secondary)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2px 12px' }}>
+                {Object.entries(rec.payload_preview).map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>{k}:</span>
+                    <span style={{ fontFamily: 'var(--font-family-mono, monospace)', fontSize: 10 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
       </div>
       <div style={{ marginTop: 8 }}>
         <Pagination
@@ -548,7 +536,7 @@ function PaginatedEvidenceRecords({
         />
       </div>
     </div>
-  );
+  )
 }
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'amber' | 'red' | 'gray' }) {

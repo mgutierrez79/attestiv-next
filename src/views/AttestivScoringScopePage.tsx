@@ -148,10 +148,6 @@ export function AttestivScoringScopePage() {
   }, [scopeType])
 
   async function evaluate() {
-    const {
-      t
-    } = useI18n();
-
     if (!scopeID) {
       setError(t('Pick a scope first.', 'Pick a scope first.'))
       return

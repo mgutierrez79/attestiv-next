@@ -287,10 +287,6 @@ export function AttestivFrameworkControlsPage() {
               </thead>
               <tbody>
                 {paged.map((control) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const k = keyFor(control.framework, control.control_id)
                   const taskCount = tasksByControl.get(k) ?? 0
                   const exceptions = exceptionsByControl.get(k) ?? []
@@ -312,7 +308,7 @@ export function AttestivFrameworkControlsPage() {
                         <Link
                           href={`/scoring/frameworks/${encodeURIComponent(frameworkLabelToId(control.framework))}/controls/${encodeURIComponent(control.control_id)}`}
                           style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-                          title={t('View evidence detail', 'View evidence detail')}
+                          title="View evidence detail"
                         >
                           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 500, color: 'var(--color-brand-blue)' }}>{control.control_id}</div>
                           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{control.name}</div>
@@ -346,7 +342,7 @@ export function AttestivFrameworkControlsPage() {
                         {control.evidence_count ?? '—'}
                       </td>
                     </tr>
-                  );
+                  )
                 })}
               </tbody>
             </table>

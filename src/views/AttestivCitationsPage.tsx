@@ -106,10 +106,6 @@ export function AttestivCitationsPage() {
   const pageRows = rows.slice(page * pageSize, page * pageSize + pageSize)
 
   async function review(row: CitationRow, status: 'verified' | 'rejected') {
-    const {
-      t
-    } = useI18n();
-
     const key = `${row.framework_id}/${row.control_id}`
     setBusy(key)
     setError(null)
@@ -165,17 +161,11 @@ export function AttestivCitationsPage() {
         </Card>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '12px 0' }}>
-          {['all', 'unverified', 'verified', 'draft', 'derived', 'rejected'].map(f => {
-            const {
-              t
-            } = useI18n();
-
-            return (
-              <GhostButton key={f} onClick={() => setFilter(f)}>
-                <span style={{ fontWeight: filter === f ? 700 : 400 }}>{t(f, f)}</span>
-              </GhostButton>
-            );
-          })}
+          {['all', 'unverified', 'verified', 'draft', 'derived', 'rejected'].map((f) => (
+            <GhostButton key={f} onClick={() => setFilter(f)}>
+              <span style={{ fontWeight: filter === f ? 700 : 400 }}>{t(f, f)}</span>
+            </GhostButton>
+          ))}
         </div>
 
         <Card>
@@ -188,10 +178,6 @@ export function AttestivCitationsPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {pageRows.map((row) => {
-                const {
-                  t
-                } = useI18n();
-
                 const key = `${row.framework_id}/${row.control_id}`
                 return (
                   <div
@@ -253,5 +239,5 @@ export function AttestivCitationsPage() {
         </Card>
       </div>
     </>
-  );
+  )
 }

@@ -150,7 +150,7 @@ export function AttestivAuthPosturePage() {
                   posture.sso.oidc_configured ? (
                     <Badge tone="green">OIDC</Badge>
                   ) : posture.sso.api_key_count > 0 ? (
-                    <Badge tone="amber">{t('API keys', 'API keys')}</Badge>
+                    <Badge tone="amber">API keys</Badge>
                   ) : (
                     <Badge tone="red">{t('No auth', 'No auth')}</Badge>
                   )
@@ -224,23 +224,17 @@ export function AttestivAuthPosturePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {posture.sod.flows.map(f => {
-                    const {
-                      t
-                    } = useI18n();
-
-                    return (
-                      <tr key={f.flow} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
-                        <td style={cellStyle}><code style={{ fontSize: 11 }}>{f.flow}</code></td>
-                        <td style={cellStyle}>
-                          {f.enforced ? <Badge tone="green">yes</Badge> : <Badge tone="gray">no</Badge>}
-                        </td>
-                        <td style={{ ...cellStyle, color: 'var(--color-text-tertiary)' }}>
-                          {f.enforced ? (f.since ? `${t('since', 'since')} ${f.since}` : '') : f.reason || ''}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {posture.sod.flows.map((f) => (
+                    <tr key={f.flow} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <td style={cellStyle}><code style={{ fontSize: 11 }}>{f.flow}</code></td>
+                      <td style={cellStyle}>
+                        {f.enforced ? <Badge tone="green">yes</Badge> : <Badge tone="gray">no</Badge>}
+                      </td>
+                      <td style={{ ...cellStyle, color: 'var(--color-text-tertiary)' }}>
+                        {f.enforced ? (f.since ? `${t('since', 'since')} ${f.since}` : '') : f.reason || ''}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </Card>
@@ -248,7 +242,7 @@ export function AttestivAuthPosturePage() {
         )}
       </div>
     </>
-  );
+  )
 }
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: 'amber' | 'red' }) {

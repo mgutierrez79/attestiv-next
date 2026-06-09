@@ -181,10 +181,6 @@ export function AttestivPolicyDetailPage() {
   }
 
   async function deletePolicy() {
-    const {
-      t
-    } = useI18n();
-
     if (!id) return
     if (!window.confirm(t('Delete this draft policy and its uploaded document? This cannot be undone.', 'Delete this draft policy and its uploaded document? This cannot be undone.'))) return
     setBusy(true)
@@ -203,10 +199,6 @@ export function AttestivPolicyDetailPage() {
   }
 
   async function archivePolicy() {
-    const {
-      t
-    } = useI18n();
-
     if (!id) return
     const reason = window.prompt(t('Reason for archiving (recorded in the audit log):', 'Reason for archiving (recorded in the audit log):'))
     if (reason === null) return
@@ -233,10 +225,6 @@ export function AttestivPolicyDetailPage() {
   // AI-assisted: extract metadata from the uploaded document and pre-fill the
   // Edit form. The values are SUGGESTIONS — the user reviews and clicks Save.
   async function suggestFields() {
-    const {
-      t
-    } = useI18n();
-
     if (!id) return
     setBusy(true)
     setError(null)

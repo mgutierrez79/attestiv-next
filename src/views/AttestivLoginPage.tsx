@@ -68,10 +68,6 @@ export function AttestivLoginPage() {
   }
 
   async function onLocalSubmit(event: FormEvent) {
-    const {
-      t
-    } = useI18n();
-
     event.preventDefault()
     setError(null)
     setInfo(null)
@@ -105,10 +101,6 @@ export function AttestivLoginPage() {
   }
 
   async function onSsoSignIn() {
-    const {
-      t
-    } = useI18n();
-
     setError(null)
     setInfo(null)
     // Persist tenant + mode BEFORE redirecting so the post-callback
@@ -124,10 +116,6 @@ export function AttestivLoginPage() {
   }
 
   function onApiKeySubmit(event: FormEvent) {
-    const {
-      t
-    } = useI18n();
-
     event.preventDefault()
     setError(null)
     setInfo(null)

@@ -193,30 +193,24 @@ export function AttestivNetworkMapPage() {
         </Card>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
-          {(['all', 'Intersite_Link', 'Port_Channel', 'Firewall_Trunk', 'Host_Trunk', 'Switch_Link'] as const).map(key => {
-            const {
-              t
-            } = useI18n();
-
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setFilter(key)}
-                style={{
-                  cursor: 'pointer',
-                  border: '0.5px solid var(--color-border-tertiary)',
-                  background: filter === key ? 'var(--color-bg-accent)' : 'transparent',
-                  color: filter === key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                  padding: '4px 10px',
-                  borderRadius: 12,
-                  fontSize: 12,
-                }}
-              >
-                {key === 'all' ? t('All', 'All') : key.replace(/_/g, ' ')}({counts[key] ?? 0})
-                            </button>
-            );
-          })}
+          {(['all', 'Intersite_Link', 'Port_Channel', 'Firewall_Trunk', 'Host_Trunk', 'Switch_Link'] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              style={{
+                cursor: 'pointer',
+                border: '0.5px solid var(--color-border-tertiary)',
+                background: filter === key ? 'var(--color-bg-accent)' : 'transparent',
+                color: filter === key ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                padding: '4px 10px',
+                borderRadius: 12,
+                fontSize: 12,
+              }}
+            >
+              {key === 'all' ? t('All', 'All') : key.replace(/_/g, ' ')} ({counts[key] ?? 0})
+            </button>
+          ))}
         </div>
 
         <Card style={{ marginTop: 12 }}>
@@ -243,10 +237,6 @@ export function AttestivNetworkMapPage() {
                 </thead>
                 <tbody>
                   {pageRows.map((link) => {
-                    const {
-                      t
-                    } = useI18n();
-
                     const label = String(link.metadata?.['link_type_label'] ?? '').trim() || link.asset_type || '—'
                     const memberCount = Number(link.metadata?.['member_count'] ?? 0)
                     const verified = Boolean(link.metadata?.['verified'])
@@ -336,7 +326,7 @@ export function AttestivNetworkMapPage() {
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 // ----- Map data + rendering ----------------------------------------
@@ -493,10 +483,6 @@ function buildMapData(
 // overlap. Sites with a single node sit alone at the centre.
 
 function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; siteOrder: string[] } }) {
-  const {
-    t
-  } = useI18n();
-
   const SITE_PAD_X = 16
   const SITE_PAD_TOP = 60
   const SITE_PAD_BOTTOM = 24
@@ -1357,7 +1343,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
               setSearchQuery('')
             }
           }}
-          placeholder={t('Find device…', 'Find device…')}
+          placeholder="Find device…"
           style={{
             border: 0,
             outline: 'none',
@@ -1393,12 +1379,13 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
               padding: 0,
               lineHeight: 1,
             }}
-            title={t('Clear (Esc)', 'Clear (Esc)')}
+            title="Clear (Esc)"
           >
             ✕
           </button>
         ) : null}
       </div>
+
       {/* Top-right floating zoom controls */}
       <div
         style={{
@@ -1415,13 +1402,10 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           boxShadow: '0 2px 8px rgba(3,35,74,0.08)',
         }}
       >
-        <ZoomButton onClick={() => applyZoom(1.25)} title={t('Zoom in', 'Zoom in')}>+</ZoomButton>
-        <ZoomButton onClick={() => applyZoom(1 / 1.25)} title={t('Zoom out', 'Zoom out')}>−</ZoomButton>
-        <ZoomButton onClick={fitToContent} title={t('Fit to screen', 'Fit to screen')}>⤢</ZoomButton>
-        <ZoomButton onClick={resetLayout} title={t(
-          'Reset layout (undo all moves + zoom to fit)',
-          'Reset layout (undo all moves + zoom to fit)'
-        )}>↺</ZoomButton>
+        <ZoomButton onClick={() => applyZoom(1.25)} title="Zoom in">+</ZoomButton>
+        <ZoomButton onClick={() => applyZoom(1 / 1.25)} title="Zoom out">−</ZoomButton>
+        <ZoomButton onClick={fitToContent} title="Fit to screen">⤢</ZoomButton>
+        <ZoomButton onClick={resetLayout} title="Reset layout (undo all moves + zoom to fit)">↺</ZoomButton>
         <div
           style={{
             padding: '0 8px',
@@ -1437,6 +1421,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           {Math.round(baseScale * 100)}%
         </div>
       </div>
+
       <svg
         ref={svgRef}
         width="100%"
@@ -1789,6 +1774,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           )
         })}
       </svg>
+
       {/* Minimap — bottom-right corner overview of the full layout
           with the current viewport drawn as a translucent rectangle.
           Click anywhere on the minimap to pan the main view to that
@@ -1805,6 +1791,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           setView((prev) => (prev ? { ...prev, x: svgX - prev.w / 2, y: svgY - prev.h / 2 } : prev))
         }}
       />
+
       {/* Edge tooltip */}
       {hoveredEdgeData && (
         <EdgeTooltip
@@ -1816,6 +1803,7 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           count={hoveredEdgeData.count}
         />
       )}
+
       {/* Selection side panel — slides in from the right. Shown for
           either a selected node or a selected edge. Persistent (does
           not close on cursor move, unlike the hover tooltip). */}
@@ -1879,19 +1867,17 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           setSelectedEdge(null)
         }}
       />
+
       <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 11, color: '#54534e', flexWrap: 'wrap' }}>
-        <LegendItem gradientId="nm-edge-intersite" label={t('Intersite link', 'Intersite link')} animated />
-        <LegendItem gradientId="nm-edge-portchannel" label={t('Port channel', 'Port channel')} />
-        <LegendItem gradientId="nm-edge-switchlink" label={t('Switch link', 'Switch link')} dashed />
+        <LegendItem gradientId="nm-edge-intersite" label="Intersite link" animated />
+        <LegendItem gradientId="nm-edge-portchannel" label="Port channel" />
+        <LegendItem gradientId="nm-edge-switchlink" label="Switch link" dashed />
         <span style={{ marginLeft: 'auto', color: '#807e76' }}>
-          {t(
-            '🔎 type to find a device · drag site to move · drag node inside its site · scroll to zoom · click minimap to jump · Esc clears selection',
-            '🔎 type to find a device · drag site to move · drag node inside its site · scroll to zoom · click minimap to jump · Esc clears selection'
-          )}
+          🔎 type to find a device · drag site to move · drag node inside its site · scroll to zoom · click minimap to jump · Esc clears selection
         </span>
       </div>
     </div>
-  );
+  )
 }
 
 function ZoomButton({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
@@ -1946,10 +1932,6 @@ function Minimap({
   svgInitialY: number
   onPan: (svgX: number, svgY: number) => void
 }) {
-  const {
-    t
-  } = useI18n();
-
   // Fixed minimap viewport. Aspect ratio of the source content is
   // preserved by computing the scale that fits the content into the
   // minimap rectangle.
@@ -2015,7 +1997,7 @@ function Minimap({
           fontWeight: 500,
         }}
       >
-        {t('Overview', 'Overview')}
+        Overview
       </div>
       <svg
         width={MM_W}
@@ -2062,7 +2044,7 @@ function Minimap({
         />
       </svg>
     </div>
-  );
+  )
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -2094,10 +2076,6 @@ function SelectionPanel({
   connectedCount: number
   onClose: () => void
 }) {
-  const {
-    t
-  } = useI18n();
-
   const open = Boolean(node || edgeInfo)
   return (
     <div
@@ -2133,7 +2111,7 @@ function SelectionPanel({
             <button
               type="button"
               onClick={onClose}
-              title={t('Close', 'Close')}
+              title="Close"
               style={{
                 border: 0,
                 background: 'transparent',
@@ -2150,10 +2128,10 @@ function SelectionPanel({
 
           {node && (
             <>
-              <PanelRow label={t('Role', 'Role')} value={nodeRoleLabel(node.assetType)} accent={nodeAccent(node.assetType)} />
-              <PanelRow label={t('Site', 'Site')} value={node.site} mono />
-              <PanelRow label={t('Links', 'Links')} value={`${connectedCount} ${connectedCount === 1 ? 'connection' : 'connections'}`} />
-              <PanelRow label={t('Asset ID', 'Asset ID')} value={node.id} mono small />
+              <PanelRow label="Role" value={nodeRoleLabel(node.assetType)} accent={nodeAccent(node.assetType)} />
+              <PanelRow label="Site" value={node.site} mono />
+              <PanelRow label="Links" value={`${connectedCount} ${connectedCount === 1 ? 'connection' : 'connections'}`} />
+              <PanelRow label="Asset ID" value={node.id} mono small />
               <a
                 href={`/inventory/${encodeURIComponent(node.id)}`}
                 style={{
@@ -2169,17 +2147,17 @@ function SelectionPanel({
                   textDecoration: 'none',
                 }}
               >
-                {t('Open in inventory →', 'Open in inventory →')}
+                Open in inventory →
               </a>
             </>
           )}
 
           {edgeInfo && (
             <>
-              <PanelRow label={t('From', 'From')} value={edgeInfo.fromLabel} mono />
-              <PanelRow label={t('To', 'To')} value={edgeInfo.toLabel} mono />
+              <PanelRow label="From" value={edgeInfo.fromLabel} mono />
+              <PanelRow label="To" value={edgeInfo.toLabel} mono />
               <PanelRow
-                label={t('Sites', 'Sites')}
+                label="Sites"
                 value={
                   edgeInfo.fromSite === edgeInfo.toSite
                     ? edgeInfo.fromSite
@@ -2189,13 +2167,13 @@ function SelectionPanel({
               />
               {edgeInfo.edge.subtype !== 'Intersite_Link' && (
                 <PanelRow
-                  label={t('This cable / bundle', 'This cable / bundle')}
+                  label="This cable / bundle"
                   value={`${edgeInfo.count} ${edgeInfo.count === 1 ? 'cable in 1 bundle' : 'parallel cables in 1 bundle'}`}
                 />
               )}
               {edgeInfo.edge.subtype === 'Intersite_Link' && edgeInfo.sitePairBundles > 0 && (
                 <PanelRow
-                  label={t('Site-pair redundancy', 'Site-pair redundancy')}
+                  label="Site-pair redundancy"
                   value={
                     edgeInfo.sitePairBundles === 1
                       ? `1 intersite bundle between ${edgeInfo.fromSite} and ${edgeInfo.toSite} — no alternate path`
@@ -2215,13 +2193,10 @@ function SelectionPanel({
                     lineHeight: 1.4,
                   }}
                 >
-                  {t(
-                    'Only 1 cross-site path discovered between',
-                    'Only 1 cross-site path discovered between'
-                  )} {edgeInfo.fromSite}and {edgeInfo.toSite}{t(
-                    '.\n                  DORA Art. 12 / NIS2 Art. 21 expect redundancy here, so this would split the two sites\n                  on failure if no alternate exists. If you expect a second path (firewall transit,\n                  backup fibre) but it isn\'t showing, the platform\'s discovery missed it — check',
-                    '.\n                  DORA Art. 12 / NIS2 Art. 21 expect redundancy here, so this would split the two sites\n                  on failure if no alternate exists. If you expect a second path (firewall transit,\n                  backup fibre) but it isn\'t showing, the platform\'s discovery missed it — check'
-                  )}{' '}
+                  Only 1 cross-site path discovered between {edgeInfo.fromSite} and {edgeInfo.toSite}.
+                  DORA Art. 12 / NIS2 Art. 21 expect redundancy here, so this would split the two sites
+                  on failure if no alternate exists. If you expect a second path (firewall transit,
+                  backup fibre) but it isn&apos;t showing, the platform&apos;s discovery missed it — check{' '}
                   <a
                     href="/v1/admin/firewall-intersite-synth-diagnostic"
                     target="_blank"
@@ -2230,10 +2205,7 @@ function SelectionPanel({
                   >
                     /firewall-intersite-synth-diagnostic
                   </a>
-                  {' '}{t(
-                    'for the synthesiser\'s decision log.',
-                    'for the synthesiser\'s decision log.'
-                  )}
+                  {' '}for the synthesiser&apos;s decision log.
                 </div>
               )}
               {edgeInfo.edge.subtype === 'Intersite_Link' && edgeInfo.sitePairBundles >= 2 && (
@@ -2248,10 +2220,7 @@ function SelectionPanel({
                     lineHeight: 1.4,
                   }}
                 >
-                  {t('Cross-site link with redundancy —', 'Cross-site link with redundancy —')} {edgeInfo.sitePairBundles} {t(
-                    'parallel intersite bundles satisfy DORA Art. 12 / NIS2 Art. 21 single-failure resilience.',
-                    'parallel intersite bundles satisfy DORA Art. 12 / NIS2 Art. 21 single-failure resilience.'
-                  )}
+                  Cross-site link with redundancy — {edgeInfo.sitePairBundles} parallel intersite bundles satisfy DORA Art. 12 / NIS2 Art. 21 single-failure resilience.
                 </div>
               )}
               {edgeInfo.edge.discoverySource === 'firewall_subnet_join' && edgeInfo.edge.assetID ? (
@@ -2262,7 +2231,7 @@ function SelectionPanel({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 // SuppressSyntheticLinkButton lets the operator flag a synthesised
@@ -2271,10 +2240,6 @@ function SelectionPanel({
 // so the next synthesizer pass doesn't re-create it. The page
 // reloads on success so the map refreshes without the phantom arc.
 function SuppressSyntheticLinkButton({ assetID, onSuppressed }: { assetID: string; onSuppressed: () => void }) {
-  const {
-    t
-  } = useI18n();
-
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const handle = async () => {
@@ -2332,14 +2297,11 @@ function SuppressSyntheticLinkButton({ assetID, onSuppressed }: { assetID: strin
         <div style={{ marginTop: 6, fontSize: 10, color: '#6E1A1A' }}>{error}</div>
       ) : (
         <div style={{ marginTop: 6, fontSize: 10, color: '#807e76', lineHeight: 1.3 }}>
-          {t(
-            'Synthesised from a shared /30 transit subnet — Panorama doesn\'t expose direct cabling, so the platform infers. Suppress here when you know the cable doesn\'t exist.',
-            'Synthesised from a shared /30 transit subnet — Panorama doesn\'t expose direct cabling, so the platform infers. Suppress here when you know the cable doesn\'t exist.'
-          )}
+          Synthesised from a shared /30 transit subnet — Panorama doesn&apos;t expose direct cabling, so the platform infers. Suppress here when you know the cable doesn&apos;t exist.
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function PanelRow({ label, value, mono, small, accent }: { label: string; value: string; mono?: boolean; small?: boolean; accent?: string }) {

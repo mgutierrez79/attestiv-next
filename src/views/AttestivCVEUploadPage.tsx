@@ -104,10 +104,6 @@ export function AttestivCVEUploadPage() {
   }
 
   async function refreshKEV() {
-    const {
-      t
-    } = useI18n();
-
     setRefreshingKEV(true)
     setError(null)
     setSuccess(null)
@@ -137,10 +133,6 @@ export function AttestivCVEUploadPage() {
   }
 
   async function upload() {
-    const {
-      t
-    } = useI18n();
-
     setSubmitting(true)
     setError(null)
     setSuccess(null)
@@ -173,10 +165,6 @@ export function AttestivCVEUploadPage() {
   }
 
   async function deleteScan(id: string) {
-    const {
-      t
-    } = useI18n();
-
     if (!confirm(t('Delete this scan? Scoring will drop it on the next eval.', 'Delete this scan? Scoring will drop it on the next eval.'))) return
     try {
       const r = await apiFetch('/evidence/cve-scan/' + encodeURIComponent(id), { method: 'DELETE' })

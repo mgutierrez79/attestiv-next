@@ -1660,7 +1660,7 @@ export function Modal({
         )}
       </div>
     </div>
-  );
+  )
 }
 
 // SortableTable — generic table with sortable column headers and the

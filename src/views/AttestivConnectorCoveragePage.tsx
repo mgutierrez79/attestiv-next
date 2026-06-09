@@ -231,7 +231,7 @@ export function AttestivConnectorCoveragePage() {
             <CardTitle>{t('Attestation signature', 'Attestation signature')}</CardTitle>
             <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono, monospace)' }}>
               <div><strong>{t('algorithm', 'algorithm')}:</strong> {data.signature.algorithm}</div>
-              {data.signature.key_id ? <div><strong>{t('key_id:', 'key_id:')}</strong> {data.signature.key_id}</div> : null}
+              {data.signature.key_id ? <div><strong>key_id:</strong> {data.signature.key_id}</div> : null}
               <div style={{ wordBreak: 'break-all' }}><strong>{t('signature', 'signature')}:</strong> {data.signature.value}</div>
             </div>
             <div style={{ marginTop: 8 }}>
@@ -247,7 +247,7 @@ export function AttestivConnectorCoveragePage() {
         ) : null}
       </div>
     </>
-  );
+  )
 }
 
 function ConnectorRow({ connector, expanded, onToggle }: { connector: ConnectorEntry; expanded: boolean; onToggle: () => void }) {
@@ -291,28 +291,22 @@ function ConnectorRow({ connector, expanded, onToggle }: { connector: ConnectorE
       {expanded ? (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border-secondary)' }}>
           {hasMappings ? (
-            connector.evidence_mappings.map(mapping => {
-              const {
-                t
-              } = useI18n();
-
-              return (
-                <div key={mapping.evidence_type} style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
-                    <code style={{ fontSize: 11 }}>{mapping.evidence_type}</code> → {mapping.controls.length} {t('controls', 'controls')}
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--color-text-secondary)', fontSize: 11.5 }}>
-                    {mapping.controls.map((hit) => (
-                      <li key={`${hit.framework_id}|${hit.control_id}`} style={{ marginBottom: 2 }}>
-                        <strong>{hit.framework_id.toUpperCase()}</strong>{' '}
-                        <code style={{ fontSize: 11 }}>{hit.control_id}</code>{' '}
-                        {hit.control_name}
-                      </li>
-                    ))}
-                  </ul>
+            connector.evidence_mappings.map((mapping) => (
+              <div key={mapping.evidence_type} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+                  <code style={{ fontSize: 11 }}>{mapping.evidence_type}</code> → {mapping.controls.length} {t('controls', 'controls')}
                 </div>
-              );
-            })
+                <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--color-text-secondary)', fontSize: 11.5 }}>
+                  {mapping.controls.map((hit) => (
+                    <li key={`${hit.framework_id}|${hit.control_id}`} style={{ marginBottom: 2 }}>
+                      <strong>{hit.framework_id.toUpperCase()}</strong>{' '}
+                      <code style={{ fontSize: 11 }}>{hit.control_id}</code>{' '}
+                      {hit.control_name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
           ) : (
             <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0 }}>
               {t('No control mappings — this connector\'s evidence types are not referenced by any loaded framework.', 'No control mappings — this connector\'s evidence types are not referenced by any loaded framework.')}
@@ -321,7 +315,7 @@ function ConnectorRow({ connector, expanded, onToggle }: { connector: ConnectorE
         </div>
       ) : null}
     </div>
-  );
+  )
 }
 
 function GapsTable({ gaps }: { gaps: Gap[] }) {
@@ -340,35 +334,23 @@ function GapsTable({ gaps }: { gaps: Gap[] }) {
   }, [gaps])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {byFramework.map(([fid, group]) => {
-        const {
-          t
-        } = useI18n();
-
-        return (
-          <div key={fid}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
-              {group.name} <span style={{ color: 'var(--color-text-tertiary)' }}>· {group.gaps.length} {t('gaps', 'gaps')}</span>
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--color-text-secondary)', fontSize: 11.5 }}>
-              {group.gaps.map(g => {
-                const {
-                  t
-                } = useI18n();
-
-                return (
-                  <li key={g.control_id} style={{ marginBottom: 2 }}>
-                    <code style={{ fontSize: 11 }}>{g.control_id}</code> {g.control_name}
-                    {g.required_tags && g.required_tags.length > 0 ? (
-                      <span style={{ color: 'var(--color-text-tertiary)' }}> {t('— needs', '— needs')}: {g.required_tags.join(', ')}</span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+      {byFramework.map(([fid, group]) => (
+        <div key={fid}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+            {group.name} <span style={{ color: 'var(--color-text-tertiary)' }}>· {group.gaps.length} {t('gaps', 'gaps')}</span>
           </div>
-        );
-      })}
+          <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--color-text-secondary)', fontSize: 11.5 }}>
+            {group.gaps.map((g) => (
+              <li key={g.control_id} style={{ marginBottom: 2 }}>
+                <code style={{ fontSize: 11 }}>{g.control_id}</code> {g.control_name}
+                {g.required_tags && g.required_tags.length > 0 ? (
+                  <span style={{ color: 'var(--color-text-tertiary)' }}> {t('— needs', '— needs')}: {g.required_tags.join(', ')}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
-  );
+  )
 }

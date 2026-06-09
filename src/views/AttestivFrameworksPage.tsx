@@ -305,10 +305,6 @@ export function AttestivFrameworksPage() {
   // min — long enough for big tenants, short enough that a wedged
   // worker doesn't keep polling forever.
   async function generateReport(framework: FrameworkPosture) {
-    const {
-      t
-    } = useI18n();
-
     cancelRef.current = { cancelled: false, jobID: null }
     setGenerating(framework.id)
     setGenerated(null)
@@ -437,10 +433,6 @@ export function AttestivFrameworksPage() {
   // refreshed cards; if they want a PDF, the per-card Generate button
   // already does that.
   async function reevaluate() {
-    const {
-      t
-    } = useI18n();
-
     if (reevalPhase !== 'idle' || isRunning('framework-reevaluate')) return
     setError(null)
     setReevalDone(null)
@@ -741,9 +733,9 @@ function FrameworkCard({
       <div style={{ marginBottom: 10 }}>
         {framework.control_areas.length > 0 ? (
           // Legacy DEMO data path (only reached in actual demo mode).
-          (framework.control_areas.map((area) => (
+          framework.control_areas.map((area) => (
             <FrameworkBar key={area.name} name={area.name} percent={area.percent} />
-          )))
+          ))
         ) : noData ? (
           <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '8px 0' }}>
             {t(

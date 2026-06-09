@@ -251,10 +251,6 @@ export function AttestivRemediationPage() {
                 }}
               >
                 {(['0-7d', '8-30d', '31-60d', '60+d'] as const).map((bucket) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const count = summaryStats.aging_buckets?.[bucket] ?? 0
                   const tone = bucket === '60+d' ? 'red' : bucket === '31-60d' ? 'amber' : 'navy'
                   return <SummaryCard key={bucket} label={t(`Open ${bucket}`, `Open ${bucket}`)} value={count} icon="ti-hourglass-low" tone={tone} />
@@ -497,6 +493,7 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
           </span>
         </div>
       </div>
+
       {open ? (
         <div
           style={{
@@ -534,32 +531,26 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
           {task.related_risks && task.related_risks.length > 0 ? (
             <DetailField label={t('Related risk', 'Related risk')}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {task.related_risks.map(rk => {
-                  const {
-                    t
-                  } = useI18n();
-
-                  return (
-                    <Link
-                      key={rk.risk_id}
-                      href={`/risks/${encodeURIComponent(rk.risk_id)}`}
-                      style={{ color: 'var(--color-brand-blue)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
-                    >
-                      <i className="ti ti-alert-triangle" aria-hidden="true" />
-                      <span>{rk.title || rk.risk_id}</span>
-                      <Badge tone={rk.score >= 12 ? 'red' : rk.score >= 6 ? 'amber' : 'gray'}>
-                        {t('score', 'score')} {rk.score}
-                      </Badge>
-                    </Link>
-                  );
-                })}
+                {task.related_risks.map((rk) => (
+                  <Link
+                    key={rk.risk_id}
+                    href={`/risks/${encodeURIComponent(rk.risk_id)}`}
+                    style={{ color: 'var(--color-brand-blue)', display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                  >
+                    <i className="ti ti-alert-triangle" aria-hidden="true" />
+                    <span>{rk.title || rk.risk_id}</span>
+                    <Badge tone={rk.score >= 12 ? 'red' : rk.score >= 6 ? 'amber' : 'gray'}>
+                      {t('score', 'score')} {rk.score}
+                    </Badge>
+                  </Link>
+                ))}
               </div>
             </DetailField>
           ) : null}
         </div>
       ) : null}
     </div>
-  );
+  )
 }
 
 function DetailField({ label, children }: { label: string; children: React.ReactNode }) {

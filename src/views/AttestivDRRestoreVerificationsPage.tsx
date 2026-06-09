@@ -365,13 +365,13 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         {error ? <Banner tone="error">{error}</Banner> : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Field label={t('Restored asset ID *', 'Restored asset ID *')}>
-            <input value={form.restored_asset_id} onChange={(e) => setForm({ ...form, restored_asset_id: e.target.value })} style={inputStyle} placeholder={t('e.g. veeam-job-prod-app-1', 'e.g. veeam-job-prod-app-1')} />
+            <input value={form.restored_asset_id} onChange={(e) => setForm({ ...form, restored_asset_id: e.target.value })} style={inputStyle} placeholder="e.g. veeam-job-prod-app-1" />
           </Field>
           <Field label={t('Application ID', 'Application ID')}>
-            <input value={form.restored_application_id} onChange={(e) => setForm({ ...form, restored_application_id: e.target.value })} style={inputStyle} placeholder={t('e.g. app-1', 'e.g. app-1')} />
+            <input value={form.restored_application_id} onChange={(e) => setForm({ ...form, restored_application_id: e.target.value })} style={inputStyle} placeholder="e.g. app-1" />
           </Field>
           <Field label={t('Backup ID', 'Backup ID')}>
-            <input value={form.backup_id} onChange={(e) => setForm({ ...form, backup_id: e.target.value })} style={inputStyle} placeholder={t('e.g. 2026-05-25T22:00:00Z', 'e.g. 2026-05-25T22:00:00Z')} />
+            <input value={form.backup_id} onChange={(e) => setForm({ ...form, backup_id: e.target.value })} style={inputStyle} placeholder="e.g. 2026-05-25T22:00:00Z" />
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label={t('Duration (seconds)', 'Duration (seconds)')}>
@@ -406,7 +406,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

@@ -129,10 +129,6 @@ export function AttestivSitesPage() {
   // message so the operator knows to remove the YAML file instead
   // of pestering this UI.
   async function deleteSite(siteID: string, displayName?: string) {
-    const {
-      t
-    } = useI18n();
-
     const label = displayName || siteID
     const confirmation = t(
       'Delete "{label}"? This removes the runtime-overlay definition; YAML-defined sites can\'t be deleted here.',

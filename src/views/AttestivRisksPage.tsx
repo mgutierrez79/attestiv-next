@@ -248,10 +248,6 @@ export function AttestivRisksPage() {
               {t('Risks in', 'Risks in')} {selectedCell.likelihood} × {selectedCell.impact}
             </CardTitle>
             {(() => {
-              const {
-                t
-              } = useI18n();
-
               const cellRisks = matrix[selectedCell.likelihood][selectedCell.impact]
               if (cellRisks.length === 0) {
                 return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('No risks in this cell.', 'No risks in this cell.')}</div>

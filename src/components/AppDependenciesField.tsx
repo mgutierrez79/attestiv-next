@@ -106,65 +106,59 @@ export function AppDependenciesField({
           {t('No dependencies declared.', 'No dependencies declared.')}
         </div>
       ) : (
-        value.map((row, i) => {
-          const {
-            t
-          } = useI18n();
-
-          return (
-            <div
-              key={i}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '2fr 1.5fr 1fr auto',
-                gap: 6,
-                alignItems: 'center',
-              }}
+        value.map((row, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '2fr 1.5fr 1fr auto',
+              gap: 6,
+              alignItems: 'center',
+            }}
+          >
+            <select
+              value={row.application_id}
+              onChange={(e) => update(i, { application_id: e.target.value })}
+              style={rowInputStyle}
             >
-              <select
-                value={row.application_id}
-                onChange={(e) => update(i, { application_id: e.target.value })}
-                style={rowInputStyle}
-              >
-                <option value="">{t('— select application —', '— select application —')}</option>
-                {apps.map((a) => (
-                  <option key={a.application_id} value={a.application_id}>
-                    {a.display_name ? `${a.display_name} (${a.application_id})` : a.application_id}
-                  </option>
-                ))}
-              </select>
-              <input
-                list="dep-type-hints"
-                type="text"
-                value={row.dependency_type}
-                onChange={(e) => update(i, { dependency_type: e.target.value })}
-                placeholder="database"
-                style={rowInputStyle}
-              />
-              <select
-                value={row.criticality}
-                onChange={(e) =>
-                  update(i, { criticality: e.target.value as Dependency['criticality'] })
-                }
-                style={rowInputStyle}
-              >
-                {CRITICALITY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                title={t('Remove this dependency', 'Remove this dependency')}
-                style={removeButtonStyle}
-              >
-                ×
-              </button>
-            </div>
-          );
-        })
+              <option value="">{t('— select application —', '— select application —')}</option>
+              {apps.map((a) => (
+                <option key={a.application_id} value={a.application_id}>
+                  {a.display_name ? `${a.display_name} (${a.application_id})` : a.application_id}
+                </option>
+              ))}
+            </select>
+            <input
+              list="dep-type-hints"
+              type="text"
+              value={row.dependency_type}
+              onChange={(e) => update(i, { dependency_type: e.target.value })}
+              placeholder="database"
+              style={rowInputStyle}
+            />
+            <select
+              value={row.criticality}
+              onChange={(e) =>
+                update(i, { criticality: e.target.value as Dependency['criticality'] })
+              }
+              style={rowInputStyle}
+            >
+              {CRITICALITY_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              title={t('Remove this dependency', 'Remove this dependency')}
+              style={removeButtonStyle}
+            >
+              ×
+            </button>
+          </div>
+        ))
       )}
       <datalist id="dep-type-hints">
         {DEPENDENCY_TYPE_HINTS.map((h) => (
@@ -175,7 +169,7 @@ export function AppDependenciesField({
         + {t('Add dependency', 'Add dependency')}
       </button>
     </div>
-  );
+  )
 }
 
 const rowInputStyle: React.CSSProperties = {

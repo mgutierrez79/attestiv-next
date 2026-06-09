@@ -5969,10 +5969,7 @@ export function ConnectorsPage() {
                   className="w-full rounded-md border border-[#274266] bg-[#0d1a2b] px-3 py-2 text-sm text-slate-50"
                   value={veeamEnterpriseManager.bnr_username ?? ''}
                   onChange={(e) => setVeeamEnterpriseManager({ ...veeamEnterpriseManager, bnr_username: e.target.value })}
-                  placeholder={t(
-                    'AUXIA\\\\svc-veeam (blank = reuse EM username)',
-                    'AUXIA\\\\svc-veeam (blank = reuse EM username)'
-                  )}
+                  placeholder="AUXIA\\svc-veeam (blank = reuse EM username)"
                 />
               </div>
               <div className="space-y-2">

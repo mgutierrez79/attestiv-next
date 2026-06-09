@@ -672,25 +672,19 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   {t('Backing storage volumes', 'Backing storage volumes')}
                 </CardTitle>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {storageVolumes.map((v, i) => {
-                    const {
-                      t
-                    } = useI18n();
-
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
-                        <span style={{ fontWeight: 600 }}>{v.volume}</span>
-                        <Badge tone={v.replicated ? 'green' : 'gray'}>
-                          {v.replicated ? t('replicated', 'replicated') : t('not replicated', 'not replicated')}
-                        </Badge>
-                        {v.mode ? <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{v.mode}</span> : null}
-                        {v.role ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({v.role})</span> : null}
-                        {v.last_sync ? (
-                          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('synced', 'synced')} {v.last_sync}</span>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                  {storageVolumes.map((v, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
+                      <span style={{ fontWeight: 600 }}>{v.volume}</span>
+                      <Badge tone={v.replicated ? 'green' : 'gray'}>
+                        {v.replicated ? t('replicated', 'replicated') : t('not replicated', 'not replicated')}
+                      </Badge>
+                      {v.mode ? <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{v.mode}</span> : null}
+                      {v.role ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({v.role})</span> : null}
+                      {v.last_sync ? (
+                        <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('synced', 'synced')} {v.last_sync}</span>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </Card>
             ) : null}
@@ -703,7 +697,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                     <a href={`/apps/${parentApp.application_id}`} style={{ fontWeight: 500 }}>
                       {parentApp.display_name}
                     </a>
-                    {parentApp.gxp?.validated && <Badge tone="amber">{t('GxP', 'GxP')}</Badge>}
+                    {parentApp.gxp?.validated && <Badge tone="amber">GxP</Badge>}
                     {parentApp.criticality_tier && <Badge tone="navy">{parentApp.criticality_tier}</Badge>}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
@@ -846,7 +840,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
         )}
       </div>
     </>
-  );
+  )
 }
 
 function backupTone(daysSince?: number): 'green' | 'amber' | 'red' | 'gray' {
@@ -931,14 +925,11 @@ function NetworkLinkDetails({
           )}
         </div>
       </Card>
+
       <Card>
         <CardTitle>{t('Endpoints', 'Endpoints')}</CardTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 8 }}>
           {endpoints.map((ep, i) => {
-            const {
-              t
-            } = useI18n();
-
             const epID = String(ep['asset_id'] ?? '').trim()
             const epLabel = String(ep['label'] ?? '').trim()
             const epSite = String(ep['site'] ?? '').trim()
@@ -985,6 +976,7 @@ function NetworkLinkDetails({
           })}
         </div>
       </Card>
+
       {memberSummaries.length > 0 && (
         <Card>
           <CardTitle right={<Badge tone="navy">{memberSummaries.length}</Badge>}>{t('Members (per cable)', 'Members (per cable)')}</CardTitle>
@@ -1045,5 +1037,5 @@ function NetworkLinkDetails({
         </Card>
       )}
     </>
-  );
+  )
 }

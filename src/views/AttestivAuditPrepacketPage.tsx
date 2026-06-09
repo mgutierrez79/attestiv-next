@@ -149,7 +149,7 @@ export function AttestivAuditPrepacketPage() {
         </Banner>
 
         <Card>
-          <CardTitle right={<Badge tone="navy">{t('Ed25519', 'Ed25519')}</Badge>}>{t('Generate & download', 'Generate & download')}</CardTitle>
+          <CardTitle right={<Badge tone="navy">Ed25519</Badge>}>{t('Generate & download', 'Generate & download')}</CardTitle>
           <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 0 }}>
             {t(
               'Select an optional framework filter to narrow the packet to a single audit scope (e.g. DORA only). Leave blank to include every framework the tenant is subscribed to.',

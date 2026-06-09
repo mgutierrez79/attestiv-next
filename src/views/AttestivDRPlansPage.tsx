@@ -97,57 +97,51 @@ export function AttestivDRPlansPage() {
                 <tr style={headerRowStyle}>
                   <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Site', 'Site')}</th>
                   <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Strategy', 'Strategy')}</th>
-                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Network', 'Network')}</th>
-                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Storage', 'Storage')}</th>
-                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Virt', 'Virt')}</th>
-                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('Backup', 'Backup')}</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>Network</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>Storage</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>Virt</th>
+                  <th style={{ padding: '6px 10px', textAlign: 'left' }}>Backup</th>
                   <th style={{ padding: '6px 10px', textAlign: 'right' }}>{t('Ransomware', 'Ransomware')}</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map(p => {
-                  const {
-                    t
-                  } = useI18n();
-
-                  return (
-                    <tr
-                      key={p.site_id}
-                      onClick={() => router.push(`/dr/plans/${encodeURIComponent(p.site_id)}`)}
-                      style={{ borderTop: '0.5px solid var(--color-border-tertiary)', cursor: 'pointer' }}
-                    >
-                      <td style={{ padding: '8px 10px' }}>
-                        <div style={{ fontWeight: 600 }}>{p.site_name}</div>
-                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                          {p.site_type ?? '—'}
-                          {p.dr_site_pair ? ` · ${t('DR pair', 'DR pair')}: ${p.dr_site_pair}` : ''}
-                        </div>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}>
-                        <Badge tone={strategyTone(p.global_strategy)}>{strategyLabel(p.global_strategy, t)}</Badge>
-                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 3, maxWidth: 380 }}>
-                          {p.global_summary}
-                        </div>
-                      </td>
-                      <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_network)}>{p.layer_status_network}</Badge></td>
-                      <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_storage)}>{p.layer_status_storage}</Badge></td>
-                      <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_virtualization)}>{p.layer_status_virtualization}</Badge></td>
-                      <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_backup)}>{p.layer_status_backup}</Badge></td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                        <Badge tone={ransomwareTone(p.ransomware_score)}>
-                          {Math.round(p.ransomware_score * 100)}%
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {items.map((p) => (
+                  <tr
+                    key={p.site_id}
+                    onClick={() => router.push(`/dr/plans/${encodeURIComponent(p.site_id)}`)}
+                    style={{ borderTop: '0.5px solid var(--color-border-tertiary)', cursor: 'pointer' }}
+                  >
+                    <td style={{ padding: '8px 10px' }}>
+                      <div style={{ fontWeight: 600 }}>{p.site_name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {p.site_type ?? '—'}
+                        {p.dr_site_pair ? ` · ${t('DR pair', 'DR pair')}: ${p.dr_site_pair}` : ''}
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <Badge tone={strategyTone(p.global_strategy)}>{strategyLabel(p.global_strategy, t)}</Badge>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 3, maxWidth: 380 }}>
+                        {p.global_summary}
+                      </div>
+                    </td>
+                    <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_network)}>{p.layer_status_network}</Badge></td>
+                    <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_storage)}>{p.layer_status_storage}</Badge></td>
+                    <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_virtualization)}>{p.layer_status_virtualization}</Badge></td>
+                    <td style={{ padding: '8px 10px' }}><Badge tone={statusTone(p.layer_status_backup)}>{p.layer_status_backup}</Badge></td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      <Badge tone={ransomwareTone(p.ransomware_score)}>
+                        {Math.round(p.ransomware_score * 100)}%
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
         </Card>
       </div>
     </>
-  );
+  )
 }
 
 function statusTone(s: string): 'green' | 'amber' | 'red' | 'gray' {

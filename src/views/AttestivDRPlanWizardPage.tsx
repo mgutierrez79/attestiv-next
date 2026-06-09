@@ -90,10 +90,6 @@ export function AttestivDRPlanWizardPage() {
   }, [siteID])
 
   async function triggerLayerTest(layer: string) {
-    const {
-      t
-    } = useI18n();
-
     if (!siteID) return
     setTesting(layer)
     setTestMessage(null)
@@ -197,10 +193,6 @@ export function AttestivDRPlanWizardPage() {
         </Card>
 
         {LAYER_ORDER.map(({ key, label, icon }) => {
-          const {
-            t
-          } = useI18n();
-
           const layer = plan.layers[key]
           if (!layer) return null
           const tone = layer.status === 'ok' ? 'green' :
@@ -245,7 +237,7 @@ export function AttestivDRPlanWizardPage() {
         })}
       </div>
     </>
-  );
+  )
 }
 
 function RansomwareSignal({ label, ok }: { label: string; ok: boolean }) {
