@@ -146,6 +146,50 @@ const DEMO_POSTURE: FrameworkPosture[] = [
   },
 ]
 
+// enqueueJob POSTs to an async endpoint and returns the worker job_id. Used
+// by the re-evaluate flow so a slow connector poll / framework evaluation
+// doesn't hold the request open past the front proxy's timeout.
+async function enqueueJob(path: string, body: Record<string, unknown>): Promise<string> {
+  const resp = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(text || `${resp.status} ${resp.statusText}`)
+  }
+  const b = await resp.json().catch(() => ({}))
+  const jobID = typeof b?.job_id === 'string' ? b.job_id : undefined
+  if (!jobID) throw new Error('backend returned no job_id')
+  return jobID
+}
+
+// pollJob polls the generic worker-job-status endpoint until the job reaches
+// a terminal state, returning its result on success. label sharpens any
+// error/timeout message.
+async function pollJob(jobID: string, label: string): Promise<Record<string, unknown>> {
+  const POLL_MS = 2500
+  const MAX_MS = 10 * 60 * 1000
+  const startedAt = Date.now()
+  for (;;) {
+    if (Date.now() - startedAt > MAX_MS) {
+      throw new Error(`${label} exceeded 10 min — check /v1/worker/jobs for the job state`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS))
+    const resp = await apiFetch(`/worker/report/${encodeURIComponent(jobID)}`)
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '')
+      throw new Error(text || `poll: ${resp.status} ${resp.statusText}`)
+    }
+    const b = await resp.json().catch(() => ({}))
+    const status = String(b?.status ?? '')
+    if (status === 'completed') return (b?.result as Record<string, unknown>) ?? {}
+    if (status === 'failed') throw new Error(String(b?.error ?? `${label} failed`))
+    if (status === 'cancelled') throw new Error(`${label} cancelled`)
+  }
+}
+
 export function AttestivFrameworksPage() {
   const {
     t
@@ -445,30 +489,26 @@ export function AttestivFrameworksPage() {
         t('Validating frameworks…', 'Validating frameworks…'),
         async () => {
           try {
+            // Both phases run as async worker jobs and are polled to
+            // completion. Running them synchronously held the request open
+            // for the full multi-connector poll + multi-framework evaluation,
+            // which outlasts the front proxy's timeout — the "upstream
+            // request failed" the operator hit. The connector refresh still
+            // runs FIRST so the engine scores against fresh evidence (the
+            // backend's cold-snapshot guard is the backstop).
             setReevalPhase('refreshing')
-            // Body MUST be a JSON object — the backend handler uses readJSON
-            // which returns io.EOF on an empty body (renders as "EOF" in the
-            // UI). The ?refresh=true query string is not read; the Refresh
-            // flag has to come from the body.
-            const refreshResp = await apiFetch('/inventory/import', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refresh: true }),
-            })
-            if (!refreshResp.ok) {
-              const text = await refreshResp.text().catch(() => '')
-              throw new Error(text || `refresh: ${refreshResp.status} ${refreshResp.statusText}`)
-            }
+            const refreshJob = await enqueueJob('/inventory/import', { refresh: true, async: true })
+            await pollJob(refreshJob, 'Connector refresh')
+
             setReevalPhase('scoring')
-            const evalResp = await apiFetch('/scoring/evaluate', { method: 'POST' })
-            if (!evalResp.ok) {
-              const text = await evalResp.text().catch(() => '')
-              throw new Error(text || `evaluate: ${evalResp.status} ${evalResp.statusText}`)
-            }
-            const body = await evalResp.json().catch(() => ({}))
-            const count = typeof body?.frameworks_evaluated === 'number'
-              ? body.frameworks_evaluated
-              : Array.isArray(body?.results) ? body.results.length : 0
+            const evalJob = await enqueueJob('/scoring/evaluate?async=true', {})
+            const evalResult = await pollJob(evalJob, 'Framework evaluation')
+            const count =
+              typeof evalResult?.frameworks_evaluated === 'number'
+                ? (evalResult.frameworks_evaluated as number)
+                : Array.isArray(evalResult?.results)
+                  ? (evalResult.results as unknown[]).length
+                  : 0
             return { at: new Date().toISOString(), frameworks: count }
           } finally {
             setReevalPhase('idle')
