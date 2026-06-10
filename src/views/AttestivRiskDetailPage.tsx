@@ -96,6 +96,31 @@ type DetailResponse = {
   related_remediation?: RelatedRemediation[]
 }
 
+// Grading is the score_field coverage block from the control-evidence
+// endpoint: the measured percentage, the counts behind it, and the bands
+// it's graded against. Lets the page show "78.1% covered, needs 95%".
+type Grading = {
+  tag: string
+  score_field: string
+  current_pct: number
+  protected?: number
+  total?: number
+  unprotected?: number
+  out_of_scope?: number
+  pass_threshold_pct: number
+  review_threshold_pct: number
+  warn_threshold_pct: number
+  freshness_days?: number
+  frequency?: string
+}
+
+type ControlEvidence = {
+  status?: string
+  score?: number
+  grading?: Grading
+  unprotected_vms?: string[]
+}
+
 const STATUS_TONE: Record<string, 'amber' | 'green' | 'gray' | 'navy' | 'red'> = {
   open: 'amber',
   in_treatment: 'navy',
@@ -116,6 +141,9 @@ export function AttestivRiskDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Live control-evidence for the linked control: the coverage % vs its
+  // pass band + the list of failing assets (e.g. VMs with no backup).
+  const [controlEvidence, setControlEvidence] = useState<ControlEvidence | null>(null)
 
   // Editable fields snapshot. Reset whenever a fresh fetch arrives so
   // the form mirrors the persisted state until the user changes
@@ -143,6 +171,33 @@ export function AttestivRiskDetailPage() {
       setTreatment(body.risk.treatment || '')
       setTreatmentNotes(body.risk.treatment_notes || '')
       setDueDate(body.risk.due_date || '')
+      // Pull the linked control's live evidence for the threshold/coverage
+      // block + the failing-asset export. Best-effort: a failure here must
+      // not break the risk page, so it's swallowed and the block just hides.
+      const fw = body.risk.source_framework_id
+      const ctrl = body.risk.source_control_id
+      if (fw && ctrl) {
+        try {
+          const evRes = await apiFetch(
+            `/scoring/frameworks/${encodeURIComponent(fw)}/controls/${encodeURIComponent(ctrl)}/evidence`,
+          )
+          if (evRes.ok) {
+            const ev = await evRes.json()
+            setControlEvidence({
+              status: ev?.status,
+              score: ev?.score,
+              grading: ev?.grading,
+              unprotected_vms: Array.isArray(ev?.unprotected_vms) ? ev.unprotected_vms : [],
+            })
+          } else {
+            setControlEvidence(null)
+          }
+        } catch {
+          setControlEvidence(null)
+        }
+      } else {
+        setControlEvidence(null)
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load risk'
       setError(message)
@@ -291,6 +346,10 @@ export function AttestivRiskDetailPage() {
           ) : null}
         </Card>
 
+        {controlEvidence?.grading ? (
+          <CoverageThresholdCard evidence={controlEvidence} />
+        ) : null}
+
         {guidance ? <GuidanceSection guidance={guidance} /> : null}
 
         {data.related_remediation && data.related_remediation.length > 0 ? (
@@ -386,6 +445,78 @@ export function AttestivRiskDetailPage() {
       </div>
     </>
   );
+}
+
+// CoverageThresholdCard explains a score_field control in plain terms:
+// the current measured percentage against the pass band, the counts behind
+// it, and a one-click export of the assets that aren't passing (e.g. VMs
+// with no recent backup).
+function CoverageThresholdCard({ evidence }: { evidence: ControlEvidence }) {
+  const { t } = useI18n()
+  const g = evidence.grading
+  if (!g) return null
+  const failing = evidence.unprotected_vms ?? []
+  const tag = g.tag
+  const pct = g.current_pct
+  const pass = g.pass_threshold_pct
+  const review = g.review_threshold_pct
+  const band = pct >= pass ? 'pass' : pct >= review ? 'review' : 'fail'
+  const barColor =
+    band === 'pass'
+      ? 'var(--color-status-green-deep, #1a7f37)'
+      : band === 'review'
+        ? 'var(--color-status-amber-deep, #b8860b)'
+        : 'var(--color-status-red-deep, #b42318)'
+
+  function exportFailing() {
+    const esc = (v: string) => (/[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)
+    const csv = String.fromCharCode(0xfeff) + ['Asset', ...failing.map(esc)].join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${tag}-not-passing.csv`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  }
+
+  return (
+    <Card style={{ marginTop: 12 }}>
+      <CardTitle>{t('Current coverage & threshold', 'Current coverage & threshold')}</CardTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <Field label={t('Current', 'Current')}>
+          <strong style={{ fontSize: 18, color: barColor }}>{pct}%</strong>
+        </Field>
+        {g.total ? <Field label={t('Covered', 'Covered')}>{(g.protected ?? 0)} / {g.total}</Field> : null}
+        {typeof g.unprotected === 'number' && g.unprotected > 0 ? (
+          <Field label={t('Not passing', 'Not passing')}>{g.unprotected}</Field>
+        ) : null}
+        <Field label={t('Passing threshold', 'Passing threshold')}>≥ {pass}%</Field>
+        {g.freshness_days ? (
+          <Field label={t('Freshness', 'Freshness')}>{t('≤ {n} days', '≤ {n} days', { n: g.freshness_days })}</Field>
+        ) : null}
+        {g.out_of_scope ? <Field label={t('Out of scope', 'Out of scope')}>{g.out_of_scope}</Field> : null}
+      </div>
+      <div style={{ height: 8, borderRadius: 4, background: 'var(--color-background-secondary)', overflow: 'hidden', marginBottom: 6 }}>
+        <div style={{ width: `${Math.min(100, Math.max(0, pct))}%`, height: '100%', background: barColor, transition: 'width 0.3s' }} />
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 0, marginBottom: failing.length > 0 ? 12 : 0 }}>
+        {pct >= pass
+          ? t('Above the {p}% passing threshold.', 'Above the {p}% passing threshold.', { p: pass })
+          : t(
+              '{gap} points below the {p}% passing threshold (≥ {rev}% holds it in review).',
+              '{gap} points below the {p}% passing threshold (≥ {rev}% holds it in review).',
+              { gap: Math.round((pass - pct) * 10) / 10, p: pass, rev: review },
+            )}
+      </p>
+      {failing.length > 0 ? (
+        <GhostButton onClick={exportFailing}>
+          <i className="ti ti-download" aria-hidden="true" />
+          {t('Export not-passing list ({n})', 'Export not-passing list ({n})', { n: failing.length })}
+        </GhostButton>
+      ) : null}
+    </Card>
+  )
 }
 
 function GuidanceSection({ guidance }: { guidance: Guidance }) {
