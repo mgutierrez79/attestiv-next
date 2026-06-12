@@ -386,6 +386,17 @@ export function AttestivSiteDetailPage() {
         </Card>
 
         <Card style={{ marginTop: 12 }}>
+          <CardTitle>{t('Datacenter / hosting provider', 'Datacenter / hosting provider')}</CardTitle>
+          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+            {t(
+              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
+              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
+            )}
+          </p>
+          <div style={{ marginTop: 8 }}>{providerSelect('site', site.site_id, site.location?.provider)}</div>
+        </Card>
+
+        <Card style={{ marginTop: 12 }}>
           <CardTitle right={<Badge tone="navy">{site.hosted_cis?.length ?? 0}</Badge>}>{t('Hosted CIs', 'Hosted CIs')}</CardTitle>
           {!site.hosted_cis || site.hosted_cis.length === 0 ? (
             <EmptyState icon="ti-server" title={t('No CIs registered', 'No CIs registered')} description={t(
@@ -587,17 +598,6 @@ export function AttestivSiteDetailPage() {
               ) : null}
             </div>
           )}
-        </Card>
-
-        <Card style={{ marginTop: 12 }}>
-          <CardTitle>{t('Datacenter / hosting provider', 'Datacenter / hosting provider')}</CardTitle>
-          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
-            {t(
-              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
-              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
-            )}
-          </p>
-          <div style={{ marginTop: 8 }}>{providerSelect('site', site.site_id, site.location?.provider)}</div>
         </Card>
 
         {site.connectivity?.wan_links && site.connectivity.wan_links.length > 0 ? (
