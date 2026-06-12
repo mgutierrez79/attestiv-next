@@ -24,6 +24,7 @@ import {
   EmptyState,
   GhostButton,
   PrimaryButton,
+  Select,
   Skeleton,
   Topbar,
 } from '../components/AttestivUi'
@@ -161,6 +162,84 @@ export function AttestivSiteDetailPage() {
   const [impact, setImpact] = useState<CascadeImpact | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // ICT provider/carrier attribution for sites + WAN links. The site registry
+  // is YAML/read-only, so these GUI overrides are kept separately (keyed
+  // "site:<id>" / "link:<id>") and applied over the registry declarations.
+  const [providers, setProviders] = useState<Array<{ id: string; provider_name: string }>>([])
+  const [overrides, setOverrides] = useState<Record<string, string>>({})
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      apiFetch('/third-parties').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch('/site-registry/provider-overrides').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+    ]).then(([tp, ov]: [any, any]) => {
+      if (cancelled) return
+      const list: any[] = Array.isArray(tp) ? tp : (tp?.items ?? tp?.providers ?? [])
+      setProviders(
+        list
+          .map((p) => ({ id: String(p?.id ?? ''), provider_name: String(p?.provider_name ?? p?.id ?? '') }))
+          .filter((p) => p.id),
+      )
+      setOverrides((ov?.overrides ?? {}) as Record<string, string>)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function saveOverride(scope: 'site' | 'link', ref: string, providerID: string) {
+    if (!ref) return
+    const key = `${scope}:${ref}`
+    setSavingKey(key)
+    try {
+      const r = await apiFetch('/site-registry/provider-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope, ref, provider_id: providerID }),
+      })
+      const b = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(b?.detail || b?.error || `${r.status} ${r.statusText}`)
+      setOverrides((prev) => {
+        const next = { ...prev }
+        if (providerID) next[key] = providerID
+        else delete next[key]
+        return next
+      })
+    } catch (err: any) {
+      setError(err?.message ?? 'Save failed')
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  function providerSelect(scope: 'site' | 'link', ref: string, registryName?: string) {
+    const key = `${scope}:${ref}`
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Select
+          value={overrides[key] ?? ''}
+          disabled={savingKey === key || providers.length === 0 || !ref}
+          onChange={(e) => saveOverride(scope, ref, e.target.value)}
+          style={{ minWidth: 180, fontSize: 12 }}
+          aria-label={t('Provider', 'Provider')}
+        >
+          <option value="">
+            {registryName ? t('Registry: {n}', 'Registry: {n}', { n: registryName }) : t('— none —', '— none —')}
+          </option>
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.provider_name}
+            </option>
+          ))}
+        </Select>
+        {savingKey === key ? (
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('Saving…', 'Saving…')}</span>
+        ) : null}
+      </span>
+    )
+  }
 
   useEffect(() => {
     if (!id) return
@@ -387,10 +466,6 @@ export function AttestivSiteDetailPage() {
           ) : (
             <ol style={{ paddingLeft: 18, fontSize: 12, marginTop: 4, marginBottom: 0 }}>
               {recovery.items.map((target, i) => {
-                const {
-                  t
-                } = useI18n();
-
                 const tone = CRITICALITY_TONE[(target.criticality_tier || '').toLowerCase()] ?? 'gray'
                 return (
                   <li key={`${target.target_id}-${i}`} style={{ marginBottom: 8 }}>
@@ -514,6 +589,17 @@ export function AttestivSiteDetailPage() {
           )}
         </Card>
 
+        <Card style={{ marginTop: 12 }}>
+          <CardTitle>{t('Datacenter / hosting provider', 'Datacenter / hosting provider')}</CardTitle>
+          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+            {t(
+              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
+              'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
+            )}
+          </p>
+          <div style={{ marginTop: 8 }}>{providerSelect('site', site.site_id, site.location?.provider)}</div>
+        </Card>
+
         {site.connectivity?.wan_links && site.connectivity.wan_links.length > 0 ? (
           <Card style={{ marginTop: 12 }}>
             <CardTitle right={<Badge tone="navy">{site.connectivity.wan_links.length}</Badge>}>{t('WAN links', 'WAN links')}</CardTitle>
@@ -536,7 +622,7 @@ export function AttestivSiteDetailPage() {
                         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{link.type}</div>
                       ) : null}
                     </td>
-                    <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)' }}>{link.provider ?? '—'}</td>
+                    <td style={{ padding: '8px 10px' }}>{providerSelect('link', link.link_id ?? '', link.provider)}</td>
                     <td style={{ padding: '8px 10px' }}>
                       {link.target_site ? <code style={{ fontSize: 11 }}>{link.target_site}</code> : '—'}
                     </td>
