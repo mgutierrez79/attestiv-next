@@ -393,7 +393,22 @@ export function AttestivSiteDetailPage() {
               'Link this site to its colocation / hosting operator in the DORA Art.28 register. Overrides the registry declaration; feeds the provider dependency map and facility concentration (Art.29).',
             )}
           </p>
-          <div style={{ marginTop: 8 }}>{providerSelect('site', site.site_id, site.location?.provider)}</div>
+          <div style={{ marginTop: 8, fontSize: 13 }}>
+            {(() => {
+              const ov = overrides[`site:${site.site_id}`]
+              const name = ov
+                ? (providers.find((p) => p.id === ov)?.provider_name ?? ov)
+                : (site.location?.provider ?? '')
+              return name ? (
+                <strong>{name}</strong>
+              ) : (
+                <span style={{ color: 'var(--color-text-tertiary)' }}>{t('— none —', '— none —')}</span>
+              )
+            })()}
+            <span style={{ color: 'var(--color-text-tertiary)', marginLeft: 8, fontSize: 12 }}>
+              {t('— set on the Edit screen', '— set on the Edit screen')}
+            </span>
+          </div>
         </Card>
 
         <Card style={{ marginTop: 12 }}>

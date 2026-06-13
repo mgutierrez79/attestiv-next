@@ -159,6 +159,13 @@ export function AttestivSiteWizard() {
   const [error, setError] = useState<string | null>(null)
   const [editLoading, setEditLoading] = useState(isEditMode)
 
+  // Hosting-provider override (DORA Art.28). Instant-saved to its own
+  // endpoint, independent of the identity save below — edit mode only,
+  // since you attribute a provider to a site that already exists.
+  const [provProviders, setProvProviders] = useState<Array<{ id: string; provider_name: string }>>([])
+  const [provOverride, setProvOverride] = useState('')
+  const [provSaving, setProvSaving] = useState(false)
+
   // Auto-derive the site_id slug from the display name until the
   // operator types into the id field directly. Same pattern as the
   // connector wizard's name → instance_slug auto-fill.
@@ -265,6 +272,50 @@ export function AttestivSiteWizard() {
     if (!siteType) return t('Site type is required', 'Site type is required')
     if (threshold < 0 || threshold > 100) return t('Concentration threshold must be 0–100', 'Concentration threshold must be 0–100')
     return null
+  }
+
+  // Load providers + this site's current hosting-provider override
+  // (edit mode only) so the dropdown reflects what's set.
+  useEffect(() => {
+    if (!isEditMode || !editSiteId) return
+    let cancelled = false
+    Promise.all([
+      apiFetch('/third-parties').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch('/site-registry/provider-overrides').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+    ]).then(([tp, ov]: [any, any]) => {
+      if (cancelled) return
+      const list: any[] = Array.isArray(tp) ? tp : (tp?.items ?? tp?.providers ?? [])
+      setProvProviders(
+        list
+          .map((p) => ({ id: String(p?.id ?? ''), provider_name: String(p?.provider_name ?? p?.id ?? '') }))
+          .filter((p) => p.id),
+      )
+      const ovMap = (ov?.overrides ?? {}) as Record<string, string>
+      setProvOverride(ovMap[`site:${editSiteId}`] ?? '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isEditMode, editSiteId])
+
+  // Instant-save the hosting-provider override to its own endpoint
+  // (separate from the identity POST in save()).
+  async function saveProvider(providerID: string) {
+    setProvSaving(true)
+    try {
+      const r = await apiFetch('/site-registry/provider-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'site', ref: editSiteId, provider_id: providerID }),
+      })
+      const b = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(b?.detail || b?.error || `${r.status} ${r.statusText}`)
+      setProvOverride(providerID)
+    } catch (err: any) {
+      setError(err?.message ?? 'Provider save failed')
+    } finally {
+      setProvSaving(false)
+    }
   }
 
   async function save() {
@@ -544,6 +595,37 @@ export function AttestivSiteWizard() {
             </label>
           </div>
         </Card>
+
+        {isEditMode ? (
+          <Card>
+            <CardTitle>{t('Datacenter / hosting provider', 'Datacenter / hosting provider')}</CardTitle>
+            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '4px 0 8px' }}>
+              {t(
+                'Link this site to its colocation / hosting operator in the DORA Art.28 register. Saved immediately — independent of the identity fields above.',
+                'Link this site to its colocation / hosting operator in the DORA Art.28 register. Saved immediately — independent of the identity fields above.',
+              )}
+            </p>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <select
+                style={inputStyle}
+                value={provOverride}
+                disabled={provSaving || provProviders.length === 0}
+                onChange={(e) => saveProvider(e.target.value)}
+                aria-label={t('Hosting provider', 'Hosting provider')}
+              >
+                <option value="">{t('— none —', '— none —')}</option>
+                {provProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.provider_name}
+                  </option>
+                ))}
+              </select>
+              {provSaving ? (
+                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('Saving…', 'Saving…')}</span>
+              ) : null}
+            </span>
+          </Card>
+        ) : null}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
           <GhostButton onClick={() => router.push('/sites')} disabled={saving}>
