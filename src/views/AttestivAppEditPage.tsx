@@ -88,6 +88,13 @@ export function AttestivAppEditPage() {
   const { canWrite } = useRoles()
   const [error, setError] = useState<string | null>(null)
 
+  // Hosting site (DORA Art.29 concentration): which site this app runs
+  // at. Instant-saved to its own override endpoint, independent of the
+  // identity PATCH below.
+  const [sites, setSites] = useState<Array<{ site_id: string; display_name?: string }>>([])
+  const [hostingSite, setHostingSite] = useState('')
+  const [savingSite, setSavingSite] = useState(false)
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -135,6 +142,47 @@ export function AttestivAppEditPage() {
       cancelled = true
     }
   }, [applicationId])
+
+  // Load the site list + this app's current hosting-site override.
+  useEffect(() => {
+    if (!applicationId) return
+    let cancelled = false
+    Promise.all([
+      apiFetch('/sites').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+      apiFetch('/site-registry/app-site-overrides').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+    ]).then(([sl, ov]: [any, any]) => {
+      if (cancelled) return
+      const list: any[] = Array.isArray(sl) ? sl : (sl?.items ?? sl?.sites ?? [])
+      setSites(
+        list
+          .map((s) => ({ site_id: String(s?.site_id ?? ''), display_name: String(s?.display_name ?? s?.site_id ?? '') }))
+          .filter((s) => s.site_id),
+      )
+      const overrides = (ov?.overrides ?? {}) as Record<string, string>
+      setHostingSite(overrides[applicationId] ?? '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [applicationId])
+
+  async function saveHostingSite(siteID: string) {
+    setSavingSite(true)
+    try {
+      const r = await apiFetch('/site-registry/app-site-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_id: applicationId, site_id: siteID }),
+      })
+      const b = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(b?.detail || b?.error || `${r.status} ${r.statusText}`)
+      setHostingSite(siteID)
+    } catch (err: any) {
+      setError(err?.message ?? 'Hosting-site save failed')
+    } finally {
+      setSavingSite(false)
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -303,6 +351,35 @@ export function AttestivAppEditPage() {
                 </select>
               </Field>
             </div>
+          </Card>
+
+          <Card style={{ marginTop: 12 }}>
+            <CardTitle>{t('Hosting site (DORA Art.29)', 'Hosting site (DORA Art.29)')}</CardTitle>
+            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '4px 0 8px' }}>
+              {t(
+                'Which datacenter this application runs in. Counts toward that site’s Art.29 concentration (apps, not VMs). Saved immediately, independent of the fields above.',
+                'Which datacenter this application runs in. Counts toward that site’s Art.29 concentration (apps, not VMs). Saved immediately, independent of the fields above.',
+              )}
+            </p>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <select
+                style={inputStyle}
+                value={hostingSite}
+                disabled={savingSite}
+                onChange={(e) => saveHostingSite(e.target.value)}
+                aria-label={t('Hosting site', 'Hosting site')}
+              >
+                <option value="">{t('— none —', '— none —')}</option>
+                {sites.map((s) => (
+                  <option key={s.site_id} value={s.site_id}>
+                    {s.display_name}
+                  </option>
+                ))}
+              </select>
+              {savingSite ? (
+                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('Saving…', 'Saving…')}</span>
+              ) : null}
+            </span>
           </Card>
 
           <Card style={{ marginTop: 12 }}>

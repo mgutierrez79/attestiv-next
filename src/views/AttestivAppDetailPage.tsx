@@ -111,6 +111,7 @@ export function AttestivAppDetailPage() {
   const [ccrs, setCCRs] = useState<CCR[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hostingSite, setHostingSite] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -137,9 +138,10 @@ export function AttestivAppDetailPage() {
       // Availability + CCRs are best-effort. They run AFTER the
       // detail loads so the page can render the summary even if
       // these endpoints are temporarily unavailable.
-      const [availRes, ccrRes] = await Promise.allSettled([
+      const [availRes, ccrRes, ovRes] = await Promise.allSettled([
         apiFetch(`/apps/${encodeURIComponent(id)}/availability`),
         apiFetch(`/apps/${encodeURIComponent(id)}/change-control`),
+        apiFetch('/site-registry/app-site-overrides'),
       ])
       if (cancelled) return
       if (availRes.status === 'fulfilled' && availRes.value.ok) {
@@ -149,6 +151,11 @@ export function AttestivAppDetailPage() {
       if (ccrRes.status === 'fulfilled' && ccrRes.value.ok) {
         const body = await ccrRes.value.json()
         setCCRs(Array.isArray(body?.items) ? body.items : [])
+      }
+      if (ovRes.status === 'fulfilled' && ovRes.value.ok) {
+        const body = await ovRes.value.json()
+        const overrides = (body?.overrides ?? {}) as Record<string, string>
+        setHostingSite(overrides[id] ?? '')
       }
       setLoading(false)
     }
@@ -220,6 +227,7 @@ export function AttestivAppDetailPage() {
           <CardTitle>{t('Summary', 'Summary')}</CardTitle>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
             <Field label={t('Owner', 'Owner')}>{app.owner_email || '—'}</Field>
+            <Field label={t('Hosting site', 'Hosting site')}>{hostingSite || '—'}</Field>
             <Field label={t('Components', 'Components')}>{String(app.component_count ?? 0)}</Field>
             <Field label={t('Dependencies', 'Dependencies')}>{String(app.dependency_count ?? 0)}</Field>
             {app.dr_requirements?.rto_minutes !== undefined ? (
