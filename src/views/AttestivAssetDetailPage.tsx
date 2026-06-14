@@ -442,6 +442,11 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </div>
             </Card>
 
+            {/* Inter-DC links carry per-cable carriers in the Members
+                table below, so the link-level (whole-link) carrier control
+                is hidden. This card stays for other assets as the
+                Hosting/ICT provider attribution. */}
+            {asset.asset_type !== 'network_link' ? (
             <Card>
               <CardTitle>
                 {asset.asset_type === 'network_link'
@@ -492,6 +497,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                 </div>
               ) : null}
             </Card>
+            ) : null}
 
             {guest || hardware || powerState || vcenterHost ? (
               <Card>
