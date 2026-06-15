@@ -37,6 +37,7 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useBackgroundTasks } from '../components/BackgroundTasks'
+import { AssetExpandedPanel, type EnrichedAsset } from '../components/AssetConnectorDetail'
 
 import { useI18n } from '../lib/i18n'
 
@@ -185,6 +186,18 @@ export function InventoryPage() {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(20)
   const [sortState, setSortState] = useState<SortState | null>(null)
+  // Inline "look by row" expansion. expanded holds the asset_ids whose
+  // detail panel is open; detailCache memoises the enriched detail
+  // payload so re-expanding a row is instant and doesn't refetch.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [detailCache, setDetailCache] = useState<Record<string, EnrichedAsset>>({})
+  const toggleExpand = (assetID: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(assetID)) next.delete(assetID)
+      else next.add(assetID)
+      return next
+    })
 
   // URL drives the filter so a sidebar link like
   // /inventory?asset_type=firewall lands on the right slice without
@@ -974,6 +987,7 @@ export function InventoryPage() {
                     zIndex: 1,
                   }}
                 >
+                  <th style={{ padding: '6px 0', width: 22 }} aria-hidden="true" />
                   <th style={{ padding: '6px 4px 6px 0', width: 24 }}>
                     <input
                       type="checkbox"
@@ -1023,6 +1037,13 @@ export function InventoryPage() {
                       else next.delete(asset.asset_id)
                       setSelected(next)
                     }}
+                    expanded={expanded.has(asset.asset_id)}
+                    onToggleExpand={() => toggleExpand(asset.asset_id)}
+                    colSpan={11}
+                    cachedDetail={detailCache[asset.asset_id]}
+                    onDetailLoaded={(detail) =>
+                      setDetailCache((prev) => ({ ...prev, [asset.asset_id]: detail }))
+                    }
                   />
                 ))}
               </tbody>
@@ -1060,6 +1081,11 @@ function AssetRow({
   onAssign,
   selected,
   onToggleSelect,
+  expanded,
+  onToggleExpand,
+  colSpan,
+  cachedDetail,
+  onDetailLoaded,
 }: {
   asset: InventoryAsset
   sites: SiteOption[]
@@ -1068,6 +1094,11 @@ function AssetRow({
   onAssign: (siteID: string) => void
   selected: boolean
   onToggleSelect: (checked: boolean) => void
+  expanded: boolean
+  onToggleExpand: () => void
+  colSpan: number
+  cachedDetail?: EnrichedAsset
+  onDetailLoaded: (detail: EnrichedAsset) => void
 }) {
   const { t } = useI18n()
   const displayName = (asset.name && asset.name.trim()) || asset.asset_id
@@ -1138,12 +1169,45 @@ function AssetRow({
   // engine. opacity 0.55 reads as "muted but still legible".
   const outOfScope = asset.framework_evaluation_enabled === false
   return (
+    <>
     <tr
       style={{
         borderTop: '0.5px solid var(--color-border-tertiary)',
         opacity: outOfScope ? 0.55 : 1,
+        background: expanded ? 'var(--color-background-secondary)' : undefined,
       }}
     >
+      <td style={{ padding: '10px 0', verticalAlign: 'top' }}>
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={expanded}
+          aria-label={expanded ? t('Collapse detail', 'Collapse detail') : t('Expand detail', 'Expand detail')}
+          title={expanded ? t('Hide connector detail', 'Hide connector detail') : t('Show connector detail', 'Show connector detail')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 20,
+            height: 20,
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'var(--color-text-tertiary)',
+            padding: 0,
+          }}
+        >
+          <i
+            className="ti ti-chevron-right"
+            aria-hidden="true"
+            style={{
+              fontSize: 15,
+              transition: 'transform 0.14s ease',
+              transform: expanded ? 'rotate(90deg)' : 'none',
+            }}
+          />
+        </button>
+      </td>
       <td style={{ padding: '10px 4px 10px 0', verticalAlign: 'top' }}>
         <input
           type="checkbox"
@@ -1476,6 +1540,25 @@ function AssetRow({
         )}
       </td>
     </tr>
+    {expanded ? (
+      <tr>
+        <td
+          colSpan={colSpan}
+          style={{
+            padding: '4px 12px 16px 30px',
+            background: 'var(--color-background-secondary)',
+            borderBottom: '0.5px solid var(--color-border-tertiary)',
+          }}
+        >
+          <AssetExpandedPanel
+            assetID={asset.asset_id}
+            cached={cachedDetail}
+            onLoaded={onDetailLoaded}
+          />
+        </td>
+      </tr>
+    ) : null}
+    </>
   )
 }
 

@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
+import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
 
 type InventoryAsset = {
   asset_id: string
@@ -36,6 +37,10 @@ type InventoryAsset = {
   provider_id?: string | null
   framework_evaluation_enabled?: boolean
   tags?: string[]
+  // present_in is set by the backend detail handler (attachPresentIn) —
+  // the union of connectors whose latest poll observed this asset.
+  // Powers the "Observed by" provenance panel.
+  present_in?: string[]
   external_refs?: Array<{ source?: string }>
   metadata?: Record<string, unknown>
 }
@@ -398,7 +403,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     | { installed?: boolean; source?: string; agent_version?: string; health?: string; active?: boolean; infected?: boolean; threats?: number; max_threat_severity?: string; last_active?: string }
     | undefined) ?? undefined
   const networkPorts = (asset?.metadata?.['network_ports'] as
-    | Array<{ switch?: string; interface?: string; vlan?: string; auth_method?: string; sub_type?: string }>
+    | Array<{ switch?: string; interface?: string; vlan?: string; auth_method?: string; sub_type?: string; site_id?: string }>
     | undefined) ?? undefined
   const storageVolumes = (asset?.metadata?.['storage_volumes'] as
     | Array<{ volume?: string; wwn?: string; replicated?: boolean; mode?: string; role?: string; last_sync?: string }>
@@ -408,6 +413,24 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     <>
       <Topbar title={asset?.name ?? assetID} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '0 0 24px' }}>
+        <nav aria-label={t('Breadcrumb', 'Breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-tertiary)', flexWrap: 'wrap' }}>
+          <a href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}>
+            {t('Inventory', 'Inventory')}
+          </a>
+          {asset?.asset_type ? (
+            <>
+              <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
+              <a
+                href={`/inventory?asset_type=${encodeURIComponent(String(asset.asset_type).toLowerCase())}`}
+                style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}
+              >
+                {asset.asset_type}
+              </a>
+            </>
+          ) : null}
+          <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
+          <span style={{ color: 'var(--color-text-secondary)' }}>{asset?.name ?? assetID}</span>
+        </nav>
         {error && <Banner tone="error">{error}</Banner>}
 
         {loading ? (
@@ -422,7 +445,10 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
           <>
             <Card>
               <CardTitle>{t('Asset', 'Asset')}</CardTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+              <div style={{ marginTop: 8 }}>
+                <HealthChips asset={asset} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 12, fontSize: 13 }}>
                 <Stat label={t('Asset id', 'Asset id')} value={asset.asset_id} mono />
                 <Stat label={t('Type', 'Type')} value={asset.asset_type ?? '—'} />
                 <Stat label={t('Datacenter', 'Datacenter')} value={asset.datacenter_id ?? '—'} />
@@ -440,6 +466,17 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   value={(asset.external_refs ?? []).map((r) => r.source).filter(Boolean).join(', ') || '—'}
                 />
               </div>
+            </Card>
+
+            <Card>
+              <CardTitle>{t('Observed by', 'Observed by')}</CardTitle>
+              <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '4px 0 10px' }}>
+                {t(
+                  'Every connector that reported this physical asset, and the role each one observed it as. One host, correlated across sources.',
+                  'Every connector that reported this physical asset, and the role each one observed it as. One host, correlated across sources.',
+                )}
+              </p>
+              <ConnectorProvenance asset={asset} />
             </Card>
 
             {/* Inter-DC links carry per-cable carriers in the Members
@@ -763,8 +800,15 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       <span style={{ fontWeight: 600 }}>{p.switch}</span>
                       <code style={{ fontSize: 12 }}>{p.interface}</code>
                       {p.vlan ? <Badge tone="gray">VLAN {p.vlan}</Badge> : null}
+                      {p.sub_type ? <Badge tone="navy">{p.sub_type}</Badge> : null}
                       {p.auth_method ? (
                         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{p.auth_method}</span>
+                      ) : null}
+                      {p.site_id ? (
+                        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                          <i className="ti ti-map-pin" aria-hidden="true" style={{ marginRight: 3 }} />
+                          {p.site_id}
+                        </span>
                       ) : null}
                     </div>
                   ))}

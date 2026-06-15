@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { PageTitle } from '../components/Ui'
+
+import { Banner, Card } from '../components/AttestivUi'
 import { oidcHandleCallback } from '../lib/auth'
 import { setSessionMarker } from '../lib/session'
 
@@ -43,14 +44,34 @@ export function OidcCallbackPage() {
   if (done) return null
 
   return (
-    <div className="space-y-4">
-      <PageTitle>{t('Signing in...', 'Signing in...')}</PageTitle>
-      <p className="text-sm text-slate-400">{t(
-        'Finishing the single sign-on flow and returning to the app.',
-        'Finishing the single sign-on flow and returning to the app.'
-      )}</p>
-      {error ? <pre className="whitespace-pre-wrap text-sm text-rose-200">{error}</pre> : null}
-      {!error ? <div className="text-sm text-slate-300">{t('Completing OIDC login.', 'Completing OIDC login.')}</div> : null}
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '12vh 16px' }}>
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center', minWidth: 280, padding: '8px 12px' }}>
+          {error ? (
+            <i className="ti ti-alert-triangle" aria-hidden="true" style={{ fontSize: 28, color: 'var(--color-status-red-mid, #c73030)' }} />
+          ) : (
+            <i className="ti ti-loader-2" aria-hidden="true" style={{ fontSize: 28, color: 'var(--color-status-blue-deep)', animation: 'attestiv-spin 1s linear infinite' }} />
+          )}
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            {error ? t('Sign-in failed', 'Sign-in failed') : t('Signing in…', 'Signing in…')}
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, maxWidth: 360 }}>
+            {error
+              ? t('We could not complete the single sign-on flow.', 'We could not complete the single sign-on flow.')
+              : t('Finishing the single sign-on flow and returning to the app.', 'Finishing the single sign-on flow and returning to the app.')}
+          </p>
+          {error ? (
+            <div style={{ width: '100%', marginTop: 4 }}>
+              <Banner tone="error">{error}</Banner>
+              <div style={{ marginTop: 10 }}>
+                <a href="/login" style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}>
+                  {t('Back to sign in', 'Back to sign in')} <i className="ti ti-arrow-right" aria-hidden="true" />
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Card>
     </div>
   );
 }

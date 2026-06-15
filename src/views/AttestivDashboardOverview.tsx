@@ -34,6 +34,7 @@ import {
 import { ApiError, apiJson } from '../lib/api'
 import { deriveControlsPassing, deriveOverallPosture, deriveTopFramework, frameworkPosturePercent, scoreToPercent } from '../lib/dashboardHero'
 import { ConnectorLogo, connectorBrandHex } from '../components/ConnectorLogo'
+import { CountUp } from '../components/CountUp'
 
 import { useI18n } from '../lib/i18n';
 
@@ -155,7 +156,7 @@ function PostureNarrative({
       }}
     >
       <span style={{ fontWeight: 700, color: toneColor, fontSize: 15, letterSpacing: '-0.01em' }}>
-        {posturePct}%
+        <CountUp value={posturePct} suffix="%" />
       </span>
       <span style={{ color: 'var(--color-text-secondary)' }}>
         {passingCount} {t('of', 'of')} {auditableTotal} {t('auditable controls', 'auditable controls')} {t('passing', 'passing')}
@@ -742,7 +743,7 @@ export function AttestivDashboardOverview() {
                   color: postureColor,
                 }}
               >
-                {heroValue}
+                {auditableTotal > 0 ? <CountUp value={posturePct} suffix="%" /> : heroValue}
               </span>
               {auditableTotal > 0 ? (
                 <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }}>
@@ -851,7 +852,7 @@ export function AttestivDashboardOverview() {
             />
             <StatPill
               label={t('Evidence collected', 'Evidence collected')}
-              value={metricEvidenceCollected}
+              value={summary?.finding_count != null ? <CountUp value={summary.finding_count} /> : metricEvidenceCollected}
               sub={summary?.generated_at ? `${t('as of', 'as of')} ${relativeTime(summary.generated_at)}` : undefined}
             />
             <StatPill
@@ -874,18 +875,18 @@ export function AttestivDashboardOverview() {
         >
           <MetricCard
             label={t('Active connectors', 'Active connectors')}
-            value={metricActiveConnectors}
+            value={typeof metricActiveConnectors === 'number' ? <CountUp value={metricActiveConnectors} /> : metricActiveConnectors}
             sub={metricConnectorWarning ? `${metricConnectorWarning} ${t('warning', 'warning')}` : t('all healthy', 'all healthy')}
           />
           <MetricCard
             label={t('Active exceptions', 'Active exceptions')}
-            value={grc.exceptionsActive != null ? String(grc.exceptionsActive) : '—'}
+            value={grc.exceptionsActive != null ? <CountUp value={grc.exceptionsActive} /> : '—'}
             sub={grc.exceptionsNearestExpiryDays != null ? `${t('next expiry:', 'next expiry:')} ${grc.exceptionsNearestExpiryDays}d` : t('no active', 'no active')}
             valueColor={grc.exceptionsNearestExpiryDays != null && grc.exceptionsNearestExpiryDays <= 7 ? 'var(--color-status-red-mid)' : undefined}
           />
           <MetricCard
             label={t('Overdue NIS2', 'Overdue NIS2')}
-            value={grc.overdueNIS2Notifications != null ? String(grc.overdueNIS2Notifications) : '—'}
+            value={grc.overdueNIS2Notifications != null ? <CountUp value={grc.overdueNIS2Notifications} /> : '—'}
             sub={grc.overdueNIS2Notifications && grc.overdueNIS2Notifications > 0 ? t('submit immediately', 'submit immediately') : t('on track', 'on track')}
             valueColor={
               grc.overdueNIS2Notifications && grc.overdueNIS2Notifications > 0
@@ -895,7 +896,7 @@ export function AttestivDashboardOverview() {
           />
           <MetricCard
             label={t('Policies needing review', 'Policies needing review')}
-            value={grc.policiesOverdue != null ? String(grc.policiesOverdue) : '—'}
+            value={grc.policiesOverdue != null ? <CountUp value={grc.policiesOverdue} /> : '—'}
             sub={grc.policiesOverdue && grc.policiesOverdue > 0 ? t('−10% per linked control', '−10% per linked control') : t('all current', 'all current')}
             valueColor={grc.policiesOverdue && grc.policiesOverdue > 0 ? 'var(--color-status-amber-mid)' : undefined}
           />

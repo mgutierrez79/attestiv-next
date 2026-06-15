@@ -26,6 +26,7 @@ import { clearSessionMarker } from '../lib/session'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { GuidedTourProvider } from './GuidedTour'
 import { BackgroundTasksProvider } from './BackgroundTasks'
+import { CommandPalette, type NavDestination } from './CommandPalette'
 
 // translateNavLabel: small helper that reuses the literal English label
 // as the translation key. So `Overview` becomes `t('Overview',
@@ -446,6 +447,26 @@ function clearCachedRoles(): void {
   }
 }
 
+// navDestinations flattens the rail + sidebar nav into one quick-jump
+// list for the command palette, filtered to what the given roles may
+// see. Deduped by route so a path that appears under two sections shows
+// once. Same English-seed labels the nav uses — the palette translates
+// them at render time.
+export function navDestinations(roles: string[] | null): NavDestination[] {
+  const out: NavDestination[] = []
+  const seen = new Set<string>()
+  for (const rail of [...railTop, ...railBottom]) {
+    if (!canSeeSection(rail.key, roles)) continue
+    const sec = sections[rail.key]
+    for (const item of sec.items) {
+      if (seen.has(item.to)) continue
+      seen.add(item.to)
+      out.push({ label: item.label, to: item.to, icon: item.icon, section: sec.navLabel })
+    }
+  }
+  return out
+}
+
 function sectionFromPath(pathname: string): SectionKey {
   // /apps, /sites, and /third-parties no longer have their own rail
   // entry — they live inside the Inventory section. Route them so
@@ -493,6 +514,11 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
   const [subject, setSubject] = useState('')
   const [issuesCount, setIssuesCount] = useState(0)
   const [roles, setRoles] = useState<string[] | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  // Shortcut hint defaults to ⌘K (matches SSR) and corrects to Ctrl K on
+  // non-Mac after mount, avoiding a hydration mismatch.
+  const [shortcutHint, setShortcutHint] = useState('⌘K')
+  const destinations = useMemo(() => navDestinations(roles), [roles])
 
   // Pull current tenant + subject from /auth/me so the footer pill
   // reflects the bound principal, not whatever the user typed in
@@ -523,6 +549,24 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [pathname])
+
+  // Global ⌘K / Ctrl-K opens the command palette from anywhere in the
+  // console. Toggles so a second press closes it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletteOpen((o) => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
+    const platform = typeof navigator !== 'undefined' ? navigator.platform : ''
+    if (!/Mac|iPhone|iPad/.test(platform)) setShortcutHint('Ctrl K')
+  }, [])
 
   // DLQ count for the Issues / Dead-letter badges. Same source as
   // the previous Layout — Phase 3 has the count tenant-scoped at the
@@ -646,6 +690,40 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
           <div className="attestiv-sidebar-title">{t('Attestiv', 'Attestiv')}</div>
           <div className="attestiv-sidebar-sub">{navT(section.navLabel)}</div>
         </div>
+        <button
+          type="button"
+          onClick={() => setPaletteOpen(true)}
+          aria-label={t('Search pages and assets', 'Search pages and assets')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            width: 'calc(100% - 16px)',
+            margin: '8px',
+            padding: '7px 9px',
+            border: '0.5px solid var(--color-border-secondary)',
+            borderRadius: 'var(--border-radius-md)',
+            background: 'var(--color-background-secondary)',
+            color: 'var(--color-text-tertiary)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            fontSize: 12,
+          }}
+        >
+          <i className="ti ti-search" aria-hidden="true" style={{ fontSize: 14 }} />
+          <span style={{ flex: 1, textAlign: 'left' }}>{t('Search…', 'Search…')}</span>
+          <kbd
+            style={{
+              fontSize: 10,
+              fontFamily: 'var(--font-mono)',
+              border: '0.5px solid var(--color-border-secondary)',
+              borderRadius: 4,
+              padding: '1px 5px',
+            }}
+          >
+            {shortcutHint}
+          </kbd>
+        </button>
         <div className="attestiv-nav-group">
           <div className="attestiv-nav-label">{navT(section.navLabel)}</div>
           {section.items.map(renderNavItem)}
@@ -673,6 +751,7 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="attestiv-main">{children}</main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} destinations={destinations} />
     </div>
     </GuidedTourProvider>
     </BackgroundTasksProvider>
