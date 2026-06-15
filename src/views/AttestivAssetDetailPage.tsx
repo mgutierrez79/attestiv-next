@@ -393,6 +393,24 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const powerState = String(asset?.metadata?.['power_state'] ?? '')
   const vcenterHost = String(asset?.metadata?.['vcenter_host'] ?? '')
   const vcenterCluster = String(asset?.metadata?.['vcenter_cluster'] ?? '')
+  // Whether this asset is a VM, so VM-specific wording (and the VM-details card)
+  // only show for VMs — not firewalls / network devices / storage. Note
+  // metadata.hardware is reused by non-VM assets (e.g. firewall environmentals),
+  // so the VM-details gate checks for actual VM hardware/guest fields, not just
+  // the presence of a hardware object.
+  const isVM =
+    ['vm', 'virtual_machine'].includes(String(asset?.asset_type ?? '').toLowerCase()) ||
+    Boolean(guest) ||
+    Boolean(vcenterHost) ||
+    Boolean(hardware?.cpu) ||
+    Boolean(hardware?.memory)
+  const hasVMDetails =
+    Boolean(guest) ||
+    Boolean(powerState) ||
+    Boolean(vcenterHost) ||
+    Boolean(hardware?.cpu) ||
+    Boolean(hardware?.memory) ||
+    Boolean(hardware?.disks && hardware.disks.length > 0)
   const lastBackup = (asset?.metadata?.['last_backup'] as LastBackup | undefined) ?? undefined
   const replication = (asset?.metadata?.['replication'] as Replication | undefined) ?? undefined
   const lastRestore = (asset?.metadata?.['last_restore'] as LastRestore | undefined) ?? undefined
@@ -536,7 +554,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             </Card>
             ) : null}
 
-            {guest || hardware || powerState || vcenterHost ? (
+            {hasVMDetails ? (
               <Card>
                 <CardTitle>{t('VM details', 'VM details')}</CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
@@ -923,11 +941,15 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   >
                     {evaluating
                       ? t('Evaluating…', 'Evaluating…')
-                      : t('Evaluate per-VM scope', 'Evaluate per-VM scope')}
+                      : isVM
+                        ? t('Evaluate per-VM scope', 'Evaluate per-VM scope')
+                        : t('Evaluate asset scope', 'Evaluate asset scope')}
                   </button>
                 }
               >
-                {t('Per-VM compliance contribution', 'Per-VM compliance contribution')}
+                {isVM
+                  ? t('Per-VM compliance contribution', 'Per-VM compliance contribution')
+                  : t('Per-asset compliance contribution', 'Per-asset compliance contribution')}
               </CardTitle>
               {asset.framework_evaluation_enabled === false ? (
                 <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
@@ -938,10 +960,15 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                 </p>
               ) : !scopeResult ? (
                 <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
-                  {t(
-                    'Click Evaluate to compute framework scores against ONLY this VM\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
-                    'Click Evaluate to compute framework scores against ONLY this VM\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
-                  )}
+                  {isVM
+                    ? t(
+                        'Click Evaluate to compute framework scores against ONLY this VM\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
+                        'Click Evaluate to compute framework scores against ONLY this VM\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
+                      )
+                    : t(
+                        'Click Evaluate to compute framework scores against ONLY this asset\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
+                        'Click Evaluate to compute framework scores against ONLY this asset\'s evidence. Useful for finding which controls this asset contributes to or fails for.',
+                      )}
                 </p>
               ) : (
                 <>
