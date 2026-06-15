@@ -136,6 +136,15 @@ function daysSinceISO(iso?: string): number | undefined {
 }
 
 type LastFailover = { at?: string; from_state?: string; to_state?: string; recovered?: boolean }
+type NtpInfo = { synced?: boolean; synched?: string }
+type SecurityServices = {
+  threat_content_stale?: boolean
+  threat_content_age_days?: number
+  expired_licenses?: string[]
+  content?: Record<string, unknown>
+}
+type Rulebase = { total_rules?: number; any_any_rules?: number }
+type Hardware = { env_entries?: number; env_alarms?: number }
 
 export function HealthChips({ asset }: { asset: EnrichedAsset }) {
   const { t } = useI18n()
@@ -145,6 +154,10 @@ export function HealthChips({ asset }: { asset: EnrichedAsset }) {
   const storageVolumes = meta['storage_volumes'] as Array<{ replicated?: boolean }> | undefined
   const lastRestore = meta['last_restore'] as { status?: string } | undefined
   const lastFailover = meta['last_failover'] as LastFailover | undefined
+  const ntp = meta['ntp'] as NtpInfo | undefined
+  const security = meta['security_services'] as SecurityServices | undefined
+  const rulebase = meta['rulebase'] as Rulebase | undefined
+  const hardware = meta['hardware'] as Hardware | undefined
   const edr = meta['edr'] as
     | { installed?: boolean; health?: string; infected?: boolean }
     | undefined
@@ -198,6 +211,54 @@ export function HealthChips({ asset }: { asset: EnrichedAsset }) {
         typeof days === 'number'
           ? t('Failover {n}d ago', 'Failover {n}d ago', { n: days })
           : t('Failover recorded', 'Failover recorded'),
+    })
+  }
+
+  // Firewall NTP / time-sync — trustworthy audit timestamps.
+  if (ntp) {
+    chips.push({
+      tone: ntp.synced ? 'green' : 'red',
+      icon: 'ti-clock',
+      label: ntp.synced ? t('Time synced', 'Time synced') : t('NTP unsynced', 'NTP unsynced'),
+    })
+  }
+
+  // Firewall security services — content/signature freshness + license expiry.
+  if (security) {
+    const expiredCount = Array.isArray(security.expired_licenses) ? security.expired_licenses.length : 0
+    const stale = security.threat_content_stale === true
+    const tone: ChipTone = expiredCount > 0 ? 'red' : stale ? 'amber' : 'green'
+    const label =
+      expiredCount > 0
+        ? t('License expired', 'License expired')
+        : stale
+          ? t('Signatures stale', 'Signatures stale')
+          : typeof security.threat_content_age_days === 'number'
+            ? t('Signatures {n}d', 'Signatures {n}d', { n: security.threat_content_age_days })
+            : t('Signatures current', 'Signatures current')
+    chips.push({ tone, icon: 'ti-license', label })
+  }
+
+  // Firewall rulebase hygiene — overly-permissive (any/any/any) rules.
+  if (rulebase && typeof rulebase.total_rules === 'number') {
+    const anyAny = rulebase.any_any_rules ?? 0
+    chips.push({
+      tone: anyAny > 0 ? 'amber' : 'gray',
+      icon: 'ti-list-search',
+      label:
+        anyAny > 0
+          ? t('{n} any-any rules', '{n} any-any rules', { n: anyAny })
+          : t('{n} rules', '{n} rules', { n: rulebase.total_rules }),
+    })
+  }
+
+  // Firewall hardware — environmental alarms (PSU/fan/thermal).
+  if (hardware && typeof hardware.env_entries === 'number') {
+    const alarms = hardware.env_alarms ?? 0
+    chips.push({
+      tone: alarms > 0 ? 'red' : 'green',
+      icon: 'ti-cpu',
+      label: alarms > 0 ? t('{n} HW alarms', '{n} HW alarms', { n: alarms }) : t('Hardware OK', 'Hardware OK'),
     })
   }
 
@@ -395,6 +456,18 @@ function compactFacts(asset: EnrichedAsset, t: (k: string, d?: string) => string
       lastFailover.from_state && lastFailover.to_state ? ` · ${lastFailover.from_state}→${lastFailover.to_state}` : ''
     facts.push({ label: t('Last failover', 'Last failover'), value: `${when}${transition}` })
   }
+  const security = meta['security_services'] as { content?: Record<string, unknown>; threat_content_age_days?: number } | undefined
+  if (security?.content) {
+    const tv = String(security.content['threat-version'] ?? '')
+    const age = typeof security.threat_content_age_days === 'number' ? ` · ${security.threat_content_age_days}d` : ''
+    if (tv) facts.push({ label: t('Threat content', 'Threat content'), value: `${tv}${age}`, mono: true })
+  }
+  const fwRules = meta['rulebase'] as { total_rules?: number; any_any_rules?: number } | undefined
+  if (fwRules && typeof fwRules.total_rules === 'number') {
+    facts.push({ label: t('Firewall rules', 'Firewall rules'), value: `${fwRules.total_rules} (${fwRules.any_any_rules ?? 0} any-any)` })
+  }
+  const ntp = meta['ntp'] as { synched?: string } | undefined
+  if (ntp?.synched) facts.push({ label: t('Time source', 'Time source'), value: ntp.synched, mono: true })
   return facts
 }
 
