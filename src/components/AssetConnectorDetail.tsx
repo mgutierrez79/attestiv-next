@@ -124,6 +124,19 @@ function restoreTone(status?: string): ChipTone {
   return 'gray'
 }
 
+// daysSinceISO returns whole days between an ISO timestamp and now, or
+// undefined when the value is missing/unparseable. Used for the failover
+// chip, where the backend stamps an absolute timestamp (not a days_since
+// that would go stale between polls).
+function daysSinceISO(iso?: string): number | undefined {
+  if (!iso) return undefined
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return undefined
+  return Math.max(0, Math.floor((Date.now() - ms) / 86_400_000))
+}
+
+type LastFailover = { at?: string; from_state?: string; to_state?: string; recovered?: boolean }
+
 export function HealthChips({ asset }: { asset: EnrichedAsset }) {
   const { t } = useI18n()
   const meta = asset.metadata ?? {}
@@ -131,6 +144,7 @@ export function HealthChips({ asset }: { asset: EnrichedAsset }) {
   const replication = meta['replication'] as { state?: string } | undefined
   const storageVolumes = meta['storage_volumes'] as Array<{ replicated?: boolean }> | undefined
   const lastRestore = meta['last_restore'] as { status?: string } | undefined
+  const lastFailover = meta['last_failover'] as LastFailover | undefined
   const edr = meta['edr'] as
     | { installed?: boolean; health?: string; infected?: boolean }
     | undefined
@@ -167,6 +181,23 @@ export function HealthChips({ asset }: { asset: EnrichedAsset }) {
       tone: restoreTone(lastRestore.status),
       icon: 'ti-restore',
       label: t('Restore tested', 'Restore tested'),
+    })
+  }
+
+  // Last HA/DR failover for a firewall cluster. Red when the cluster did not
+  // recover (HA still degraded), amber when the failover was recent, else a
+  // neutral record that a failover happened.
+  if (lastFailover?.at) {
+    const days = daysSinceISO(lastFailover.at)
+    const tone: ChipTone =
+      lastFailover.recovered === false ? 'red' : typeof days === 'number' && days <= 7 ? 'amber' : 'gray'
+    chips.push({
+      tone,
+      icon: 'ti-arrows-exchange',
+      label:
+        typeof days === 'number'
+          ? t('Failover {n}d ago', 'Failover {n}d ago', { n: days })
+          : t('Failover recorded', 'Failover recorded'),
     })
   }
 
@@ -357,6 +388,13 @@ function compactFacts(asset: EnrichedAsset, t: (k: string, d?: string) => string
   if (host) facts.push({ label: t('Host', 'Host'), value: host, mono: true })
   if (asset.criticality) facts.push({ label: t('Criticality', 'Criticality'), value: asset.criticality })
   if (asset.datacenter_id) facts.push({ label: t('Site', 'Site'), value: asset.datacenter_id })
+  const lastFailover = meta['last_failover'] as { at?: string; from_state?: string; to_state?: string } | undefined
+  if (lastFailover?.at) {
+    const when = String(lastFailover.at).slice(0, 10)
+    const transition =
+      lastFailover.from_state && lastFailover.to_state ? ` · ${lastFailover.from_state}→${lastFailover.to_state}` : ''
+    facts.push({ label: t('Last failover', 'Last failover'), value: `${when}${transition}` })
+  }
   return facts
 }
 
