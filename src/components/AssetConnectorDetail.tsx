@@ -471,6 +471,93 @@ function compactFacts(asset: EnrichedAsset, t: (k: string, d?: string) => string
   return facts
 }
 
+// ── Failover source evidence ──────────────────────────────────────
+// The dr_failover finding freezes the raw `show high-availability state` it was
+// derived from (the live state is ephemeral). This surfaces that frozen,
+// hashed artifact directly from the firewall — the auditable source behind the
+// failover — fetched on demand from /v1/evidence/raw by its evidence ref.
+
+function FailoverSourceEvidence({ asset }: { asset: EnrichedAsset }) {
+  const { t } = useI18n()
+  const lf = asset.metadata?.['last_failover'] as
+    | { evidence?: { ref?: string; command?: string; sha256?: string; captured_at?: string } }
+    | undefined
+  const ev = lf?.evidence
+  const [open, setOpen] = useState(false)
+  const [content, setContent] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!ev?.ref) return null
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    setOpen(true)
+    if (content !== null || loading) return
+    setLoading(true)
+    setError(null)
+    apiFetch(`/evidence/raw?id=${encodeURIComponent(ev.ref ?? '')}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`))))
+      .then((body: { content?: string }) => setContent(String(body?.content ?? '')))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load'))
+      .finally(() => setLoading(false))
+  }
+
+  const sha = ev.sha256 ? ev.sha256.slice(0, 12) : ''
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+        {t('Failover source evidence', 'Failover source evidence')}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 4 }}>
+        <span style={{ fontFamily: 'var(--font-mono)' }}>{ev.command || 'show high-availability state'}</span>
+        {sha ? <span style={{ color: 'var(--color-text-tertiary)' }}> · sha256 {sha}…</span> : null}
+      </div>
+      <button
+        type="button"
+        onClick={toggle}
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'var(--color-status-blue-deep)',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        <i className={`ti ${open ? 'ti-chevron-down' : 'ti-file-search'}`} aria-hidden="true" />
+        {open ? t('Hide source', 'Hide source') : t('View frozen source', 'View frozen source')}
+      </button>
+      {open ? (
+        <pre
+          style={{
+            marginTop: 8,
+            maxHeight: 260,
+            overflow: 'auto',
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            background: 'var(--color-background-secondary)',
+            border: '0.5px solid var(--color-border-tertiary)',
+            borderRadius: 'var(--border-radius-md)',
+            padding: 10,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {loading ? t('Loading…', 'Loading…') : error ? error : content}
+        </pre>
+      ) : null}
+    </div>
+  )
+}
+
 // ── AssetExpandedPanel ────────────────────────────────────────────
 // The inline "look by row" body. Lazy-loads the enriched single-asset
 // payload (the list rows are not enriched), then renders the posture
@@ -561,6 +648,8 @@ export function AssetExpandedPanel({
         </div>
         <ConnectorProvenance asset={asset} />
       </div>
+
+      <FailoverSourceEvidence asset={asset} />
 
       <a
         href={`/inventory/${encodeURIComponent(asset.asset_id)}`}
