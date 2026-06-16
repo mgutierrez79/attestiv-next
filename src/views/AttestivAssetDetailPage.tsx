@@ -434,6 +434,11 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     | Array<{ name?: string; size?: string; size_bytes?: number; replicated?: boolean; replication_mode?: string }>
     | undefined) ?? undefined
   const volumeCount = (asset?.metadata?.['volume_count'] as number | undefined) ?? undefined
+  // LLDP uplinks: which switch + port each array NIC is cabled to, reported
+  // by the array itself (independent of DNAC's switch-port MAC table).
+  const arrayUplinks = (asset?.metadata?.['uplinks'] as
+    | Array<{ interface?: string; switch?: string; switch_port?: string; remote_mac?: string; vlan?: string; local_mac?: string }>
+    | undefined) ?? undefined
 
   return (
     <>
@@ -664,6 +669,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
 
             {(arrayIPs && arrayIPs.length > 0) ||
             (arrayMACs && arrayMACs.length > 0) ||
+            (arrayUplinks && arrayUplinks.length > 0) ||
             (topVolumes && topVolumes.length > 0) ? (
               <Card>
                 <CardTitle>{t('Storage array', 'Storage array')}</CardTitle>
@@ -697,6 +703,37 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+                {arrayUplinks && arrayUplinks.length > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {t('Switch uplinks (LLDP)', 'Switch uplinks (LLDP)')}
+                    </div>
+                    <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+                      {arrayUplinks.map((u, i) => (
+                        <div
+                          key={`${u.switch ?? 'sw'}-${u.switch_port ?? i}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--color-border-subtle)' }}
+                        >
+                          <i className="ti ti-plug-connected" aria-hidden="true" style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} />
+                          <span style={{ fontWeight: 500 }}>{u.switch ?? '—'}</span>
+                          {u.switch_port ? (
+                            <code style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
+                              {u.switch_port}
+                            </code>
+                          ) : null}
+                          {u.vlan ? (
+                            <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('VLAN {v}', 'VLAN {v}', { v: u.vlan })}</span>
+                          ) : null}
+                          {u.interface ? (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }} title={u.interface}>
+                              {u.interface}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
                 {topVolumes && topVolumes.length > 0 ? (
