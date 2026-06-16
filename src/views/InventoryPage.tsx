@@ -1151,6 +1151,11 @@ function AssetRow({
   // directly. Collector stamps metadata.array_name at emission.
   const isStorageVolume = assetType === 'storage_volume'
   const storageVolumeArrayName = String(asset.metadata?.['array_name'] ?? '').trim()
+  // Storage array: surface its provisioned-volume count as a one-line
+  // capacity hint under the name. Backend stamps metadata.volume_count
+  // (full Primary count) alongside top_volumes during the PowerStore poll.
+  const isStorageArray = assetType === 'storage_array'
+  const arrayVolumeCount = isStorageArray ? Number(asset.metadata?.['volume_count'] ?? 0) : 0
   // Cluster row metadata: effective_sites + stretched flag the
   // backend recomputes after every poll.
   const isCluster = assetType === 'cluster'
@@ -1251,6 +1256,12 @@ function AssetRow({
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
           {asset.asset_id}
         </div>
+        {isStorageArray && arrayVolumeCount > 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+            <i className="ti ti-stack-2" aria-hidden="true" style={{ fontSize: 11, marginRight: 4 }} />
+            {t('{n} volumes', '{n} volumes', { n: arrayVolumeCount })}
+          </div>
+        ) : null}
       </td>
       <td style={{ padding: '10px', verticalAlign: 'top' }}>
         {isLinkAsset ? (
