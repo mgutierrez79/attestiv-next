@@ -109,7 +109,11 @@ export function AttestivCoverageRegisterPage() {
         if (!cancelled) {
           setFrameworks(body.frameworks ?? [])
           if (body.frameworks?.length && !selectedFW) {
-            setSelectedFW(body.frameworks[0].framework_id)
+            // Honour ?framework= so a drill-through from the framework
+            // score badge lands on the right tab; fall back to the first.
+            const fromUrl = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('framework') : null
+            const matched = fromUrl && body.frameworks.some((f) => f.framework_id === fromUrl) ? fromUrl : null
+            setSelectedFW(matched ?? body.frameworks[0].framework_id)
           }
         }
       } catch (e) {

@@ -715,6 +715,92 @@ export function AttestivFrameworksPage() {
   );
 }
 
+// ScoreBreakdownPanel decomposes the framework badge into the three
+// numbers an operator sees scattered across screens, each labelled with
+// the question it answers — so the badge stops reading as a single
+// mysterious percentage. Drills through to the full control register.
+function ScoreBreakdownPanel({
+  posturePct,
+  passing,
+  regTotal,
+  covered,
+  gradedScore,
+  frameworkId,
+}: {
+  posturePct: number
+  passing: number
+  regTotal: number
+  covered: number
+  gradedScore?: number
+  frameworkId: string
+}) {
+  const { t } = useI18n()
+  const coveragePct = regTotal > 0 ? Math.round((covered / regTotal) * 100) : 0
+  const row = (value: string, label: string, hint: string, accent: string) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '3px 0' }}>
+      <span style={{ minWidth: 46, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: accent }}>{value}</span>
+      <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+        <strong>{label}</strong> — {hint}
+      </span>
+    </div>
+  )
+  return (
+    <div
+      style={{
+        margin: '0 0 12px',
+        padding: '10px 12px',
+        background: 'var(--color-background-secondary)',
+        borderRadius: 'var(--border-radius-md)',
+        border: '0.5px solid var(--color-border-secondary)',
+      }}
+    >
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-tertiary)', marginBottom: 6 }}>
+        {t('What this score means', 'What this score means')}
+      </div>
+      {row(
+        `${posturePct}%`,
+        t('Posture', 'Posture'),
+        t('{p} passing ÷ {n} auditable controls — this badge', '{p} passing ÷ {n} auditable controls — this badge', { p: passing, n: regTotal }),
+        'var(--color-status-green-deep)',
+      )}
+      {row(
+        `${coveragePct}%`,
+        t('Coverage', 'Coverage'),
+        t('{c} ÷ {n} have an evidence source at all', '{c} ÷ {n} have an evidence source at all', { c: covered, n: regTotal }),
+        'var(--color-text-secondary)',
+      )}
+      {typeof gradedScore === 'number'
+        ? row(
+            `${gradedScore}%`,
+            t('Graded', 'Graded'),
+            t('quality of evidence on the controls we score', 'quality of evidence on the controls we score'),
+            'var(--color-text-secondary)',
+          )
+        : null}
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window !== 'undefined') window.location.href = `/scoring/coverage-register?framework=${encodeURIComponent(frameworkId)}`
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: '8px 0 0',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontSize: 12,
+          color: 'var(--color-status-blue-deep)',
+        }}
+      >
+        {t('View control register', 'View control register')}
+        <i className="ti ti-arrow-right" aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
 function FrameworkCard({
   framework,
   liveCovered,
@@ -735,6 +821,11 @@ function FrameworkCard({
   const {
     t
   } = useI18n();
+  // Pressing the score badge drills into how the number is built —
+  // posture vs coverage vs graded score all in one place, since those
+  // three denominators showing up on different screens is what makes a
+  // single framework look like three different percentages.
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const noData = framework.status === 'no_data'
   // Coverage-adjusted badge: passing / regulation_total — the same
@@ -763,13 +854,36 @@ function FrameworkCard({
   const headerBadge = noData ? (
     <Badge tone="gray" dot>{t('not evaluated', 'not evaluated')}</Badge>
   ) : (
-    <ScoreBadge tone={tone} value={`${coverageAdjusted}%`} />
+    <button
+      type="button"
+      onClick={() => setShowBreakdown((v) => !v)}
+      aria-expanded={showBreakdown}
+      title={t('How is this score calculated?', 'How is this score calculated?')}
+      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+    >
+      <ScoreBadge tone={tone} value={`${coverageAdjusted}%`} />
+      <i
+        className={`ti ti-chevron-${showBreakdown ? 'up' : 'down'}`}
+        aria-hidden="true"
+        style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}
+      />
+    </button>
   )
   return (
     <Card>
       <CardTitle right={headerBadge}>
         {framework.name}
       </CardTitle>
+      {showBreakdown && !noData ? (
+        <ScoreBreakdownPanel
+          posturePct={coverageAdjusted}
+          passing={passing}
+          regTotal={regTotal}
+          covered={totalCovered}
+          gradedScore={framework.overall}
+          frameworkId={framework.id}
+        />
+      ) : null}
       <div style={{ marginBottom: 10 }}>
         {framework.control_areas.length > 0 ? (
           // Legacy DEMO data path (only reached in actual demo mode).
