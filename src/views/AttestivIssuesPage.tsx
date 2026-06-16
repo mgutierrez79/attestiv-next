@@ -889,6 +889,15 @@ function RisksTab({ risks }: { risks: RiskRow[] }) {
   const {
     t
   } = useI18n();
+  const [frameworkFilter, setFrameworkFilter] = useState<string>('all')
+  const frameworks = useMemo(
+    () => Array.from(new Set(risks.map((r) => r.source_framework_id).filter((f): f is string => Boolean(f)))).sort(),
+    [risks],
+  )
+  const filtered = useMemo(
+    () => (frameworkFilter === 'all' ? risks : risks.filter((r) => r.source_framework_id === frameworkFilter)),
+    [risks, frameworkFilter],
+  )
 
   if (risks.length === 0) {
     return (
@@ -902,9 +911,50 @@ function RisksTab({ risks }: { risks: RiskRow[] }) {
       </Card>
     );
   }
-  const sorted = [...risks].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  const sorted = [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
   return (
     <>
+      {frameworks.length > 1 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label
+            htmlFor="risk-fw-filter"
+            style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+          >
+            {t('Framework', 'Framework')}
+          </label>
+          <select
+            id="risk-fw-filter"
+            value={frameworkFilter}
+            onChange={(e) => setFrameworkFilter(e.target.value)}
+            style={{
+              fontSize: 12,
+              padding: '4px 8px',
+              borderRadius: 'var(--border-radius-md)',
+              border: '0.5px solid var(--color-border-tertiary)',
+              background: 'var(--color-background-secondary)',
+              color: 'var(--color-text-primary)',
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="all">
+              {t('All frameworks', 'All frameworks')} ({risks.length})
+            </option>
+            {frameworks.map((fw) => (
+              <option key={fw} value={fw}>
+                {fw.toUpperCase()} ({risks.filter((r) => r.source_framework_id === fw).length})
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {sorted.length === 0 ? (
+        <Card>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {t('No risks for this framework.', 'No risks for this framework.')}
+          </div>
+        </Card>
+      ) : null}
       {sorted.map((risk) => {
         const score = risk.score ?? 0
         const tone: 'red' | 'amber' | 'gray' = score >= 12 ? 'red' : score >= 6 ? 'amber' : 'gray'
