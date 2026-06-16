@@ -446,29 +446,25 @@ export function AttestivControlEvidenceDetailPage({
                   </tbody>
                 </table>
               )}
-              {data.requirements.some((r) => r.has_threshold && (r.total_count ?? 0) > 0) ? (
+              {data.requirements.length > 0 ? (
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: '0.5px solid var(--color-border-tertiary)' }}>
                   <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-                    {t('What was measured', 'What was measured')}
+                    {t('What we found', 'What we found')}
                   </div>
-                  {data.requirements.filter((r) => r.has_threshold && (r.total_count ?? 0) > 0).map((r) => {
-                    const passed = r.passed_count ?? 0
-                    const total = r.total_count ?? 0
-                    const allPass = passed >= total
+                  {data.requirements.map((r) => {
+                    const f = requirementFinding(r, t)
+                    const color =
+                      f.tone === 'pass'
+                        ? 'var(--color-status-green-deep)'
+                        : f.tone === 'fail'
+                          ? 'var(--color-status-red-mid)'
+                          : 'var(--color-status-amber-deep, var(--color-text-secondary))'
+                    const mark = f.tone === 'pass' ? '✓' : f.tone === 'fail' ? '✗' : '•'
                     return (
-                      <div key={`met-${r.tag}`} style={{ padding: '3px 0', fontSize: 13, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                        <strong style={{ color: allPass ? 'var(--color-status-green-deep)' : 'var(--color-status-red-mid)', fontVariantNumeric: 'tabular-nums' }}>
-                          {passed}/{total}
-                        </strong>
-                        <span style={{ color: 'var(--color-text-secondary)' }}>{t('met', 'met')}</span>
-                        <code style={{ fontSize: 11, background: 'var(--color-background-secondary)', padding: '1px 6px', borderRadius: 'var(--border-radius-sm)' }}>
-                          {humanizeField(r.threshold_field || '')} {opSymbol(r.threshold_op)} {r.threshold_value}
-                        </code>
-                        {!allPass ? (
-                          <span style={{ fontSize: 12, color: 'var(--color-status-red-mid)' }}>
-                            {t('— {n} failing pulled the score down', '— {n} failing pulled the score down', { n: total - passed })}
-                          </span>
-                        ) : null}
+                      <div key={`found-${r.tag}`} style={{ padding: '3px 0', fontSize: 13, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <span style={{ color, fontWeight: 700 }}>{mark}</span>
+                        <code style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{r.tag}</code>
+                        <span style={{ color: 'var(--color-text-secondary)' }}>{f.text}</span>
                       </div>
                     )
                   })}
@@ -579,15 +575,62 @@ function recordVerdict(rec: EvidenceRecord, requirements: RequirementRow[]): {
   pass: boolean | null
 } {
   const title = recordIdentity(rec.payload_preview) ?? rec.evidence_id
+  // Threshold record: exact pass/fail against the bar.
   const req = thresholdReqForRecord(rec, requirements)
-  if (!req || !req.threshold_field) return { title, detail: null, pass: null }
-  const raw = rec.payload_preview?.[req.threshold_field] ?? ''
-  const num = Number(String(raw).replace(/[^0-9.-]/g, ''))
-  const target = req.threshold_value ?? 0
-  const sym = opSymbol(req.threshold_op)
-  const detail = `${humanizeField(req.threshold_field)} ${raw} (target ${sym} ${target})`
-  const pass = Number.isFinite(num) ? meetsThreshold(num, req.threshold_op ?? '', target) : null
-  return { title, detail, pass }
+  if (req && req.threshold_field) {
+    const raw = rec.payload_preview?.[req.threshold_field] ?? ''
+    const num = Number(String(raw).replace(/[^0-9.-]/g, ''))
+    const target = req.threshold_value ?? 0
+    const sym = opSymbol(req.threshold_op)
+    const detail = `${humanizeField(req.threshold_field)} ${raw} (target ${sym} ${target})`
+    const pass = Number.isFinite(num) ? meetsThreshold(num, req.threshold_op ?? '', target) : null
+    return { title, detail, pass }
+  }
+  // Non-threshold record: it contributes to a pass when the requirement it
+  // satisfies is itself satisfied (presence/freshness/gate all met). That's
+  // what lets a PASSING control's evidence still read as a green ✓ rather
+  // than rendering bare.
+  if (rec.satisfies_tags) {
+    for (const tag of rec.satisfies_tags) {
+      const r = requirements.find((x) => x.tag === tag)
+      if (r && !r.gate_failed && r.presence_score > 0 && r.combined_score >= 0.95) {
+        return { title, detail: null, pass: true }
+      }
+    }
+  }
+  return { title, detail: null, pass: null }
+}
+
+// requirementFinding produces a concrete one-line "what we found" for ANY
+// requirement — threshold or not, passing or failing — so a 100% control
+// explains itself just as much as a 0% one. Tone drives the ✓ / • / ✗ mark.
+function requirementFinding(
+  r: RequirementRow,
+  t: (key: string, fallback: string, params?: Record<string, string | number>) => string,
+): { text: string; tone: 'pass' | 'partial' | 'fail' } {
+  const count = r.evidence_ids?.length ?? r.total_count ?? 0
+  if (r.gate_failed) return { text: t('required event not on record', 'required event not on record'), tone: 'fail' }
+  if (r.presence_score === 0) return { text: t('no evidence found', 'no evidence found'), tone: 'fail' }
+  if (r.has_threshold && (r.total_count ?? 0) > 0) {
+    const passed = r.passed_count ?? 0
+    const total = r.total_count ?? 0
+    const bar = `${humanizeField(r.threshold_field || '')} ${opSymbol(r.threshold_op)} ${r.threshold_value}`
+    if (passed >= total) return { text: t('all {n} met {bar}', 'all {n} met {bar}', { n: total, bar }), tone: 'pass' }
+    return {
+      text: t('{p} of {n} met {bar} — {f} failing', '{p} of {n} met {bar} — {f} failing', { p: passed, n: total, bar, f: total - passed }),
+      tone: 'fail',
+    }
+  }
+  // Non-threshold (presence / freshness / cadence / field-match). Describe
+  // what's there and flag whichever axis is below bar.
+  const issues: string[] = []
+  if (r.freshness_score < 0.99) issues.push(r.freshness_score > 0 ? t('some evidence aging', 'some evidence aging') : t('evidence stale', 'evidence stale'))
+  if (r.frequency_score < 0.99) issues.push(t('cadence below target', 'cadence below target'))
+  if (r.field_match_score < 0.99) issues.push(t('field mismatch', 'field mismatch'))
+  if (issues.length === 0) {
+    return { text: t('{n} record(s) found — current and on cadence', '{n} record(s) found — current and on cadence', { n: count }), tone: r.combined_score >= 0.95 ? 'pass' : 'partial' }
+  }
+  return { text: t('{n} found, but {issues}', '{n} found, but {issues}', { n: count, issues: issues.join(', ') }), tone: r.combined_score >= 0.7 ? 'partial' : 'fail' }
 }
 
 function PaginatedEvidenceRecords({
