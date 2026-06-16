@@ -506,6 +506,31 @@ function PaginatedEvidenceRecords({
               <Badge tone="gray">{rec.type}</Badge>
               {rec.source ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('via', 'via')} <strong>{rec.source}</strong></span> : null}
               {rec.timestamp ? <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rec.timestamp}</span> : <span style={{ fontSize: 11, color: 'var(--color-status-red-mid)' }}>{t('rolled off', 'rolled off')}</span>}
+              {rec.type === 'policy_document'
+                ? (() => {
+                    // Policy-doc evidence is a file — link straight to the document
+                    // (where it can be viewed/downloaded). evidence_id is
+                    // "policy:<id>"; payload_preview.policy_id is the same id.
+                    const docId = (rec.payload_preview?.policy_id || rec.evidence_id.replace(/^policy:/, '')).trim()
+                    return docId ? (
+                      <a
+                        href={`/policies/${encodeURIComponent(docId)}`}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: 'var(--color-status-blue-deep)',
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                        }}
+                      >
+                        <i className="ti ti-file-text" aria-hidden="true" />
+                        {t('View document', 'View document')}
+                      </a>
+                    ) : null
+                  })()
+                : null}
             </div>
             {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
               <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
