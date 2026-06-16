@@ -510,6 +510,16 @@ export function AttestivSiteDetailPage() {
               ) : null}
             </div>
           )}
+          {site?.primary_site ? (
+            <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 10, lineHeight: 1.5 }}>
+              <i className="ti ti-info-circle" aria-hidden="true" style={{ marginRight: 4 }} />
+              {t(
+                'DR/recovery target for {primary} — the primary tier-1 apps are hosted and scored there, so a low concentration here is expected, not a gap.',
+                'DR/recovery target for {primary} — the primary tier-1 apps are hosted and scored there, so a low concentration here is expected, not a gap.',
+                { primary: site.primary_site },
+              )}
+            </p>
+          ) : null}
         </Card>
 
         <Card style={{ marginTop: 12 }}>
