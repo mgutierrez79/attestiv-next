@@ -706,6 +706,15 @@ function ControlsTab({
   assignResult: { text: string; ok: boolean } | null
 }) {
   const { t } = useI18n()
+  const [frameworkFilter, setFrameworkFilter] = useState<string>('all')
+  const frameworks = useMemo(
+    () => Array.from(new Set(controls.map((c) => c.framework).filter(Boolean))).sort(),
+    [controls],
+  )
+  const filtered = useMemo(
+    () => (frameworkFilter === 'all' ? controls : controls.filter((c) => c.framework === frameworkFilter)),
+    [controls, frameworkFilter],
+  )
 
   if (!controls.length) {
     return (
@@ -727,6 +736,40 @@ function ControlsTab({
           'Controls that are failing or under review. Each requires attention to maintain your compliance posture.'
         )}
       </p>
+      {frameworks.length > 1 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label
+            htmlFor="control-fw-filter"
+            style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+          >
+            {t('Framework', 'Framework')}
+          </label>
+          <select
+            id="control-fw-filter"
+            value={frameworkFilter}
+            onChange={(e) => setFrameworkFilter(e.target.value)}
+            style={{
+              fontSize: 12,
+              padding: '4px 8px',
+              borderRadius: 'var(--border-radius-md)',
+              border: '0.5px solid var(--color-border-tertiary)',
+              background: 'var(--color-background-secondary)',
+              color: 'var(--color-text-primary)',
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="all">
+              {t('All frameworks', 'All frameworks')} ({controls.length})
+            </option>
+            {frameworks.map((fw) => (
+              <option key={fw} value={fw}>
+                {fw} ({controls.filter((c) => c.framework === fw).length})
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       {assignResult ? (
         <div
           style={{
@@ -768,7 +811,14 @@ function ControlsTab({
           ) : null}
         </div>
       ) : null}
-      {controls.map((control, index) => {
+      {filtered.length === 0 ? (
+        <Card>
+          <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+            {t('No failing controls for this framework.', 'No failing controls for this framework.')}
+          </div>
+        </Card>
+      ) : null}
+      {filtered.map((control, index) => {
         return (
           <Card key={`${control.framework}-${control.control}-${index}`}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
