@@ -46,6 +46,13 @@ type RequirementRow = {
   field_match_score: number
   gate_failed: boolean
   evidence_ids?: string[]
+  // Threshold the engine graded records against + how many met it.
+  threshold_field?: string
+  threshold_op?: string
+  threshold_value?: number
+  has_threshold?: boolean
+  passed_count?: number
+  total_count?: number
 }
 
 type ExplanationRequirement = {
@@ -85,6 +92,8 @@ type WireResponse = {
   status: string
   score: number
   evidence_count: number
+  weight?: number
+  contribution_pct?: number
   records: EvidenceRecord[] | null
   requirements: RequirementRow[] | null
   explanation?: ControlExplanation
@@ -299,7 +308,15 @@ export function AttestivControlEvidenceDetailPage({
                 <Tile label={t('Status', 'Status')} value={(data.status || '—').toUpperCase()} tone={statusTone(data.status)} />
                 <Tile label={t('Evidence count', 'Evidence count')} value={String(data.evidence_count)} tone={data.evidence_count > 0 ? 'green' : 'red'} />
                 <Tile label={t('Requirements', 'Requirements')} value={String(data.requirements.length)} />
-                <Tile label={t('Records returned', 'Records returned')} value={String(data.records.length)} />
+                {typeof data.contribution_pct === 'number' && data.contribution_pct > 0 ? (
+                  <Tile
+                    label={t('Weight in framework', 'Weight in framework')}
+                    value={`${data.contribution_pct}%`}
+                    sub={typeof data.weight === 'number' ? t('weight {w}', 'weight {w}', { w: data.weight }) : undefined}
+                  />
+                ) : (
+                  <Tile label={t('Records returned', 'Records returned')} value={String(data.records.length)} />
+                )}
               </div>
             </Card>
 
@@ -429,6 +446,34 @@ export function AttestivControlEvidenceDetailPage({
                   </tbody>
                 </table>
               )}
+              {data.requirements.some((r) => r.has_threshold && (r.total_count ?? 0) > 0) ? (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                    {t('What was measured', 'What was measured')}
+                  </div>
+                  {data.requirements.filter((r) => r.has_threshold && (r.total_count ?? 0) > 0).map((r) => {
+                    const passed = r.passed_count ?? 0
+                    const total = r.total_count ?? 0
+                    const allPass = passed >= total
+                    return (
+                      <div key={`met-${r.tag}`} style={{ padding: '3px 0', fontSize: 13, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <strong style={{ color: allPass ? 'var(--color-status-green-deep)' : 'var(--color-status-red-mid)', fontVariantNumeric: 'tabular-nums' }}>
+                          {passed}/{total}
+                        </strong>
+                        <span style={{ color: 'var(--color-text-secondary)' }}>{t('met', 'met')}</span>
+                        <code style={{ fontSize: 11, background: 'var(--color-background-secondary)', padding: '1px 6px', borderRadius: 'var(--border-radius-sm)' }}>
+                          {humanizeField(r.threshold_field || '')} {opSymbol(r.threshold_op)} {r.threshold_value}
+                        </code>
+                        {!allPass ? (
+                          <span style={{ fontSize: 12, color: 'var(--color-status-red-mid)' }}>
+                            {t('— {n} failing pulled the score down', '— {n} failing pulled the score down', { n: total - passed })}
+                          </span>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
             </Card>
 
             <Card style={{ marginTop: 12 }}>
@@ -440,6 +485,7 @@ export function AttestivControlEvidenceDetailPage({
               ) : (
                 <PaginatedEvidenceRecords
                   records={data.records}
+                  requirements={data.requirements}
                   page={evidencePage}
                   pageSize={evidencePageSize}
                   onPageChange={setEvidencePage}
@@ -468,8 +514,85 @@ export function AttestivControlEvidenceDetailPage({
   )
 }
 
+// --- Human-readable evidence helpers -------------------------------------
+// Turn a record's raw payload preview into a one-line "what this record
+// says" headline, and (when the requirement it satisfies has a threshold)
+// a pass/fail verdict against the actual bar — so the evidence reads as a
+// sentence instead of a key/value dump.
+
+const IDENTITY_KEYS = [
+  'vm_name', 'hostname', 'host', 'asset_name', 'asset_id', 'device_name',
+  'device', 'name', 'serial', 'serial_number', 'user', 'username', 'account',
+  'email', 'repo', 'repository', 'resource', 'subject', 'rule', 'policy_id',
+]
+
+function recordIdentity(p?: Record<string, string>): string | null {
+  if (!p) return null
+  for (const k of IDENTITY_KEYS) {
+    const v = (p[k] ?? '').trim()
+    if (v) return v
+  }
+  return null
+}
+
+function humanizeField(field: string): string {
+  return field.replace(/_/g, ' ').replace(/\bhours?\b/i, 'h').trim()
+}
+
+function opSymbol(op?: string): string {
+  switch ((op ?? '').toLowerCase()) {
+    case 'lte': case 'le': case 'lessthanorequal': return '≤'
+    case 'gte': case 'ge': case 'greaterthanorequal': return '≥'
+    case 'lt': case 'lessthan': return '<'
+    case 'gt': case 'greaterthan': return '>'
+    case 'eq': case 'equals': return '='
+    default: return op ?? ''
+  }
+}
+
+function meetsThreshold(value: number, op: string, target: number): boolean {
+  switch ((op ?? '').toLowerCase()) {
+    case 'lte': case 'le': case 'lessthanorequal': return value <= target
+    case 'gte': case 'ge': case 'greaterthanorequal': return value >= target
+    case 'lt': case 'lessthan': return value < target
+    case 'gt': case 'greaterthan': return value > target
+    case 'eq': case 'equals': return value === target
+    default: return false
+  }
+}
+
+// thresholdReqForRecord finds the threshold-bearing requirement a record
+// satisfies (by tag) whose field is present in the record's payload.
+function thresholdReqForRecord(rec: EvidenceRecord, requirements: RequirementRow[]): RequirementRow | null {
+  if (!rec.satisfies_tags || !rec.payload_preview) return null
+  for (const tag of rec.satisfies_tags) {
+    const req = requirements.find((r) => r.tag === tag && r.has_threshold && r.threshold_field)
+    if (req && req.threshold_field && rec.payload_preview[req.threshold_field] != null) return req
+  }
+  return null
+}
+
+// recordVerdict renders the readable headline + optional pass/fail chip.
+function recordVerdict(rec: EvidenceRecord, requirements: RequirementRow[]): {
+  title: string
+  detail: string | null
+  pass: boolean | null
+} {
+  const title = recordIdentity(rec.payload_preview) ?? rec.evidence_id
+  const req = thresholdReqForRecord(rec, requirements)
+  if (!req || !req.threshold_field) return { title, detail: null, pass: null }
+  const raw = rec.payload_preview?.[req.threshold_field] ?? ''
+  const num = Number(String(raw).replace(/[^0-9.-]/g, ''))
+  const target = req.threshold_value ?? 0
+  const sym = opSymbol(req.threshold_op)
+  const detail = `${humanizeField(req.threshold_field)} ${raw} (target ${sym} ${target})`
+  const pass = Number.isFinite(num) ? meetsThreshold(num, req.threshold_op ?? '', target) : null
+  return { title, detail, pass }
+}
+
 function PaginatedEvidenceRecords({
   records,
+  requirements,
   page,
   pageSize,
   onPageChange,
@@ -477,6 +600,7 @@ function PaginatedEvidenceRecords({
   t,
 }: {
   records: EvidenceRecord[]
+  requirements: RequirementRow[]
   page: number
   pageSize: number
   onPageChange: (page: number) => void
@@ -532,6 +656,21 @@ function PaginatedEvidenceRecords({
                   })()
                 : null}
             </div>
+            {(() => {
+              const v = recordVerdict(rec, requirements)
+              return (
+                <div style={{ marginTop: 5, display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                  {v.pass === true ? <span style={{ color: 'var(--color-status-green-deep)', fontWeight: 700 }}>✓</span> : null}
+                  {v.pass === false ? <span style={{ color: 'var(--color-status-red-mid)', fontWeight: 700 }}>✗</span> : null}
+                  <strong style={{ fontSize: 13 }}>{v.title}</strong>
+                  {v.detail ? (
+                    <span style={{ fontSize: 12, color: v.pass === false ? 'var(--color-status-red-mid)' : 'var(--color-text-secondary)' }}>
+                      {v.detail}
+                    </span>
+                  ) : null}
+                </div>
+              )
+            })()}
             {rec.satisfies_tags && rec.satisfies_tags.length > 0 ? (
               <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-tertiary)' }}>
                 {t('Satisfies', 'Satisfies')}: {rec.satisfies_tags.map((tag) => <code key={tag} style={{ marginRight: 6, fontSize: 10 }}>{tag}</code>)}
@@ -564,7 +703,7 @@ function PaginatedEvidenceRecords({
   )
 }
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: 'green' | 'amber' | 'red' | 'gray' }) {
+function Tile({ label, value, tone, sub }: { label: string; value: string; tone?: 'green' | 'amber' | 'red' | 'gray'; sub?: string }) {
   const palette: Record<NonNullable<typeof tone>, string> = {
     green: 'var(--color-status-green-mid)',
     amber: 'var(--color-status-amber-mid)',
@@ -576,6 +715,7 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: 'gr
     <Card>
       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, color }}>{value}</div>
+      {sub ? <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 2 }}>{sub}</div> : null}
     </Card>
   )
 }
