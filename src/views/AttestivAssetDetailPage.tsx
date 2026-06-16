@@ -426,6 +426,14 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const storageVolumes = (asset?.metadata?.['storage_volumes'] as
     | Array<{ volume?: string; wwn?: string; replicated?: boolean; mode?: string; role?: string; last_sync?: string }>
     | undefined) ?? undefined
+  // Storage-array network identity + headline capacity, stamped by the
+  // PowerStore connector onto the array's own metadata (not under a guest).
+  const arrayIPs = (asset?.metadata?.['ip_addresses'] as string[] | undefined) ?? undefined
+  const arrayMACs = (asset?.metadata?.['mac_addresses'] as string[] | undefined) ?? undefined
+  const topVolumes = (asset?.metadata?.['top_volumes'] as
+    | Array<{ name?: string; size?: string; size_bytes?: number; replicated?: boolean; replication_mode?: string }>
+    | undefined) ?? undefined
+  const volumeCount = (asset?.metadata?.['volume_count'] as number | undefined) ?? undefined
 
   return (
     <>
@@ -649,6 +657,75 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+              </Card>
+            ) : null}
+
+            {(arrayIPs && arrayIPs.length > 0) ||
+            (arrayMACs && arrayMACs.length > 0) ||
+            (topVolumes && topVolumes.length > 0) ? (
+              <Card>
+                <CardTitle>{t('Storage array', 'Storage array')}</CardTitle>
+                {(arrayIPs && arrayIPs.length > 0) || (arrayMACs && arrayMACs.length > 0) ? (
+                  <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                    {arrayIPs && arrayIPs.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {t('IP addresses', 'IP addresses')} ({arrayIPs.length})
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {arrayIPs.map((ip) => (
+                            <code key={ip} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
+                              {ip}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {arrayMACs && arrayMACs.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {t('MAC addresses', 'MAC addresses')} ({arrayMACs.length})
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                          {arrayMACs.map((mac) => (
+                            <code key={mac} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
+                              {mac}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {topVolumes && topVolumes.length > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {typeof volumeCount === 'number'
+                        ? t('Top volumes (of {n})', 'Top volumes (of {n})', { n: volumeCount })
+                        : t('Top volumes', 'Top volumes')}
+                    </div>
+                    <div style={{ display: 'grid', gap: 4, marginTop: 6 }}>
+                      {topVolumes.map((vol, i) => (
+                        <div
+                          key={`${vol.name ?? 'vol'}-${i}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid var(--color-border-subtle)' }}
+                        >
+                          <code style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {vol.name ?? '—'}
+                          </code>
+                          {vol.size ? (
+                            <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-secondary)' }}>{vol.size}</span>
+                          ) : null}
+                          {vol.replicated ? (
+                            <Badge tone="green">{vol.replication_mode ? vol.replication_mode : t('Replicated', 'Replicated')}</Badge>
+                          ) : (
+                            <Badge tone="gray">{t('Not replicated', 'Not replicated')}</Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </Card>
