@@ -22,8 +22,10 @@ import {
   Skeleton,
   Topbar,
 } from '../components/AttestivUi'
+import { ControlBreakdownPanels } from '../components/ControlBreakdownPanels'
 import { PolicyDocUploadWidget } from '../components/PolicyDocUploadWidget'
 import { apiFetch } from '../lib/api'
+import type { ControlBreakdown } from '../lib/controlBreakdown'
 import { useI18n } from '../lib/i18n'
 
 type EvidenceRecord = {
@@ -120,6 +122,11 @@ export function AttestivControlEvidenceDetailPage({
   const [data, setData] = useState<Response | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // "How did I pass?" drill-down. Fetched from the breakdown endpoint
+  // independently of the evidence response — if the (parallel) backend
+  // route isn't live yet, the page still renders the existing evidence
+  // detail and just omits the explainability panels.
+  const [breakdown, setBreakdown] = useState<ControlBreakdown | null>(null)
   // W2-1 per-control replay: when set, the page queries the
   // historical state. Empty = live latest evaluation.
   const [asOfInput, setAsOfInput] = useState<string>('')
@@ -158,6 +165,43 @@ export function AttestivControlEvidenceDetailPage({
     void load()
     return () => { cancelled = true }
   }, [frameworkId, controlId, activeAsOf])
+
+  // Breakdown fetch — kept separate from the evidence load so a missing
+  // endpoint (backend route landing later) never blocks the existing page.
+  // Replay (activeAsOf) intentionally does not re-fetch the breakdown; the
+  // drill-down is a live "how did I pass" view.
+  useEffect(() => {
+    let cancelled = false
+    async function loadBreakdown() {
+      try {
+        const r = await apiFetch(
+          `/scoring/frameworks/${encodeURIComponent(frameworkId)}/controls/${encodeURIComponent(controlId)}/breakdown`,
+        )
+        if (!r.ok) return
+        const body = (await r.json()) as ControlBreakdown
+        if (!cancelled) setBreakdown(body)
+      } catch {
+        // Soft-fail: breakdown is additive. The evidence detail stands alone.
+      }
+    }
+    void loadBreakdown()
+    return () => { cancelled = true }
+  }, [frameworkId, controlId])
+
+  // createRemediation pre-fills framework_id + control_id from the page
+  // context. The dedup-against-existing-linkage warning is handled in the
+  // modal (ControlBreakdownPanels) before this fires.
+  async function createRemediation(payload: Record<string, unknown>) {
+    const r = await apiFetch('/remediation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error(body?.detail || `${r.status} ${r.statusText}`)
+    }
+  }
 
   function applyReplay() {
     if (!asOfInput) return
@@ -319,6 +363,19 @@ export function AttestivControlEvidenceDetailPage({
                 )}
               </div>
             </Card>
+
+            {/* "How did I pass?" explainability drill-down — board-readable
+                narrative, headline, provenance, in-flight linkage and the
+                gap list. Renders only in the live view (not historical
+                replay) and only once the breakdown endpoint has answered. */}
+            {breakdown && !data.is_replay ? (
+              <ControlBreakdownPanels
+                data={breakdown}
+                status={data.status}
+                score={data.score}
+                onCreateRemediation={createRemediation}
+              />
+            ) : null}
 
             {data.explanation ? (
               <Card style={{ marginTop: 12 }}>
