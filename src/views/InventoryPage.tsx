@@ -79,7 +79,7 @@ type SiteOption = { site_id: string; display_name?: string }
 type AppTierLink = { app_id: string; app_name: string; app_tier: string; criticality: string }
 
 // ─── sort + export helpers ──────────────────────────────────────────
-type SortKey = 'name' | 'asset_type' | 'criticality' | 'source' | 'datacenter_id' | 'switch_port'
+type SortKey = 'name' | 'asset_type' | 'criticality' | 'source' | 'datacenter_id'
 type SortState = { key: SortKey; dir: 'asc' | 'desc' }
 
 // Severity order (mirrors the backend criticalityRank) so a criticality
@@ -118,8 +118,6 @@ function sortValue(a: InventoryAsset, key: SortKey): string | number {
       return assetSource(a).toLowerCase()
     case 'datacenter_id':
       return String(a.datacenter_id ?? '').toLowerCase()
-    case 'switch_port':
-      return String(a.switch_port ?? '').toLowerCase()
   }
 }
 
@@ -863,15 +861,12 @@ export function InventoryPage() {
               t={t}
             />
           ) : null}
-          {orderedAssetTypeTiles(counts).map(([type, count]) => (
-            <SummaryTile
-              key={type}
-              label={translatedAssetTypeLabel(t, type)}
-              value={count}
-              active={assetTypeFilter === type}
-              onClick={() => pushFilter('asset_type', assetTypeFilter === type ? '' : type)}
-            />
-          ))}
+          <AssetTypeTiles
+            tiles={orderedAssetTypeTiles(counts)}
+            assetTypeFilter={assetTypeFilter}
+            onPick={(type) => pushFilter('asset_type', assetTypeFilter === type ? '' : type)}
+            t={t}
+          />
         </div>
 
         <Card>
@@ -1011,14 +1006,10 @@ export function InventoryPage() {
                     />
                   </th>
                   {sortableTh(t('Asset', 'Asset'), 'name', { padding: '6px 10px 6px 0' })}
-                  <th style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--color-text-tertiary)' }} aria-label={t('Linked to', 'Linked to')}>↔</th>
                   {sortableTh(t('Type', 'Type'), 'asset_type', { padding: '6px 10px' })}
                   {sortableTh(t('Criticality', 'Criticality'), 'criticality', { padding: '6px 10px' })}
-                  <th style={{ padding: '6px 10px' }}>{t('App tier', 'App tier')}</th>
                   {sortableTh(t('Source', 'Source'), 'source', { padding: '6px 10px' })}
-                  {sortableTh(t('Site', 'Site'), 'datacenter_id', { padding: '6px 10px' })}
-                  {sortableTh(t('Switch port', 'Switch port'), 'switch_port', { padding: '6px 10px' })}
-                  <th style={{ padding: '6px 0 6px 10px' }}>{t('Tags', 'Tags')}</th>
+                  {sortableTh(t('Site', 'Site'), 'datacenter_id', { padding: '6px 0 6px 10px' })}
                 </tr>
               </thead>
               <tbody>
@@ -1039,7 +1030,7 @@ export function InventoryPage() {
                     }}
                     expanded={expanded.has(asset.asset_id)}
                     onToggleExpand={() => toggleExpand(asset.asset_id)}
-                    colSpan={11}
+                    colSpan={7}
                     cachedDetail={detailCache[asset.asset_id]}
                     onDetailLoaded={(detail) =>
                       setDetailCache((prev) => ({ ...prev, [asset.asset_id]: detail }))
@@ -1227,12 +1218,24 @@ function AssetRow({
           style={{ fontWeight: 500, textDecoration: 'none', color: 'var(--color-text-primary)' }}
         >
           {isLinkAsset ? (
-            <LinkAssetEndpoint
-              endpoint={linkEndpoints[0]}
-              members={linkMembers}
-              memberCount={linkMemberCount}
-              side="a"
-            />
+            // Network-link rows fold the A ↔ B relationship into the
+            // single Asset cell now that the dedicated partner column
+            // is gone — link identity stays legible on one line.
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <LinkAssetEndpoint
+                endpoint={linkEndpoints[0]}
+                members={linkMembers}
+                memberCount={linkMemberCount}
+                side="a"
+              />
+              <span style={{ color: 'var(--color-text-tertiary)' }}>↔</span>
+              <LinkAssetEndpoint
+                endpoint={linkEndpoints[1]}
+                members={linkMembers}
+                memberCount={linkMemberCount}
+                side="b"
+              />
+            </span>
           ) : (
             displayName
           )}
@@ -1253,7 +1256,10 @@ function AssetRow({
             {t('Out of scope', 'Out of scope')}
           </span>
         )}
-        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+        {/* asset_id de-emphasised to a tertiary, smaller subline so the
+            row scans on the name first. Full id stays visible (and in
+            the CSV / detail page). */}
+        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', opacity: 0.8 }}>
           {asset.asset_id}
         </div>
         {isStorageArray && arrayVolumeCount > 0 ? (
@@ -1263,45 +1269,12 @@ function AssetRow({
           </div>
         ) : null}
       </td>
-      <td style={{ padding: '10px', verticalAlign: 'top' }}>
-        {isLinkAsset ? (
-          <LinkAssetEndpoint
-            endpoint={linkEndpoints[1]}
-            members={linkMembers}
-            memberCount={linkMemberCount}
-            side="b"
-          />
-        ) : (
-          <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
-        )}
-      </td>
       <td style={{ padding: '10px' }}>
         {assetType ? <Badge tone="navy">{translatedAssetTypeLabel(t, assetType)}</Badge> : <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>}
       </td>
       <td style={{ padding: '10px' }}>
         {criticality ? (
           <Badge tone={CRITICALITY_TONE[criticality] ?? 'gray'}>{criticalityLabel}</Badge>
-        ) : (
-          <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
-        )}
-      </td>
-      <td style={{ padding: '10px' }}>
-        {tier ? (
-          <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
-            <Badge tone={TIER_TONE[tier.app_tier] ?? 'gray'}>{tierLabel(tier.app_tier)}</Badge>
-            <a
-              href={`/apps/${encodeURIComponent(tier.app_id)}`}
-              style={{
-                fontSize: 10,
-                color: 'var(--color-text-tertiary)',
-                textDecoration: 'none',
-                fontFamily: 'var(--font-mono)',
-              }}
-              title={t('Open application', 'Open application')}
-            >
-              {tier.app_name || tier.app_id}
-            </a>
-          </span>
         ) : (
           <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
         )}
@@ -1337,7 +1310,7 @@ function AssetRow({
           </span>
         )}
       </td>
-      <td style={{ padding: '10px' }}>
+      <td style={{ padding: '10px 0 10px 10px' }}>
         {isCluster && isStretched ? (
           // Stretched cluster: multiple member-host sites. The
           // cluster has no single canonical site; the badge lists
@@ -1505,51 +1478,6 @@ function AssetRow({
           </select>
         )}
       </td>
-      <td style={{ padding: '10px' }}>
-        {asset.switch_port ? (
-          <span
-            style={{
-              fontSize: 11,
-              padding: '2px 6px',
-              background: 'var(--color-status-blue-bg)',
-              color: 'var(--color-status-blue-deep)',
-              borderRadius: 'var(--border-radius-sm)',
-              fontFamily: 'var(--font-mono)',
-              display: 'inline-block',
-            }}
-            title={t('Discovered via Cisco MAC address table', 'Discovered via Cisco MAC address table')}
-          >
-            {asset.switch_port}
-          </span>
-        ) : (
-          <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
-        )}
-      </td>
-      <td style={{ padding: '10px 0 10px 10px' }}>
-        {tags.length === 0 ? (
-          <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
-        ) : (
-          <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-            {tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  background: 'var(--color-background-tertiary)',
-                  borderRadius: 'var(--border-radius-sm)',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                {tag}
-              </span>
-            ))}
-            {tags.length > 3 ? (
-              <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>+{tags.length - 3}</span>
-            ) : null}
-          </span>
-        )}
-      </td>
     </tr>
     {expanded ? (
       <tr>
@@ -1561,6 +1489,12 @@ function AssetRow({
             borderBottom: '0.5px solid var(--color-border-tertiary)',
           }}
         >
+          {/* Attributes block — surfaces the App tier / Switch port /
+              Tags details that used to have their own table columns.
+              They moved here (not removed) so the default table scans
+              lighter while nothing becomes unreachable; these also
+              stay in the CSV export and on the asset detail page. */}
+          <RowAttributes tier={tier} switchPort={asset.switch_port} tags={tags} />
           <AssetExpandedPanel
             assetID={asset.asset_id}
             cached={cachedDetail}
@@ -1570,6 +1504,106 @@ function AssetRow({
       </tr>
     ) : null}
     </>
+  )
+}
+
+// RowAttributes renders the niche attributes (app tier, switch port,
+// tags) that were trimmed from the default table columns. It only
+// renders the fields that have a value, so a thin row shows nothing
+// and the panel stays compact. Sourced from the list row's own props
+// (not the lazy-fetched detail) so the values are always present the
+// moment the row expands.
+function RowAttributes({
+  tier,
+  switchPort,
+  tags,
+}: {
+  tier?: AppTierLink
+  switchPort?: string | null
+  tags: string[]
+}) {
+  const { t } = useI18n()
+  const hasTier = Boolean(tier)
+  const hasSwitchPort = Boolean(switchPort && switchPort.trim())
+  const hasTags = tags.length > 0
+  if (!hasTier && !hasSwitchPort && !hasTags) return null
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: 'var(--color-text-tertiary)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          marginBottom: 6,
+        }}
+      >
+        {t('Attributes', 'Attributes')}
+      </div>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {hasTier ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('App tier', 'App tier')}</span>
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <Badge tone={TIER_TONE[tier!.app_tier] ?? 'gray'}>{tierLabel(tier!.app_tier)}</Badge>
+              <a
+                href={`/apps/${encodeURIComponent(tier!.app_id)}`}
+                style={{
+                  fontSize: 11,
+                  color: 'var(--color-text-tertiary)',
+                  textDecoration: 'none',
+                  fontFamily: 'var(--font-mono)',
+                }}
+                title={t('Open application', 'Open application')}
+              >
+                {tier!.app_name || tier!.app_id}
+              </a>
+            </span>
+          </div>
+        ) : null}
+        {hasSwitchPort ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('Switch port', 'Switch port')}</span>
+            <span
+              style={{
+                fontSize: 11,
+                padding: '2px 6px',
+                background: 'var(--color-status-blue-bg)',
+                color: 'var(--color-status-blue-deep)',
+                borderRadius: 'var(--border-radius-sm)',
+                fontFamily: 'var(--font-mono)',
+                display: 'inline-block',
+                alignSelf: 'flex-start',
+              }}
+              title={t('Discovered via Cisco MAC address table', 'Discovered via Cisco MAC address table')}
+            >
+              {switchPort}
+            </span>
+          </div>
+        ) : null}
+        {hasTags ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('Tags', 'Tags')}</span>
+            <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  style={{
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    background: 'var(--color-background-tertiary)',
+                    borderRadius: 'var(--border-radius-sm)',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -1712,6 +1746,83 @@ function SummaryTile({
   )
 }
 
+// AssetTypeTiles renders the per-asset-type summary tiles with a
+// "top N" cap so the tile wall stays light. The remaining types fold
+// behind a subtle "+N more types" affordance that expands the rest
+// inline — every type is still reachable here (and via the Type
+// filter), so nothing is lost. The currently-filtered type is always
+// kept visible above the fold so the active selection never hides.
+const ASSET_TYPE_TILE_CAP = 6
+function AssetTypeTiles({
+  tiles,
+  assetTypeFilter,
+  onPick,
+  t,
+}: {
+  tiles: Array<[string, number]>
+  assetTypeFilter: string
+  onPick: (type: string) => void
+  t: (key: string, defaultText?: string, vars?: Record<string, string | number>) => string
+}) {
+  const [showAll, setShowAll] = useState(false)
+  // Keep the first ASSET_TYPE_TILE_CAP tiles, but always surface the
+  // active-filter tile even if its count would push it below the fold.
+  const head: Array<[string, number]> = tiles.slice(0, ASSET_TYPE_TILE_CAP)
+  const tail: Array<[string, number]> = tiles.slice(ASSET_TYPE_TILE_CAP)
+  const activeInTail =
+    assetTypeFilter && tail.find(([type]) => type === assetTypeFilter)
+  const visible: Array<[string, number]> =
+    showAll || tail.length === 0
+      ? tiles
+      : activeInTail
+        ? [...head, activeInTail]
+        : head
+  const hiddenCount = tiles.length - visible.length
+  return (
+    <>
+      {visible.map(([type, count]) => (
+        <SummaryTile
+          key={type}
+          label={translatedAssetTypeLabel(t, type)}
+          value={count}
+          active={assetTypeFilter === type}
+          onClick={() => onPick(type)}
+        />
+      ))}
+      {tail.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            padding: '10px 12px',
+            border: '0.5px dashed var(--color-border-tertiary)',
+            borderRadius: 'var(--border-radius-md)',
+            background: 'transparent',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            fontSize: 11,
+            color: 'var(--color-text-tertiary)',
+          }}
+        >
+          <i
+            className={`ti ${showAll ? 'ti-chevron-up' : 'ti-chevron-down'}`}
+            aria-hidden="true"
+            style={{ fontSize: 13 }}
+          />
+          {showAll
+            ? t('Show fewer types', 'Show fewer types')
+            : t('+{n} more types', '+{n} more types', { n: hiddenCount })}
+        </button>
+      ) : null}
+    </>
+  )
+}
+
 function FilterBar({
   assetTypeFilter,
   criticalityFilter,
@@ -1818,10 +1929,9 @@ function formatAssetTypeLabel(value: string): string {
 }
 
 // LinkAssetEndpoint renders ONE side of a network_link asset. The
-// inventory table places it twice (once in the Asset cell for side
-// "a", once in a dedicated ↔ partner cell for side "b") so the two
-// endpoints occupy proper table columns rather than stacking inside
-// a single cell.
+// inventory table places both sides inline in the Asset cell as
+// "A ↔ B" (side "a" then side "b") so the link relationship stays
+// legible on one line now that the dedicated partner column is gone.
 //
 // Each side shows the friendly asset name on top and, beneath it,
 // either the physical interface name (1-member bundle) or
