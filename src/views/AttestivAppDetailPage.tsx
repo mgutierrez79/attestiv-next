@@ -25,6 +25,7 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
+import { isAssetNode, neighboursOf } from '../lib/topologyNeighbours'
 
 import { useI18n } from '../lib/i18n';
 
@@ -479,7 +480,7 @@ function AppTopologyEmbed({
   t,
 }: {
   appID: string
-  t: (key: string, fallback?: string) => string
+  t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
   type Node = {
     id: string
@@ -503,6 +504,15 @@ function AppTopologyEmbed({
   const [edges, setEdges] = useState<Edge[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Optional storage-capacity enrichment for the selected node, keyed by
+  // node id. Best-effort: GET /inventory/assets/{id} → metadata.top_volumes
+  // / volume_count. Absent → the panel falls back to graph data only.
+  const [storageDetail, setStorageDetail] = useState<{
+    id: string
+    topVolumes: Array<{ name?: string; size?: string }>
+    volumeCount?: number
+  } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -544,6 +554,44 @@ function AppTopologyEmbed({
       cancelled = true
     }
   }, [appID])
+
+  // Enrichment: when a real inventory asset is selected, pull its
+  // storage-capacity detail so each volume row can show array name +
+  // size. Best-effort and non-blocking — failures leave the panel on
+  // graph-only data. Synthetic ("app:" / "synthetic:") nodes are skipped.
+  useEffect(() => {
+    const selected = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null
+    if (!selected || !isAssetNode(selected)) {
+      setStorageDetail(null)
+      return
+    }
+    let cancelled = false
+    async function loadDetail(id: string) {
+      try {
+        const res = await apiFetch(`/inventory/assets/${encodeURIComponent(id)}`)
+        if (!res.ok) return
+        const body = (await res.json()) as {
+          metadata?: {
+            top_volumes?: Array<{ name?: string; size?: string }>
+            volume_count?: number
+          }
+        }
+        if (cancelled) return
+        const top = body.metadata?.top_volumes
+        if (Array.isArray(top) && top.length > 0) {
+          setStorageDetail({ id, topVolumes: top, volumeCount: body.metadata?.volume_count })
+        } else {
+          setStorageDetail(null)
+        }
+      } catch {
+        if (!cancelled) setStorageDetail(null)
+      }
+    }
+    void loadDetail(selected.id)
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId, nodes])
 
   if (loading) {
     return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '20px 0' }}>{t('Loading…', 'Loading…')}</div>
@@ -646,9 +694,26 @@ function AppTopologyEmbed({
     return 'var(--color-border-tertiary)'
   }
 
+  const selectedNode = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null
+  const groups = neighboursOf(selectedId, nodes, edges)
+
   return (
     <div style={{ overflow: 'hidden' }}>
-      <svg width="100%" height={400} viewBox={`0 0 640 400`} style={{ background: 'var(--color-background-secondary)', borderRadius: 6 }}>
+      <svg
+        width="100%"
+        height={400}
+        viewBox={`0 0 640 400`}
+        style={{ background: 'var(--color-background-secondary)', borderRadius: 6 }}
+      >
+        {/* Background rect: clicking empty canvas deselects. */}
+        <rect
+          x={0}
+          y={0}
+          width={640}
+          height={400}
+          fill="transparent"
+          onClick={() => setSelectedId(null)}
+        />
         {edges.map((e) => {
           const a = positions.get(e.source)
           const b = positions.get(e.target)
@@ -690,9 +755,37 @@ function AppTopologyEmbed({
           const pos = positions.get(n.id)
           if (!pos) return null
           const r = n.id === `app:${appID}` ? 18 : 11
+          const isSelected = n.id === selectedId
           return (
-            <g key={n.id} transform={`translate(${pos.x},${pos.y})`}>
-              <circle r={r} fill={fillFor(n)} stroke="var(--color-border-secondary)" strokeWidth={1} />
+            <g
+              key={n.id}
+              transform={`translate(${pos.x},${pos.y})`}
+              role="button"
+              tabIndex={0}
+              aria-label={n.label}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSelectedId(n.id)}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') {
+                  ev.preventDefault()
+                  setSelectedId(n.id)
+                }
+              }}
+            >
+              {isSelected ? (
+                <circle
+                  r={r + 4}
+                  fill="none"
+                  stroke="var(--color-status-blue-deep)"
+                  strokeWidth={2.5}
+                />
+              ) : null}
+              <circle
+                r={r}
+                fill={fillFor(n)}
+                stroke={isSelected ? 'var(--color-status-blue-deep)' : 'var(--color-border-secondary)'}
+                strokeWidth={isSelected ? 2 : 1}
+              />
               <text
                 y={r + 14}
                 textAnchor="middle"
@@ -705,6 +798,19 @@ function AppTopologyEmbed({
           )
         })}
       </svg>
+      {selectedNode ? (
+        <NodeDetailsPanel
+          node={selectedNode}
+          groups={groups}
+          storageDetail={storageDetail && storageDetail.id === selectedNode.id ? storageDetail : null}
+          onClose={() => setSelectedId(null)}
+          t={t}
+        />
+      ) : (
+        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+          {t('Select a node to see its attached storage.', 'Select a node to see its attached storage.')}
+        </div>
+      )}
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Legend swatch="var(--color-status-blue-mid)" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" label={t('Component VM', 'Component VM')} />
@@ -713,6 +819,123 @@ function AppTopologyEmbed({
         <Legend swatch="var(--color-status-red-deep)" label={t('Switch / VLAN port', 'Switch / VLAN port')} />
       </div>
     </div>
+  )
+}
+
+// NodeDetailsPanel renders the details card for the selected map node.
+// Storage is the headline group (first, always shown — even when empty),
+// followed by the node's other neighbour groups for general usefulness.
+function NodeDetailsPanel({
+  node,
+  groups,
+  storageDetail,
+  onClose,
+  t,
+}: {
+  node: { id: string; label: string; asset_type: string; criticality?: string; health?: string; backup_state?: string }
+  groups: ReturnType<typeof neighboursOf>
+  storageDetail: { topVolumes: Array<{ name?: string; size?: string }>; volumeCount?: number } | null
+  onClose: () => void
+  t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
+}) {
+  // Capacity enrichment is keyed by volume name; fall back to graph data
+  // (no capacity) when the asset-detail lookup returned nothing.
+  const sizeByName = new Map<string, string>()
+  for (const v of storageDetail?.topVolumes ?? []) {
+    if (v.name && v.size) sizeByName.set(v.name, v.size)
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: '12px 14px',
+        border: '0.5px solid var(--color-border-secondary)',
+        borderRadius: 6,
+        background: 'var(--color-background-primary)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0 }}>{node.label}</div>
+        <Badge tone="gray">{node.asset_type.replace(/_/g, ' ')}</Badge>
+        {node.criticality ? <Badge tone="amber">{node.criticality}</Badge> : null}
+        {node.health ? (
+          <Badge tone={node.health === 'healthy' ? 'green' : 'red'}>{node.health}</Badge>
+        ) : null}
+        {node.backup_state ? <Badge tone="navy" icon="ti-shield">{node.backup_state}</Badge> : null}
+        <GhostButton onClick={onClose}>
+          <i className="ti ti-x" aria-hidden="true" /> {t('Close', 'Close')}
+        </GhostButton>
+      </div>
+
+      {/* Storage — the headline. */}
+      <div style={{ marginBottom: groups.host.length || groups.network.length || groups.backup.length || groups.app.length ? 12 : 0 }}>
+        <Field label={t('Attached storage', 'Attached storage')}>
+          {groups.storage.length === 0 ? (
+            <span style={{ color: 'var(--color-text-tertiary)' }}>
+              {t('No storage attached.', 'No storage attached.')}
+            </span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {groups.storage.map((s) => {
+                const size = sizeByName.get(s.label)
+                return (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <i className="ti ti-database" aria-hidden="true" style={{ color: 'var(--color-status-green-mid)' }} />
+                    <code style={{ fontSize: 11 }}>{s.label}</code>
+                    <Badge tone="gray">{s.asset_type.replace(/_/g, ' ')}</Badge>
+                    {size ? (
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{size}</span>
+                    ) : null}
+                  </div>
+                )
+              })}
+              {storageDetail?.volumeCount && storageDetail.volumeCount > storageDetail.topVolumes.length ? (
+                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                  {t('Showing top volumes of {n}.', 'Showing top volumes of {n}.', { n: storageDetail.volumeCount })}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </Field>
+      </div>
+
+      {/* Other neighbour groups — brief, for general usefulness. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        {groups.host.length > 0 ? (
+          <NeighbourList label={t('Runs on host', 'Runs on host')} nodes={groups.host} />
+        ) : null}
+        {groups.network.length > 0 ? (
+          <NeighbourList label={t('Network', 'Network')} nodes={groups.network} />
+        ) : null}
+        {groups.backup.length > 0 ? (
+          <NeighbourList label={t('Backup', 'Backup')} nodes={groups.backup} />
+        ) : null}
+        {groups.app.length > 0 ? (
+          <NeighbourList label={t('Component of', 'Component of')} nodes={groups.app} />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function NeighbourList({
+  label,
+  nodes,
+}: {
+  label: string
+  nodes: Array<{ id: string; label: string }>
+}) {
+  return (
+    <Field label={label}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {nodes.map((n) => (
+          <code key={n.id} style={{ fontSize: 11 }}>
+            {n.label}
+          </code>
+        ))}
+      </div>
+    </Field>
   )
 }
 
