@@ -10,9 +10,11 @@ import {
   FAILING_ITEM_CSV_COLUMNS,
   groupingCallouts,
   hasOpenLinkage,
+  isHighlightedTask,
   measuredHeadline,
   narrativeLines,
   observedBySources,
+  remediationTaskHref,
   resolvePresentationMode,
   signedBreakdownExportPath,
   sourceIsStale,
@@ -205,6 +207,51 @@ describe('hasOpenLinkage — dedup before create', () => {
   })
   it('is false for an absent linkage', () => {
     expect(hasOpenLinkage(undefined)).toBe(false)
+  })
+})
+
+describe('remediationTaskHref — never 404s (list route + ?task=, not a detail path)', () => {
+  it('links to the remediation LIST with a ?task= deep-link, not /remediation/{id}', () => {
+    // The bug: linking to /remediation/<id> hit a non-existent route → 404.
+    // There is no /remediation/[id]; only the list page exists.
+    const href = remediationTaskHref('task-123')
+    expect(href).toBe('/remediation?task=task-123')
+    expect(href).not.toMatch(/^\/remediation\/[^?]/)
+  })
+
+  it('url-encodes the task id', () => {
+    expect(remediationTaskHref('a/b c&d')).toBe('/remediation?task=a%2Fb%20c%26d')
+  })
+
+  it('stays on the list (no 404) for a blank/absent id', () => {
+    expect(remediationTaskHref(undefined)).toBe('/remediation?task=')
+    expect(remediationTaskHref('')).toBe('/remediation?task=')
+  })
+})
+
+describe('isHighlightedTask — deep-link row highlight matching', () => {
+  it('matches when the row id equals the ?task= param', () => {
+    expect(isHighlightedTask('t-1', 't-1')).toBe(true)
+  })
+
+  it('does not match a different id', () => {
+    expect(isHighlightedTask('t-1', 't-2')).toBe(false)
+  })
+
+  it('never highlights when there is no deep-link param (plain /remediation)', () => {
+    expect(isHighlightedTask('t-1', null)).toBe(false)
+    expect(isHighlightedTask('t-1', undefined)).toBe(false)
+    expect(isHighlightedTask('t-1', '')).toBe(false)
+  })
+
+  it('never highlights a blank/absent row id even against a blank param', () => {
+    expect(isHighlightedTask('', '')).toBe(false)
+    expect(isHighlightedTask(undefined, '')).toBe(false)
+  })
+
+  it('trims surrounding whitespace on both sides before comparing', () => {
+    expect(isHighlightedTask('  t-1 ', 't-1')).toBe(true)
+    expect(isHighlightedTask('t-1', ' t-1 ')).toBe(true)
   })
 })
 
