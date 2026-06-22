@@ -12,7 +12,7 @@
 // Heavier charting (Recharts/Visx) is overkill for a four-line
 // dashboard widget that doesn't need axes or tooltips.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import {
   Badge,
@@ -22,6 +22,14 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { isDemoMode } from '../lib/demoMode'
+import {
+  areaPath,
+  downsample,
+  formatScore,
+  smoothPath,
+  toPoints,
+  yDomain,
+} from '../lib/postureSparkline'
 
 import { useI18n } from '../lib/i18n';
 
@@ -164,7 +172,7 @@ function FrameworkSparklineCard({ series }: { series: FrameworkSeries }) {
   const trendColor = trend > 0 ? 'var(--color-status-green-deep)' : trend < 0 ? 'var(--color-status-red-deep)' : 'var(--color-text-tertiary)'
   return (
     <Card>
-      <CardTitle right={<Badge tone={tone}>{series.current}%</Badge>}>
+      <CardTitle right={<Badge tone={tone}>{formatScore(series.current)}%</Badge>}>
         {series.framework}
       </CardTitle>
       <Sparkline points={series.history} tone={tone} />
@@ -182,24 +190,23 @@ function Sparkline({ points, tone }: { points: ScorePoint[]; tone: 'green' | 'am
   const {
     t
   } = useI18n();
+  const gradientId = useId()
 
   if (points.length === 0) {
     return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('No data.', 'No data.')}</div>;
   }
   const width = 320
   const height = 60
-  const values = points.map((point) => point.value)
-  const min = Math.min(...values, 70)
-  const max = Math.max(...values, 100)
-  const range = Math.max(1, max - min)
-  const stepX = points.length > 1 ? width / (points.length - 1) : 0
-  const path = points
-    .map((point, index) => {
-      const x = stepX * index
-      const y = height - ((point.value - min) / range) * height
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`
-    })
-    .join(' ')
+  // Bucket ~1000 raw samples down to a readable ~120-point trend. downsample()
+  // takes each bucket's median, so lone transient dips are smoothed away while
+  // sustained drops survive (see lib/postureSparkline.ts).
+  const values = downsample(points.map((point) => point.value), 120)
+  const domain = yDomain(values)
+  const coords = toPoints(values, width, height, domain)
+  const linePath = smoothPath(coords)
+  const fillPath = areaPath(linePath, width, height)
+  const last = coords[coords.length - 1]
+
   const stroke =
     tone === 'green'
       ? 'var(--color-status-green-mid)'
@@ -207,14 +214,30 @@ function Sparkline({ points, tone }: { points: ScorePoint[]; tone: 'green' | 'am
         ? 'var(--color-status-amber-mid)'
         : 'var(--color-status-red-mid)'
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      <path d={path} stroke={stroke} strokeWidth={2} fill="none" />
-      <circle
-        cx={width}
-        cy={height - ((points[points.length - 1].value - min) / range) * height}
-        r={3}
-        fill={stroke}
+    <svg
+      width="100%"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+      style={{ display: 'block', overflow: 'visible' }}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
+          <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={fillPath} fill={`url(#${gradientId})`} stroke="none" />
+      <path
+        d={linePath}
+        stroke={stroke}
+        strokeWidth={2}
+        fill="none"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
       />
+      <circle cx={last.x} cy={last.y} r={3} fill={stroke} stroke="var(--color-background-primary)" strokeWidth={1.5} />
     </svg>
   )
 }
