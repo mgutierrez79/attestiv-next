@@ -24,6 +24,7 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { ipSourceTag } from '../lib/ipSource'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
 
@@ -459,6 +460,12 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // metadata.ip_addresses is shared with the storage-array card (arrayIPs);
   // reuse the same parsed list for the server-details IP rows.
   const hostIPs = arrayIPs
+  // metadata.ip_sources records the provenance of each host IP:
+  // { "<ip>": "connector" | "ad_dns" | "dns_lookup" }. Optional — older
+  // assets won't have it. DNS-sourced IPs get a muted "DNS" badge in the
+  // Server-details IP list (see ipSourceTag); connector-sourced or
+  // unmapped IPs get none.
+  const ipSources = (asset?.metadata?.['ip_sources'] as Record<string, string> | undefined) ?? undefined
   // Gate the Server-details card to a NON-VM physical host: an explicit
   // server/host asset_type, OR a box stamped with manufacturer/service_tag
   // that is not a vCenter VM (no metadata.guest, not VM-shaped).
@@ -729,19 +736,32 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       {t('IP addresses', 'IP addresses')}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                      {hostIPs.map((ip) => (
-                        <code
-                          key={ip}
-                          style={{
-                            fontSize: 11,
-                            padding: '2px 6px',
-                            background: 'var(--color-background-secondary)',
-                            borderRadius: 'var(--border-radius-sm)',
-                          }}
-                        >
-                          {ip}
-                        </code>
-                      ))}
+                      {hostIPs.map((ip) => {
+                        // DNS-sourced IPs are weaker than connector-reported
+                        // ones — badge them so the distinction is visible. The
+                        // tooltip (on the wrapper) explains AD-record vs live
+                        // lookup. Connector / unmapped IPs render bare.
+                        const tag = ipSourceTag(ipSources?.[ip])
+                        return (
+                          <span
+                            key={ip}
+                            title={tag ? t(tag.tooltip, tag.tooltip) : undefined}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <code
+                              style={{
+                                fontSize: 11,
+                                padding: '2px 6px',
+                                background: 'var(--color-background-secondary)',
+                                borderRadius: 'var(--border-radius-sm)',
+                              }}
+                            >
+                              {ip}
+                            </code>
+                            {tag ? <Badge tone="gray">{t(tag.label, tag.label)}</Badge> : null}
+                          </span>
+                        )
+                      })}
                     </div>
                   </div>
                 ) : null}
