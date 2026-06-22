@@ -612,48 +612,28 @@ function AppTopologyEmbed({
     )
   }
 
-  // Lay out: app node at center, component VMs in a ring, second-hop
-  // nodes (host, storage, backup) on the outer ring. Simple radial.
+  // DRAW only the application + its component VMs. The full topology
+  // (nodes/edges) is still fetched and kept in state so neighboursOf()
+  // can resolve a VM's storage/host/backup on click — we just don't
+  // render the storage/host/network/backup nodes (decluttered map).
+  const appNodeID = `app:${appID}`
+  const components = nodes.filter((n) => n.asset_type === 'vm')
+  const drawnNodes = nodes.filter((n) => n.id === appNodeID || n.asset_type === 'vm')
+  const drawnIds = new Set(drawnNodes.map((n) => n.id))
+  // Edges drawn: only those whose endpoints are both drawn (app↔VM
+  // membership). Storage/host/network edges are hidden by construction.
+  const drawnEdges = edges.filter((e) => drawnIds.has(e.source) && drawnIds.has(e.target))
+
+  // Lay out: app node at center, component VMs in a ring. Simple radial.
   const cx = 320
   const cy = 200
-  const innerR = 80
-  const outerR = 160
-  const components = nodes.filter((n) => n.asset_type === 'vm')
-  // Switches/firewalls go on a dedicated outer arc so the network
-  // plane reads distinctly from hosts/storage/backup. Other neighbours
-  // (host, storage_volume, backup_appliance) fill the remaining outer
-  // ring.
-  const network = nodes.filter(
-    (n) =>
-      n.asset_type === 'network_device' ||
-      n.asset_type === 'firewall' ||
-      n.asset_type === 'firewall_manager',
-  )
-  const others = nodes.filter(
-    (n) =>
-      !n.id.startsWith('app:') &&
-      n.asset_type !== 'vm' &&
-      n.asset_type !== 'network_device' &&
-      n.asset_type !== 'firewall' &&
-      n.asset_type !== 'firewall_manager',
-  )
+  const innerR = 110
 
   const positions = new Map<string, { x: number; y: number }>()
-  positions.set(`app:${appID}`, { x: cx, y: cy })
+  positions.set(appNodeID, { x: cx, y: cy })
   components.forEach((n, i) => {
     const angle = (i / Math.max(components.length, 1)) * 2 * Math.PI - Math.PI / 2
     positions.set(n.id, { x: cx + Math.cos(angle) * innerR, y: cy + Math.sin(angle) * innerR })
-  })
-  others.forEach((n, i) => {
-    const angle = (i / Math.max(others.length, 1)) * 2 * Math.PI - Math.PI / 2 + Math.PI / others.length
-    positions.set(n.id, { x: cx + Math.cos(angle) * outerR, y: cy + Math.sin(angle) * outerR })
-  })
-  // Network devices on a slightly wider radius so port labels don't
-  // collide with the hosts/storage ring.
-  const networkR = outerR + 50
-  network.forEach((n, i) => {
-    const angle = (i / Math.max(network.length, 1)) * 2 * Math.PI - Math.PI / 2 + Math.PI / 2
-    positions.set(n.id, { x: cx + Math.cos(angle) * networkR, y: cy + Math.sin(angle) * networkR })
   })
 
   function fillFor(node: Node): string {
@@ -694,8 +674,11 @@ function AppTopologyEmbed({
     return 'var(--color-border-tertiary)'
   }
 
+  // selectedNode / groups resolve against the FULL topology so a VM's
+  // hidden storage/host/backup neighbours are still discoverable on click.
   const selectedNode = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null
   const groups = neighboursOf(selectedId, nodes, edges)
+  const selectedPos = selectedId ? positions.get(selectedId) ?? null : null
 
   return (
     <div style={{ overflow: 'hidden' }}>
@@ -714,47 +697,28 @@ function AppTopologyEmbed({
           fill="transparent"
           onClick={() => setSelectedId(null)}
         />
-        {edges.map((e) => {
+        {drawnEdges.map((e) => {
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
-          // Port + VLAN label on network_port edges so the operator
-          // sees "Gi1/0/12 v100" without opening the full map.
-          const label =
-            e.kind === 'network_port' && (e.source_interface || e.vlan)
-              ? `${e.source_interface || ''}${e.vlan ? ' v' + e.vlan : ''}`
-              : ''
           return (
-            <g key={e.id}>
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={strokeFor(e.kind)}
-                strokeWidth={1.5}
-                opacity={0.7}
-                strokeDasharray={e.kind === 'app_membership' ? '4 2' : '0'}
-              />
-              {label ? (
-                <text
-                  x={(a.x + b.x) / 2}
-                  y={(a.y + b.y) / 2 - 3}
-                  textAnchor="middle"
-                  fontSize={8}
-                  fill="var(--color-status-red-deep)"
-                  fontFamily="var(--font-mono)"
-                >
-                  {label}
-                </text>
-              ) : null}
-            </g>
+            <line
+              key={e.id}
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke={strokeFor(e.kind)}
+              strokeWidth={1.5}
+              opacity={0.7}
+              strokeDasharray={e.kind === 'app_membership' ? '4 2' : '0'}
+            />
           )
         })}
-        {nodes.map((n) => {
+        {drawnNodes.map((n) => {
           const pos = positions.get(n.id)
           if (!pos) return null
-          const r = n.id === `app:${appID}` ? 18 : 11
+          const r = n.id === appNodeID ? 18 : 11
           const isSelected = n.id === selectedId
           return (
             <g
@@ -797,145 +761,179 @@ function AppTopologyEmbed({
             </g>
           )
         })}
+        {/* Inline detail: a compact card anchored directly under the
+            selected node's name label, so its storage/host read as a
+            stack beneath the name. Position-clamped to the viewBox. */}
+        {selectedNode && selectedPos ? (
+          <NodeDetailCard
+            node={selectedNode}
+            groups={groups}
+            storageDetail={storageDetail && storageDetail.id === selectedNode.id ? storageDetail : null}
+            anchor={selectedPos}
+            onClose={() => setSelectedId(null)}
+            t={t}
+          />
+        ) : null}
       </svg>
-      {selectedNode ? (
-        <NodeDetailsPanel
-          node={selectedNode}
-          groups={groups}
-          storageDetail={storageDetail && storageDetail.id === selectedNode.id ? storageDetail : null}
-          onClose={() => setSelectedId(null)}
-          t={t}
-        />
-      ) : (
+      {!selectedNode ? (
         <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
           {t('Select a node to see its attached storage.', 'Select a node to see its attached storage.')}
         </div>
-      )}
+      ) : null}
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Legend swatch="var(--color-status-blue-mid)" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" label={t('Component VM', 'Component VM')} />
-        <Legend swatch="var(--color-status-blue-deep)" label={t('Host / Backup', 'Host / Backup')} />
-        <Legend swatch="var(--color-status-green-mid)" label={t('Storage', 'Storage')} />
-        <Legend swatch="var(--color-status-red-deep)" label={t('Switch / VLAN port', 'Switch / VLAN port')} />
       </div>
     </div>
   )
 }
 
-// NodeDetailsPanel renders the details card for the selected map node.
-// Storage is the headline group (first, always shown — even when empty),
-// followed by the node's other neighbour groups for general usefulness.
-function NodeDetailsPanel({
+// NodeDetailCard renders the selected node's details as a compact card
+// inside the SVG, anchored directly beneath the node's name label so it
+// reads as "<VM name> → its storage/host stacked below". Storage is the
+// headline (first); host + backup follow, kept brief. The card is
+// position-clamped so it never overflows the 640×400 viewBox — nudged
+// left/up near the right/bottom edges.
+const VIEW_W = 640
+const VIEW_H = 400
+const CARD_W = 200
+const MAX_LIST = 5
+function NodeDetailCard({
   node,
   groups,
   storageDetail,
+  anchor,
   onClose,
   t,
 }: {
   node: { id: string; label: string; asset_type: string; criticality?: string; health?: string; backup_state?: string }
   groups: ReturnType<typeof neighboursOf>
   storageDetail: { topVolumes: Array<{ name?: string; size?: string }>; volumeCount?: number } | null
+  anchor: { x: number; y: number }
   onClose: () => void
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
-  // Capacity enrichment is keyed by volume name; fall back to graph data
-  // (no capacity) when the asset-detail lookup returned nothing.
+  // Capacity enrichment keyed by volume name; falls back to graph data.
   const sizeByName = new Map<string, string>()
   for (const v of storageDetail?.topVolumes ?? []) {
     if (v.name && v.size) sizeByName.set(v.name, v.size)
   }
 
-  return (
-    <div
-      style={{
-        marginTop: 10,
-        padding: '12px 14px',
-        border: '0.5px solid var(--color-border-secondary)',
-        borderRadius: 6,
-        background: 'var(--color-background-primary)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0 }}>{node.label}</div>
-        <Badge tone="gray">{node.asset_type.replace(/_/g, ' ')}</Badge>
-        {node.criticality ? <Badge tone="amber">{node.criticality}</Badge> : null}
-        {node.health ? (
-          <Badge tone={node.health === 'healthy' ? 'green' : 'red'}>{node.health}</Badge>
-        ) : null}
-        {node.backup_state ? <Badge tone="navy" icon="ti-shield">{node.backup_state}</Badge> : null}
-        <GhostButton onClick={onClose}>
-          <i className="ti ti-x" aria-hidden="true" /> {t('Close', 'Close')}
-        </GhostButton>
-      </div>
+  const storage = groups.storage.slice(0, MAX_LIST)
+  const storageMore = groups.storage.length - storage.length
+  const host = groups.host.slice(0, MAX_LIST)
+  const backup = groups.backup.slice(0, MAX_LIST)
 
-      {/* Storage — the headline. */}
-      <div style={{ marginBottom: groups.host.length || groups.network.length || groups.backup.length || groups.app.length ? 12 : 0 }}>
-        <Field label={t('Attached storage', 'Attached storage')}>
-          {groups.storage.length === 0 ? (
-            <span style={{ color: 'var(--color-text-tertiary)' }}>
-              {t('No storage attached.', 'No storage attached.')}
-            </span>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {groups.storage.map((s) => {
-                const size = sizeByName.get(s.label)
-                return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                    <i className="ti ti-database" aria-hidden="true" style={{ color: 'var(--color-status-green-mid)' }} />
-                    <code style={{ fontSize: 11 }}>{s.label}</code>
-                    <Badge tone="gray">{s.asset_type.replace(/_/g, ' ')}</Badge>
-                    {size ? (
-                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{size}</span>
-                    ) : null}
-                  </div>
-                )
-              })}
-              {storageDetail?.volumeCount && storageDetail.volumeCount > storageDetail.topVolumes.length ? (
-                <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                  {t('Showing top volumes of {n}.', 'Showing top volumes of {n}.', { n: storageDetail.volumeCount })}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </Field>
-      </div>
+  // Estimate card height from its rows so the up-nudge clamp is accurate.
+  const rows =
+    1 /* header */ +
+    1 /* storage label */ +
+    Math.max(storage.length, 1) +
+    (storageMore > 0 ? 1 : 0) +
+    (host.length > 0 ? 1 + host.length : 0) +
+    (backup.length > 0 ? 1 + backup.length : 0)
+  const cardH = 24 + rows * 16
 
-      {/* Other neighbour groups — brief, for general usefulness. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-        {groups.host.length > 0 ? (
-          <NeighbourList label={t('Runs on host', 'Runs on host')} nodes={groups.host} />
-        ) : null}
-        {groups.network.length > 0 ? (
-          <NeighbourList label={t('Network', 'Network')} nodes={groups.network} />
-        ) : null}
-        {groups.backup.length > 0 ? (
-          <NeighbourList label={t('Backup', 'Backup')} nodes={groups.backup} />
-        ) : null}
-        {groups.app.length > 0 ? (
-          <NeighbourList label={t('Component of', 'Component of')} nodes={groups.app} />
-        ) : null}
-      </div>
+  // Anchor below the node's label (label sits ~r+14 below centre; use a
+  // fixed offset that clears the largest node radius + its text).
+  const rawX = anchor.x - CARD_W / 2
+  const rawY = anchor.y + 32
+  const x = Math.max(4, Math.min(rawX, VIEW_W - CARD_W - 4))
+  const y = Math.max(4, Math.min(rawY, VIEW_H - cardH - 4))
+
+  const line = (
+    key: string,
+    label: string,
+    value: string,
+    color = 'var(--color-text-secondary)',
+  ) => (
+    <div key={key} style={{ display: 'flex', gap: 6, fontSize: 11, lineHeight: '15px' }}>
+      <span style={{ color: 'var(--color-text-tertiary)' }}>{label}</span>
+      <span style={{ color, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {value}
+      </span>
     </div>
   )
-}
 
-function NeighbourList({
-  label,
-  nodes,
-}: {
-  label: string
-  nodes: Array<{ id: string; label: string }>
-}) {
   return (
-    <Field label={label}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {nodes.map((n) => (
-          <code key={n.id} style={{ fontSize: 11 }}>
-            {n.label}
-          </code>
-        ))}
+    <foreignObject x={x} y={y} width={CARD_W} height={cardH} style={{ overflow: 'visible' }}>
+      <div
+        style={{
+          boxSizing: 'border-box',
+          width: CARD_W,
+          padding: '8px 10px',
+          border: '0.5px solid var(--color-border-secondary)',
+          borderRadius: 6,
+          background: 'var(--color-background-primary)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+        }}
+        // Keep clicks inside the card from bubbling to the background
+        // deselect handler.
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, fontSize: 12, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {node.label}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('Close', 'Close')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--color-text-tertiary)',
+              padding: 0,
+              fontSize: 13,
+              lineHeight: 1,
+            }}
+          >
+            <i className="ti ti-x" aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* Storage — the headline, stacked first. */}
+        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {t('Storage', 'Storage')}
+        </div>
+        {storage.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
+            {t('No storage attached.', 'No storage attached.')}
+          </div>
+        ) : (
+          <>
+            {storage.map((s) => {
+              const size = sizeByName.get(s.label)
+              return line(s.id, '·', size ? `${s.label} (${size})` : s.label, 'var(--color-status-green-mid)')
+            })}
+            {storageMore > 0 ? (
+              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
+                {t('+{n} more', '+{n} more', { n: storageMore })}
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {/* Host + backup — brief, below storage. */}
+        {host.length > 0 ? (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {t('Runs on host', 'Runs on host')}
+            </div>
+            {host.map((h) => line(h.id, '·', h.label))}
+          </div>
+        ) : null}
+        {backup.length > 0 ? (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {t('Backup', 'Backup')}
+            </div>
+            {backup.map((b) => line(b.id, '·', b.label))}
+          </div>
+        ) : null}
       </div>
-    </Field>
+    </foreignObject>
   )
 }
 
