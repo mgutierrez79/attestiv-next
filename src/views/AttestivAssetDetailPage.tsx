@@ -440,6 +440,43 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     | Array<{ interface?: string; switch?: string; switch_port?: string; remote_mac?: string; vlan?: string; local_mac?: string }>
     | undefined) ?? undefined
 
+  // Physical host / server enrichment, stamped onto the asset's own
+  // metadata (Dell OpenManage hardware + a parallel host-metadata pass).
+  // All fields are optional — render each row only when present, and
+  // never under the VM-details card (a server is not a VM guest).
+  const manufacturer = String(asset?.metadata?.['manufacturer'] ?? '')
+  const model = String(asset?.metadata?.['model'] ?? '')
+  const serviceTag = String(asset?.metadata?.['service_tag'] ?? '')
+  const health = String(asset?.metadata?.['health'] ?? '')
+  // OS string: prefer the generic metadata.os, then PowerStore's
+  // os_type_l10n / os_type fallbacks.
+  const hostOS = String(
+    asset?.metadata?.['os'] ??
+      asset?.metadata?.['os_type_l10n'] ??
+      asset?.metadata?.['os_type'] ??
+      '',
+  )
+  // metadata.ip_addresses is shared with the storage-array card (arrayIPs);
+  // reuse the same parsed list for the server-details IP rows.
+  const hostIPs = arrayIPs
+  // Gate the Server-details card to a NON-VM physical host: an explicit
+  // server/host asset_type, OR a box stamped with manufacturer/service_tag
+  // that is not a vCenter VM (no metadata.guest, not VM-shaped).
+  const assetTypeLower = String(asset?.asset_type ?? '').toLowerCase()
+  const isPhysicalHost =
+    !isVM &&
+    (['server', 'host', 'hypervisor_host'].includes(assetTypeLower) ||
+      ((Boolean(manufacturer) || Boolean(serviceTag)) && !guest))
+  const hasServerDetails =
+    isPhysicalHost &&
+    (Boolean(hostOS) ||
+      (hostIPs && hostIPs.length > 0) ||
+      Boolean(manufacturer) ||
+      Boolean(model) ||
+      Boolean(serviceTag) ||
+      Boolean(powerState) ||
+      Boolean(health))
+
   return (
     <>
       <Topbar title={asset?.name ?? assetID} />
@@ -662,6 +699,50 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+              </Card>
+            ) : null}
+
+            {hasServerDetails ? (
+              <Card>
+                <CardTitle
+                  right={
+                    health ? (
+                      <Badge tone={healthTone(health)}>{health}</Badge>
+                    ) : null
+                  }
+                >
+                  {t('Server details', 'Server details')}
+                </CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+                  {hostOS ? <Stat label={t('OS', 'OS')} value={hostOS} /> : null}
+                  {manufacturer ? <Stat label={t('Manufacturer', 'Manufacturer')} value={manufacturer} /> : null}
+                  {model ? <Stat label={t('Model', 'Model')} value={model} /> : null}
+                  {serviceTag ? <Stat label={t('Service tag', 'Service tag')} value={serviceTag} mono /> : null}
+                  {powerState ? <Stat label={t('Power state', 'Power state')} value={powerState} /> : null}
+                  {health ? <Stat label={t('Health', 'Health')} value={health} /> : null}
+                </div>
+                {hostIPs && hostIPs.length > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {t('IP addresses', 'IP addresses')}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                      {hostIPs.map((ip) => (
+                        <code
+                          key={ip}
+                          style={{
+                            fontSize: 11,
+                            padding: '2px 6px',
+                            background: 'var(--color-background-secondary)',
+                            borderRadius: 'var(--border-radius-sm)',
+                          }}
+                        >
+                          {ip}
+                        </code>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </Card>
@@ -951,7 +1032,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             {storageVolumes && storageVolumes.length > 0 ? (
               <Card>
                 <CardTitle right={<Badge tone="navy">{storageVolumes.length}</Badge>}>
-                  {t('Backing storage volumes', 'Backing storage volumes')}
+                  {t('Mapped / backing storage volumes', 'Mapped / backing storage volumes')}
                 </CardTitle>
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {storageVolumes.map((v, i) => (
@@ -1148,6 +1229,16 @@ function restoreTone(status?: string): 'green' | 'amber' | 'red' | 'gray' {
   if (s === 'healthy' || s === 'ok' || s === 'success') return 'green'
   if (s === 'warning') return 'amber'
   if (s === 'failure' || s === 'failed' || s === 'error') return 'red'
+  return 'gray'
+}
+
+// Health badge tone for physical-host hardware health (Dell OpenManage
+// reports values like "ok" / "healthy" / "warning" / "critical").
+function healthTone(status?: string): 'green' | 'amber' | 'red' | 'gray' {
+  const s = (status ?? '').toLowerCase()
+  if (s === 'ok' || s === 'healthy' || s === 'normal' || s === 'good') return 'green'
+  if (s === 'warning' || s === 'degraded') return 'amber'
+  if (s === 'critical' || s === 'error' || s === 'failed' || s === 'fault') return 'red'
   return 'gray'
 }
 
