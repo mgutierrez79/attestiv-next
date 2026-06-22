@@ -12,8 +12,9 @@
 // Auto-tasks are tagged so an operator can tell at a glance which
 // rows came from the scoring engine vs human entry.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 import {
   Badge,
@@ -31,6 +32,7 @@ import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
 import { useRoles } from '../lib/roles'
+import { isHighlightedTask } from '../lib/controlBreakdown'
 
 type Task = {
   id: string
@@ -97,6 +99,12 @@ export function AttestivRemediationPage() {
   const {
     t
   } = useI18n();
+
+  const searchParams = useSearchParams()
+  // Deep-link target from the control "How did I pass?" linkage panel:
+  // /remediation?task=<id>. The breakdown's task_id equals a task's .id.
+  // We highlight + scroll the matching row into view. Absent/blank ⇒ no-op.
+  const highlightTaskId = (searchParams?.get('task') ?? '').trim() || null
 
   const [tasks, setTasks] = useState<Task[]>([])
   const [overdue, setOverdue] = useState<Task[]>([])
@@ -293,7 +301,11 @@ export function AttestivRemediationPage() {
               items={tasks}
               itemKey={(task) => task.id}
               renderItem={(task) => (
-                <TaskRow task={task} onPatch={(updates) => patchTask(task.id, updates)} />
+                <TaskRow
+                  task={task}
+                  highlight={isHighlightedTask(task.id, highlightTaskId)}
+                  onPatch={(updates) => patchTask(task.id, updates)}
+                />
               )}
               label={t('Tasks', 'Tasks')}
             />
@@ -434,9 +446,30 @@ function SelectChip({
   );
 }
 
-function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<string, unknown>) => void }) {
+function TaskRow({
+  task,
+  highlight = false,
+  onPatch,
+}: {
+  task: Task
+  highlight?: boolean
+  onPatch: (updates: Record<string, unknown>) => void
+}) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+
+  // When this row is the ?task= deep-link target, bring it into view once.
+  // Guarded so re-renders (status edits, paging) don't re-scroll. Graceful:
+  // if the row never mounts (filtered out / on another page) nothing happens.
+  const scrolledRef = useRef(false)
+  useEffect(() => {
+    if (highlight && !scrolledRef.current && rowRef.current) {
+      scrolledRef.current = true
+      rowRef.current.scrollIntoView({ block: 'center' })
+    }
+  }, [highlight])
+
   const status = (task.status || 'open').toLowerCase()
   const priority = (task.priority || 'medium').toLowerCase()
   const statusTone = STATUS_TONE[status] ?? 'gray'
@@ -448,7 +481,23 @@ function TaskRow({ task, onPatch }: { task: Task; onPatch: (updates: Record<stri
   const daysLabel = days !== null ? (days < 0 ? `${Math.abs(days)}d past` : `${days}d left`) : ''
 
   return (
-    <div style={{ padding: '10px 0', borderBottom: '0.5px solid var(--color-border-tertiary)', fontSize: 12 }}>
+    <div
+      ref={rowRef}
+      style={{
+        padding: highlight ? '10px 10px' : '10px 0',
+        borderBottom: '0.5px solid var(--color-border-tertiary)',
+        fontSize: 12,
+        // Deep-link highlight: a subtle brand-blue left border + tint, the
+        // same accent the linkage panel uses. No new color system invented.
+        ...(highlight
+          ? {
+              borderLeft: '2px solid var(--color-brand-blue)',
+              background: 'var(--color-brand-blue)14',
+              borderRadius: 'var(--border-radius-md)',
+            }
+          : null),
+      }}
+    >
       {/* Header: title gets the room it needs; the meta block wraps to its
           own line on narrow widths instead of crushing the title. Clicking
           the header (but not the interactive controls) expands the detail. */}

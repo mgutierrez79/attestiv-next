@@ -340,6 +340,25 @@ function isOpenStatus(status?: string): boolean {
   return !['closed', 'resolved', 'done', 'accepted', 'cancelled', 'rejected'].includes(s)
 }
 
+// remediationTaskHref builds the deep-link the linkage panel points a task
+// row at. There is NO /remediation/[id] detail route — only the list page —
+// so we link to the list with a ?task= query param the page deep-link
+// handling highlights and scrolls into view. This can never 404. (Risks DO
+// have a /risks/[id] route, so those keep their path-segment link.)
+export function remediationTaskHref(taskId?: string): string {
+  return `/remediation?task=${encodeURIComponent(taskId ?? '')}`
+}
+
+// isHighlightedTask answers "should this remediation row render highlighted,
+// given the ?task= deep-link param?" The breakdown linkage's task_id equals
+// the remediation task's .id. Blank/absent on either side never matches, so
+// a plain /remediation visit highlights nothing.
+export function isHighlightedTask(rowId?: string, highlightId?: string | null): boolean {
+  const id = (rowId ?? '').trim()
+  const target = (highlightId ?? '').trim()
+  return id !== '' && id === target
+}
+
 // CSV export ---------------------------------------------------------------
 // Columns match the FailingItem shape the gap-list table renders. Reuses the
 // quoting rules from the Risks CSV pattern (escape comma / quote / newline).

@@ -35,6 +35,7 @@ import {
   measuredHeadline,
   narrativeLines,
   observedBySources,
+  remediationTaskHref,
   resolvePresentationMode,
   sourceIsStale,
   type ControlBreakdown,
@@ -407,7 +408,7 @@ function LinkagePanel({ data, t }: { data: ControlBreakdown; t: Translator }) {
           {linkage.remediation_tasks.map((task) => (
             <div key={task.task_id} style={linkRowStyle}>
               <Link
-                href={`/remediation/${encodeURIComponent(task.task_id ?? '')}`}
+                href={remediationTaskHref(task.task_id)}
                 style={{ color: 'var(--color-brand-blue)', textDecoration: 'none', flex: 1, minWidth: 0 }}
               >
                 {task.title || task.task_id}
