@@ -77,6 +77,14 @@ type ControlExplanation = {
   summary?: string
   requirements?: ExplanationRequirement[]
   findings?: { severity: string; code: string; description: string; remediation: string; tag: string }[]
+  // Coverage classification. 'attestable' marks a control that is NOT
+  // scored from connector telemetry — it's satisfied by a signed,
+  // approved policy document. For these the numeric score is meaningless
+  // (always 0 until attested), so we suppress the "0.0%" tile and show
+  // an Attested / Not evidenced status instead. `attested` is the signed
+  // marker that the policy doc is on record and approved.
+  coverage_mode?: 'automatable' | 'attestable' | 'out-of-scope'
+  attested?: boolean
 }
 
 // WireResponse mirrors what the backend actually sends: records and
@@ -230,12 +238,15 @@ export function AttestivControlEvidenceDetailPage({
     }
   }
 
-  const scoreTone = (score: number): 'green' | 'amber' | 'red' | 'gray' => {
-    if (score >= 0.95) return 'green'
-    if (score >= 0.7) return 'amber'
-    if (score > 0) return 'red'
-    return 'gray'
-  }
+  // Attestable-only controls (e.g. DORA-Art9) are satisfied by a signed,
+  // approved policy document, not connector telemetry — they have no
+  // meaningful numeric score. The backend marks these with
+  // explanation.coverage_mode === 'attestable' (+ an `attested` boolean).
+  // When set we suppress the numeric score tile and swap the empty
+  // evidence copy for attestation-specific guidance. Everything else
+  // (scored controls) is unchanged.
+  const isAttestable = data?.explanation?.coverage_mode === 'attestable'
+  const attested = data?.explanation?.attested === true
 
   return (
     <>
@@ -343,13 +354,32 @@ export function AttestivControlEvidenceDetailPage({
         ) : (
           <>
             <Card style={{ marginTop: 12 }}>
+              {/* Attestable controls carry no numeric score — they're
+                  satisfied by a signed policy doc, not telemetry. Show an
+                  Attested / Not evidenced badge instead of a misleading
+                  "0.0%". Scored controls are untouched. */}
               <CardTitle right={
-                <span style={{ fontSize: 18, fontWeight: 600 }}>{(data.score * 100).toFixed(1)}%</span>
+                isAttestable ? (
+                  <Badge tone={attested ? 'green' : 'gray'}>
+                    {attested ? t('Attested', 'Attested') : t('Not evidenced', 'Not evidenced')}
+                  </Badge>
+                ) : (
+                  <span style={{ fontSize: 18, fontWeight: 600 }}>{(data.score * 100).toFixed(1)}%</span>
+                )
               }>
                 {data.control_name || data.control_id}
               </CardTitle>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginTop: 8 }}>
-                <Tile label={t('Status', 'Status')} value={(data.status || '—').toUpperCase()} tone={statusTone(data.status)} />
+                {isAttestable ? (
+                  <Tile
+                    label={t('Attestation status', 'Attestation status')}
+                    value={attested ? t('Attested', 'Attested') : t('Not evidenced', 'Not evidenced')}
+                    tone={attested ? 'green' : 'gray'}
+                    sub={t('satisfied by signed policy doc', 'satisfied by signed policy doc')}
+                  />
+                ) : (
+                  <Tile label={t('Status', 'Status')} value={(data.status || '—').toUpperCase()} tone={statusTone(data.status)} />
+                )}
                 <Tile label={t('Evidence count', 'Evidence count')} value={String(data.evidence_count)} tone={data.evidence_count > 0 ? 'green' : 'red'} />
                 <Tile label={t('Requirements', 'Requirements')} value={String(data.requirements.length)} />
                 {typeof data.contribution_pct === 'number' && data.contribution_pct > 0 ? (
@@ -533,7 +563,9 @@ export function AttestivControlEvidenceDetailPage({
               <CardTitle>{t('Evidence records', 'Evidence records')} <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>({data.records.length})</span></CardTitle>
               {data.records.length === 0 ? (
                 <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-                  {t('No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.', 'No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.')}
+                  {isAttestable
+                    ? t('This control is satisfied by an approved, signed policy document — not connector telemetry. Link or approve a policy document below to attest it.', 'This control is satisfied by an approved, signed policy document — not connector telemetry. Link or approve a policy document below to attest it.')
+                    : t('No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.', 'No evidence records resolvable. Either no evaluation has run, or every recorded evidence ID has rolled off the current evidence stream.')}
                 </div>
               ) : (
                 <PaginatedEvidenceRecords
