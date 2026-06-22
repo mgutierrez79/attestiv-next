@@ -2343,9 +2343,17 @@ function ApplicationsTab() {
     <Card>
       <CardTitle
         right={
-          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-            {t('{count} applications', '{count} applications', { count: items.length })}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+              {t('{count} applications', '{count} applications', { count: items.length })}
+            </span>
+            <PrimaryButton onClick={() => router.push('/apps/new')}>
+              <i className="ti ti-plus" aria-hidden="true" /> {t('Add application', 'Add application')}
+            </PrimaryButton>
+            <GhostButton onClick={() => router.push('/apps')}>
+              {t('Manage applications', 'Manage applications')} →
+            </GhostButton>
+          </div>
         }
       >
         {t('Applications', 'Applications')}
@@ -2468,6 +2476,9 @@ function SitesTab() {
             <PrimaryButton onClick={() => router.push('/sites/new')}>
               <i className="ti ti-plus" aria-hidden="true" /> {t('Add site', 'Add site')}
             </PrimaryButton>
+            <GhostButton onClick={() => router.push('/sites')}>
+              {t('Manage sites', 'Manage sites')} →
+            </GhostButton>
           </div>
         }
       >
