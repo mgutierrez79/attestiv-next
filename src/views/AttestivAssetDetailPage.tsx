@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { ipSourceTag } from '../lib/ipSource'
+import { displayableMetaString } from '../lib/displayMeta'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
 
@@ -391,7 +392,9 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
 
   const guest = (asset?.metadata?.['guest'] as GuestInfo | undefined) ?? undefined
   const hardware = (asset?.metadata?.['hardware'] as HardwareInfo | undefined) ?? undefined
-  const powerState = String(asset?.metadata?.['power_state'] ?? '')
+  // power_state is meant to be a word ("on"/"off"); a bare enum code (e.g. "17")
+  // or a leaked structured value is junk — sanitize so the field omits instead.
+  const powerState = displayableMetaString(asset?.metadata?.['power_state'], { digitsAreJunk: true })
   const vcenterHost = String(asset?.metadata?.['vcenter_host'] ?? '')
   const vcenterCluster = String(asset?.metadata?.['vcenter_cluster'] ?? '')
   // Whether this asset is a VM, so VM-specific wording (and the VM-details card)
@@ -448,7 +451,9 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const manufacturer = String(asset?.metadata?.['manufacturer'] ?? '')
   const model = String(asset?.metadata?.['model'] ?? '')
   const serviceTag = String(asset?.metadata?.['service_tag'] ?? '')
-  const health = String(asset?.metadata?.['health'] ?? '')
+  // health is meant to be a word ("normal"/"degraded"); a bare code or a leaked
+  // array/object (seen in pilot as "[1 2 3 …]") is junk — sanitize it away.
+  const health = displayableMetaString(asset?.metadata?.['health'], { digitsAreJunk: true })
   // OS string: prefer the generic metadata.os, then PowerStore's
   // os_type_l10n / os_type fallbacks.
   const hostOS = String(
