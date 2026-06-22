@@ -21,6 +21,7 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
+import { AppComponentsField, formatComponentList, parseComponentList } from '../components/AppComponentsField'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
@@ -74,7 +75,7 @@ export function AttestivAppEditPage() {
   const [description, setDescription] = useState('')
   const [ownerEmail, setOwnerEmail] = useState('')
   const [criticalityTier, setCriticalityTier] = useState<'tier_1' | 'tier_2' | 'tier_3'>('tier_2')
-  const [vmNames, setVmNames] = useState('')
+  const [vmNames, setVmNames] = useState<string[]>([])
 
   const [dependencies, setDependencies] = useState<Dependency[]>([])
 
@@ -112,7 +113,7 @@ export function AttestivAppEditPage() {
         setOwnerEmail(body.owner_email ?? '')
         const tier = (body.criticality_tier ?? 'tier_2') as 'tier_1' | 'tier_2' | 'tier_3'
         setCriticalityTier(CRITICALITY_TIERS.includes(tier) ? tier : 'tier_2')
-        setVmNames((body.components ?? []).map((c) => c.vm_name).filter(Boolean).join(', '))
+        setVmNames(parseComponentList((body.components ?? []).map((c) => c.vm_name).filter(Boolean).join(', ')))
         const deps: Dependency[] = (body.dependencies ?? [])
           .filter((d): d is DependencyRow => !!d?.application_id)
           .map((d) => ({
@@ -192,7 +193,7 @@ export function AttestivAppEditPage() {
       setError(t('Display name is required.', 'Display name is required.'))
       return
     }
-    const components = vmNames
+    const components = formatComponentList(vmNames)
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
@@ -386,19 +387,12 @@ export function AttestivAppEditPage() {
             <CardTitle>{t('Components', 'Components')}</CardTitle>
             <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4, marginBottom: 8 }}>
               {t(
-                'VM display names from your inventory. Comma-separated. Each VM should belong to only one application.',
-                'VM display names from your inventory. Comma-separated. Each VM should belong to only one application.',
+                'Pick assets from your inventory; multiple allowed. You can also type a VM display name that isn’t discovered yet. Each VM should belong to only one application.',
+                'Pick assets from your inventory; multiple allowed. You can also type a VM display name that isn’t discovered yet. Each VM should belong to only one application.',
               )}
             </p>
             <Field label={t('Component VM names', 'Component VM names') + ' *'}>
-              <input
-                type="text"
-                value={vmNames}
-                onChange={(e) => setVmNames(e.target.value)}
-                required
-                style={inputStyle}
-                placeholder="VRWMSQLA01, VRWMSQLA02"
-              />
+              <AppComponentsField value={vmNames} onChange={setVmNames} />
             </Field>
           </Card>
 
