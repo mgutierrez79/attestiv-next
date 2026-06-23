@@ -112,3 +112,90 @@ export function isAssetNode(node: TopoNode | null | undefined): boolean {
   if (!node) return false
   return !node.id.startsWith('app:') && !node.id.startsWith('synthetic:')
 }
+
+// ── App-level infrastructure dependency rollup ────────────────────────
+// The clickable panel shows ONE VM's host/storage/backup. The app detail
+// page also wants the APPLICATION-level view: across all of an app's
+// component VMs, which hosts / datastores / backup appliances / network
+// devices do they collectively depend on. These are DERIVED (from the
+// vCenter / storage / backup connector edges), distinct from the declared
+// app→app dependencies in the YAML registry.
+
+export type InfraCategory = 'host' | 'storage' | 'backup' | 'network'
+
+export type InfraDependency = {
+  node: TopoNode
+  category: InfraCategory
+  // Labels of the component VMs that depend on this infra node, deduped
+  // and in first-seen order. Lets the UI show "host X ← used by VM a, b".
+  usedBy: string[]
+}
+
+export type InfraDependencyGroups = {
+  host: InfraDependency[]
+  storage: InfraDependency[]
+  backup: InfraDependency[]
+  network: InfraDependency[]
+  // Count of DISTINCT infra nodes across all four categories — the badge
+  // on the "Infrastructure dependencies" section.
+  total: number
+}
+
+// aggregateInfraDependencies rolls per-VM neighbour resolution up to the
+// application level. Given the node ids of the app's component VMs, it
+// walks each VM's host/storage/backup/network neighbours (via
+// neighboursOf), dedupes them across VMs by node id within each category,
+// and records which component VMs depend on each one. Order within a
+// category follows first-encounter. Network is included as-resolved (it
+// only populates where a switch MAC table / portgroup edge exists).
+export function aggregateInfraDependencies(
+  componentVmIds: string[],
+  nodes: TopoNode[],
+  edges: TopoEdge[],
+): InfraDependencyGroups {
+  const byId = new Map<string, TopoNode>()
+  for (const n of nodes ?? []) byId.set(n.id, n)
+
+  const buckets: Record<InfraCategory, Map<string, InfraDependency>> = {
+    host: new Map(),
+    storage: new Map(),
+    backup: new Map(),
+    network: new Map(),
+  }
+
+  const seenVm = new Set<string>()
+  for (const vmId of componentVmIds ?? []) {
+    if (seenVm.has(vmId)) continue // a VM listed twice shouldn't double-count
+    seenVm.add(vmId)
+    const vmLabel = byId.get(vmId)?.label ?? vmId
+    const g = neighboursOf(vmId, nodes, edges)
+    const perCategory: Array<[InfraCategory, TopoNode[]]> = [
+      ['host', g.host],
+      ['storage', g.storage],
+      ['backup', g.backup],
+      ['network', g.network],
+    ]
+    for (const [category, list] of perCategory) {
+      for (const infra of list) {
+        const existing = buckets[category].get(infra.id)
+        if (existing) {
+          if (!existing.usedBy.includes(vmLabel)) existing.usedBy.push(vmLabel)
+        } else {
+          buckets[category].set(infra.id, { node: infra, category, usedBy: [vmLabel] })
+        }
+      }
+    }
+  }
+
+  const host = [...buckets.host.values()]
+  const storage = [...buckets.storage.values()]
+  const backup = [...buckets.backup.values()]
+  const network = [...buckets.network.values()]
+  return {
+    host,
+    storage,
+    backup,
+    network,
+    total: host.length + storage.length + backup.length + network.length,
+  }
+}

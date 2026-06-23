@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  aggregateInfraDependencies,
   isAssetNode,
   isStorageNeighbour,
   neighboursOf,
@@ -126,6 +127,62 @@ describe('isStorageNeighbour', () => {
   })
   it('false otherwise', () => {
     expect(isStorageNeighbour('network_port', { id: 'x', label: 'x', asset_type: 'host' })).toBe(false)
+  })
+})
+
+describe('aggregateInfraDependencies', () => {
+  // Two component VMs of one app, sharing a host, each on its own volume,
+  // both covered by the same backup appliance, one wired to a switch.
+  const nodes = [
+    node('vm:a', 'vm', 'VPWADA02'),
+    node('vm:b', 'vm', 'VPWADB01'),
+    node('host:esx1', 'hypervisor_host', 'VPWESX01'),
+    node('vol:a', 'storage_volume', 'datastore-A'),
+    node('vol:b', 'storage_volume', 'datastore-B'),
+    node('bk:1', 'backup_appliance', 'Veeam'),
+    node('sw:1', 'network_device', 'CoreSwitch'),
+  ]
+  const edges: TopoEdge[] = [
+    { id: 'e1', source: 'vm:a', target: 'host:esx1', kind: 'hypervisor_host' },
+    { id: 'e2', source: 'vm:b', target: 'host:esx1', kind: 'hypervisor_host' },
+    { id: 'e3', source: 'vm:a', target: 'vol:a', kind: 'storage_attachment' },
+    { id: 'e4', source: 'vm:b', target: 'vol:b', kind: 'storage_attachment' },
+    { id: 'e5', source: 'vm:a', target: 'bk:1', kind: 'backup_coverage' },
+    { id: 'e6', source: 'vm:b', target: 'bk:1', kind: 'backup_coverage' },
+    { id: 'e7', source: 'vm:a', target: 'sw:1', kind: 'network_port' },
+  ]
+
+  it('rolls per-VM neighbours up to the app level, deduped by node id', () => {
+    const g = aggregateInfraDependencies(['vm:a', 'vm:b'], nodes, edges)
+    expect(g.host.map((d) => d.node.id)).toEqual(['host:esx1'])
+    expect(g.storage.map((d) => d.node.id)).toEqual(['vol:a', 'vol:b'])
+    expect(g.backup.map((d) => d.node.id)).toEqual(['bk:1'])
+    expect(g.network.map((d) => d.node.id)).toEqual(['sw:1'])
+    // 1 host + 2 volumes + 1 backup + 1 switch = 5 distinct infra nodes.
+    expect(g.total).toBe(5)
+  })
+
+  it('records every component VM that depends on a shared infra node', () => {
+    const g = aggregateInfraDependencies(['vm:a', 'vm:b'], nodes, edges)
+    expect(g.host[0].usedBy).toEqual(['VPWADA02', 'VPWADB01'])
+    expect(g.backup[0].usedBy).toEqual(['VPWADA02', 'VPWADB01'])
+    // Per-VM storage stays attributed to its own VM only.
+    expect(g.storage.find((d) => d.node.id === 'vol:a')?.usedBy).toEqual(['VPWADA02'])
+    expect(g.network[0].usedBy).toEqual(['VPWADA02'])
+  })
+
+  it('does not double-count when a VM id is passed twice', () => {
+    const g = aggregateInfraDependencies(['vm:a', 'vm:a'], nodes, edges)
+    expect(g.host[0].usedBy).toEqual(['VPWADA02'])
+  })
+
+  it('returns an all-empty rollup (total 0) when no component VMs resolve infra', () => {
+    const g = aggregateInfraDependencies([], nodes, edges)
+    expect(g.total).toBe(0)
+    expect(g.host).toEqual([])
+    expect(g.storage).toEqual([])
+    expect(g.backup).toEqual([])
+    expect(g.network).toEqual([])
   })
 })
 
