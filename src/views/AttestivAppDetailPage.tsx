@@ -25,7 +25,15 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
-import { isAssetNode, neighboursOf } from '../lib/topologyNeighbours'
+import {
+  aggregateInfraDependencies,
+  isAssetNode,
+  neighboursOf,
+  type InfraCategory,
+  type InfraDependencyGroups,
+  type TopoEdge,
+  type TopoNode,
+} from '../lib/topologyNeighbours'
 
 import { useI18n } from '../lib/i18n';
 
@@ -357,6 +365,8 @@ export function AttestivAppDetailPage() {
           ) : null}
         </Card>
 
+        <AppInfrastructureDeps appID={app.application_id} t={t} />
+
         <Card style={{ marginTop: 12 }}>
           <CardTitle
             right={
@@ -412,10 +422,9 @@ export function AttestivAppDetailPage() {
           ) : (
             <div>
               {ccrs.map(ccr => {
-                const {
-                  t
-                } = useI18n();
-
+                // `t` comes from the component scope above — calling
+                // useI18n() inside this .map callback violated the rules of
+                // hooks (and was redundant).
                 return (
                   <div
                     key={ccr.id}
@@ -475,6 +484,171 @@ export function AttestivAppDetailPage() {
 // their cross-source neighbours (hosts they ride, storage they
 // mount, backup source, network adjacency). Reuses /v1/network/
 // topology and applies the app filter client-side.
+// AppInfrastructureDeps renders the application-level rollup of DERIVED
+// infrastructure dependencies: across all of the app's component VMs,
+// which compute hosts / datastores / backup appliances / network devices
+// they collectively depend on. Distinct from the declared app→app
+// "Dependencies" card above (which reads the YAML registry). Data comes
+// from the same GET /network/topology the embedded map uses — host,
+// storage and backup edges are resolved by the vCenter / storage / backup
+// connectors; network only populates where a switch MAC table resolved a
+// VM's NIC. Self-contained fetch (mirrors AppTopologyEmbed) so the card
+// degrades on its own without touching the working map component; a
+// future GET /v1/apps/{id}/infrastructure endpoint will replace it.
+function AppInfrastructureDeps({
+  appID,
+  t,
+}: {
+  appID: string
+  t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
+}) {
+  const [groups, setGroups] = useState<InfraDependencyGroups | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await apiFetch('/network/topology')
+        if (!response.ok) throw new Error(`${response.status}`)
+        const body = (await response.json()) as { nodes: TopoNode[]; edges: TopoEdge[] }
+        if (cancelled) return
+        // Same 2-hop BFS from the app node the embedded map uses, so the
+        // rollup sees exactly the component VMs (and their infra) on the map.
+        const appNodeID = `app:${appID}`
+        const adj = new Map<string, string[]>()
+        for (const e of body.edges) {
+          if (!adj.has(e.source)) adj.set(e.source, [])
+          adj.get(e.source)!.push(e.target)
+          if (!adj.has(e.target)) adj.set(e.target, [])
+          adj.get(e.target)!.push(e.source)
+        }
+        const keep = new Set<string>()
+        const queue: Array<{ id: string; depth: number }> = [{ id: appNodeID, depth: 0 }]
+        while (queue.length > 0) {
+          const { id, depth } = queue.shift()!
+          if (keep.has(id)) continue
+          keep.add(id)
+          if (depth >= 2) continue
+          for (const n of adj.get(id) || []) queue.push({ id: n, depth: depth + 1 })
+        }
+        const nodes = body.nodes.filter((n) => keep.has(n.id))
+        const edges = body.edges.filter((e) => keep.has(e.source) && keep.has(e.target))
+        const vmIds = nodes.filter((n) => n.asset_type === 'vm').map((n) => n.id)
+        if (cancelled) return
+        setGroups(aggregateInfraDependencies(vmIds, nodes, edges))
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [appID])
+
+  // Category presentation: label + swatch matching the topology map edge
+  // colours, so the rollup reads as the same relationships shown on the map.
+  const CATS: Array<{ key: InfraCategory; label: string; swatch: string }> = [
+    { key: 'host', label: t('Compute hosts', 'Compute hosts'), swatch: 'var(--color-status-amber-mid)' },
+    { key: 'storage', label: t('Storage', 'Storage'), swatch: 'var(--color-status-green-mid)' },
+    { key: 'backup', label: t('Backup', 'Backup'), swatch: 'var(--color-status-blue-deep)' },
+    { key: 'network', label: t('Network', 'Network'), swatch: 'var(--color-status-red-deep)' },
+  ]
+
+  const total = groups?.total ?? 0
+
+  return (
+    <Card style={{ marginTop: 12 }}>
+      <CardTitle right={<Badge tone="navy">{total}</Badge>}>
+        {t('Infrastructure dependencies', 'Infrastructure dependencies')}
+      </CardTitle>
+      <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 0, marginBottom: 12 }}>
+        {t(
+          'Derived from the vCenter, storage and backup connectors — not declared dependencies.',
+          'Derived from the vCenter, storage and backup connectors — not declared dependencies.',
+        )}
+      </p>
+      {loading ? (
+        <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '12px 0' }}>
+          {t('Loading…', 'Loading…')}
+        </div>
+      ) : error ? (
+        <EmptyState
+          icon="ti-server-off"
+          title={t('Infrastructure not loaded', 'Infrastructure not loaded')}
+          description={t(
+            'The /v1/network/topology endpoint did not respond.',
+            'The /v1/network/topology endpoint did not respond.',
+          )}
+        />
+      ) : total === 0 ? (
+        <EmptyState
+          icon="ti-server-off"
+          title={t('No infrastructure resolved', 'No infrastructure resolved')}
+          description={t(
+            'Connect the vCenter, storage and backup connectors so the component VMs resolve to their hosts, datastores and backup coverage.',
+            'Connect the vCenter, storage and backup connectors so the component VMs resolve to their hosts, datastores and backup coverage.',
+          )}
+        />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {CATS.map(({ key, label, swatch }) => {
+            const items = groups ? groups[key] : []
+            if (items.length === 0) return null
+            return (
+              <div key={key}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: '50%',
+                      background: swatch,
+                      display: 'inline-block',
+                    }}
+                  />
+                  <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--color-text-secondary)' }}>
+                    {label}
+                  </span>
+                  <Badge tone="gray">{items.length}</Badge>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {items.map((d) => (
+                    <div
+                      key={d.node.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: 10,
+                        padding: '6px 0',
+                        borderTop: '0.5px solid var(--color-border-tertiary)',
+                        fontSize: 12,
+                      }}
+                    >
+                      <code style={{ fontSize: 11, fontWeight: 500 }}>{d.node.label}</code>
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {t('used by', 'used by')}{' '}
+                        {d.usedBy.slice(0, 4).join(', ')}
+                        {d.usedBy.length > 4 ? ` +${d.usedBy.length - 4}` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function AppTopologyEmbed({
   appID,
   t,
