@@ -26,13 +26,8 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import {
-  aggregateInfraDependencies,
   isAssetNode,
   neighboursOf,
-  type InfraCategory,
-  type InfraDependencyGroups,
-  type TopoEdge,
-  type TopoNode,
 } from '../lib/topologyNeighbours'
 
 import { useI18n } from '../lib/i18n';
@@ -69,6 +64,32 @@ type AppDependency = {
   dependency_type?: string
   criticality?: string
   description?: string
+}
+
+type InfraHost = { id: string; name: string; cluster?: string; site?: string; used_by: string[] }
+type InfraStorage = {
+  id: string
+  name: string
+  array_name?: string
+  replication_mode?: string
+  replication_role?: string
+  replicated?: boolean
+  lag_ms?: number
+  wwn?: string
+  used_by: string[]
+}
+type InfraSwitch = { id: string; name: string; used_by: string[] }
+type InfraFirewall = { id: string; name: string; via_switches?: string[]; used_by: string[] }
+
+type AppInfrastructure = {
+  application_id: string
+  categories: {
+    host: InfraHost[]
+    storage: InfraStorage[]
+    switch: InfraSwitch[]
+    firewall: InfraFirewall[]
+  }
+  counts: { host: number; storage: number; switch: number; firewall: number; total: number }
 }
 
 type AvailabilityResult = {
@@ -486,15 +507,13 @@ export function AttestivAppDetailPage() {
 // topology and applies the app filter client-side.
 // AppInfrastructureDeps renders the application-level rollup of DERIVED
 // infrastructure dependencies: across all of the app's component VMs,
-// which compute hosts / datastores / backup appliances / network devices
-// they collectively depend on. Distinct from the declared app→app
-// "Dependencies" card above (which reads the YAML registry). Data comes
-// from the same GET /network/topology the embedded map uses — host,
-// storage and backup edges are resolved by the vCenter / storage / backup
-// connectors; network only populates where a switch MAC table resolved a
-// VM's NIC. Self-contained fetch (mirrors AppTopologyEmbed) so the card
-// degrades on its own without touching the working map component; a
-// future GET /v1/apps/{id}/infrastructure endpoint will replace it.
+// which compute hosts / storage / switches / firewalls they collectively
+// depend on. Distinct from the declared app→app "Dependencies" card above
+// (which reads the YAML registry). Data comes from the dedicated
+// GET /v1/apps/{id}/infrastructure endpoint, which performs the topology
+// rollup server-side and enriches storage (PowerStore array name +
+// replication) and firewall (reachability via switches). Self-contained
+// fetch so the card degrades on its own without touching the working map.
 function AppInfrastructureDeps({
   appID,
   t,
@@ -502,7 +521,7 @@ function AppInfrastructureDeps({
   appID: string
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
-  const [groups, setGroups] = useState<InfraDependencyGroups | null>(null)
+  const [infra, setInfra] = useState<AppInfrastructure | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -512,34 +531,11 @@ function AppInfrastructureDeps({
       setLoading(true)
       setError(null)
       try {
-        const response = await apiFetch('/network/topology')
+        const response = await apiFetch(`/apps/${encodeURIComponent(appID)}/infrastructure`)
         if (!response.ok) throw new Error(`${response.status}`)
-        const body = (await response.json()) as { nodes: TopoNode[]; edges: TopoEdge[] }
+        const body = (await response.json()) as AppInfrastructure
         if (cancelled) return
-        // Same 2-hop BFS from the app node the embedded map uses, so the
-        // rollup sees exactly the component VMs (and their infra) on the map.
-        const appNodeID = `app:${appID}`
-        const adj = new Map<string, string[]>()
-        for (const e of body.edges) {
-          if (!adj.has(e.source)) adj.set(e.source, [])
-          adj.get(e.source)!.push(e.target)
-          if (!adj.has(e.target)) adj.set(e.target, [])
-          adj.get(e.target)!.push(e.source)
-        }
-        const keep = new Set<string>()
-        const queue: Array<{ id: string; depth: number }> = [{ id: appNodeID, depth: 0 }]
-        while (queue.length > 0) {
-          const { id, depth } = queue.shift()!
-          if (keep.has(id)) continue
-          keep.add(id)
-          if (depth >= 2) continue
-          for (const n of adj.get(id) || []) queue.push({ id: n, depth: depth + 1 })
-        }
-        const nodes = body.nodes.filter((n) => keep.has(n.id))
-        const edges = body.edges.filter((e) => keep.has(e.source) && keep.has(e.target))
-        const vmIds = nodes.filter((n) => n.asset_type === 'vm').map((n) => n.id)
-        if (cancelled) return
-        setGroups(aggregateInfraDependencies(vmIds, nodes, edges))
+        setInfra(body)
       } catch (err: unknown) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load')
       } finally {
@@ -552,16 +548,46 @@ function AppInfrastructureDeps({
     }
   }, [appID])
 
-  // Category presentation: label + swatch matching the topology map edge
-  // colours, so the rollup reads as the same relationships shown on the map.
-  const CATS: Array<{ key: InfraCategory; label: string; swatch: string }> = [
-    { key: 'host', label: t('Compute hosts', 'Compute hosts'), swatch: 'var(--color-status-amber-mid)' },
-    { key: 'storage', label: t('Storage', 'Storage'), swatch: 'var(--color-status-green-mid)' },
-    { key: 'backup', label: t('Backup', 'Backup'), swatch: 'var(--color-status-blue-deep)' },
-    { key: 'network', label: t('Network', 'Network'), swatch: 'var(--color-status-red-deep)' },
-  ]
+  const total = infra?.counts.total ?? 0
 
-  const total = groups?.total ?? 0
+  // Shared "used by <vm names>" line: label + first 4 names + "+N".
+  const usedBy = (names: string[]) => (
+    <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+      {t('used by', 'used by')}{' '}
+      {names.slice(0, 4).join(', ')}
+      {names.length > 4 ? ` +${names.length - 4}` : ''}
+    </span>
+  )
+
+  // Category header: swatch + uppercase label + count badge.
+  const groupHeader = (swatch: string, label: string, count: number) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: '50%',
+          background: swatch,
+          display: 'inline-block',
+        }}
+      />
+      <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--color-text-secondary)' }}>
+        {label}
+      </span>
+      <Badge tone="gray">{count}</Badge>
+    </div>
+  )
+
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 10,
+    padding: '6px 0',
+    borderTop: '0.5px solid var(--color-border-tertiary)',
+    fontSize: 12,
+  }
+
+  const cats = infra?.categories
 
   return (
     <Card style={{ marginTop: 12 }}>
@@ -570,8 +596,8 @@ function AppInfrastructureDeps({
       </CardTitle>
       <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 0, marginBottom: 12 }}>
         {t(
-          'Derived from the vCenter, storage and backup connectors — not declared dependencies.',
-          'Derived from the vCenter, storage and backup connectors — not declared dependencies.',
+          'Derived from the vCenter, storage, network and firewall connectors — not declared dependencies.',
+          'Derived from the vCenter, storage, network and firewall connectors — not declared dependencies.',
         )}
       </p>
       {loading ? (
@@ -583,11 +609,11 @@ function AppInfrastructureDeps({
           icon="ti-server-off"
           title={t('Infrastructure not loaded', 'Infrastructure not loaded')}
           description={t(
-            'The /v1/network/topology endpoint did not respond.',
-            'The /v1/network/topology endpoint did not respond.',
+            'Could not load infrastructure dependencies.',
+            'Could not load infrastructure dependencies.',
           )}
         />
-      ) : total === 0 ? (
+      ) : total === 0 || !cats ? (
         <EmptyState
           icon="ti-server-off"
           title={t('No infrastructure resolved', 'No infrastructure resolved')}
@@ -598,51 +624,87 @@ function AppInfrastructureDeps({
         />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {CATS.map(({ key, label, swatch }) => {
-            const items = groups ? groups[key] : []
-            if (items.length === 0) return null
-            return (
-              <div key={key}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: '50%',
-                      background: swatch,
-                      display: 'inline-block',
-                    }}
-                  />
-                  <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--color-text-secondary)' }}>
-                    {label}
-                  </span>
-                  <Badge tone="gray">{items.length}</Badge>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {items.map((d) => (
-                    <div
-                      key={d.node.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        gap: 10,
-                        padding: '6px 0',
-                        borderTop: '0.5px solid var(--color-border-tertiary)',
-                        fontSize: 12,
-                      }}
-                    >
-                      <code style={{ fontSize: 11, fontWeight: 500 }}>{d.node.label}</code>
+          {cats.host.length > 0 ? (
+            <div>
+              {groupHeader('var(--color-status-amber-mid)', t('Compute hosts', 'Compute hosts'), cats.host.length)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cats.host.map((h) => (
+                  <div key={h.id} style={rowStyle}>
+                    <code style={{ fontSize: 11, fontWeight: 500 }}>{h.name}</code>
+                    {h.cluster || h.site ? (
                       <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
-                        {t('used by', 'used by')}{' '}
-                        {d.usedBy.slice(0, 4).join(', ')}
-                        {d.usedBy.length > 4 ? ` +${d.usedBy.length - 4}` : ''}
+                        {[h.cluster, h.site].filter(Boolean).join(' · ')}
                       </span>
-                    </div>
-                  ))}
-                </div>
+                    ) : null}
+                    {usedBy(h.used_by)}
+                  </div>
+                ))}
               </div>
-            )
-          })}
+            </div>
+          ) : null}
+
+          {cats.storage.length > 0 ? (
+            <div>
+              {groupHeader('var(--color-status-green-mid)', t('Storage', 'Storage'), cats.storage.length)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cats.storage.map((s) => (
+                  <div key={s.id} style={rowStyle}>
+                    <code style={{ fontSize: 11, fontWeight: 500 }}>{s.name}</code>
+                    {s.array_name ? (
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{s.array_name}</span>
+                    ) : null}
+                    {s.replication_mode ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Badge tone={s.replicated ? 'green' : 'gray'}>
+                          {s.replication_mode}
+                          {s.replication_role ? ` · ${s.replication_role}` : ''}
+                        </Badge>
+                        {s.lag_ms ? (
+                          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                            {t('lag {n} ms', 'lag {n} ms', { n: s.lag_ms })}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                    {usedBy(s.used_by)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {cats.switch.length > 0 ? (
+            <div>
+              {groupHeader('var(--color-status-red-deep)', t('Switches', 'Switches'), cats.switch.length)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cats.switch.map((sw) => (
+                  <div key={sw.id} style={rowStyle}>
+                    <code style={{ fontSize: 11, fontWeight: 500 }}>{sw.name}</code>
+                    {usedBy(sw.used_by)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {cats.firewall.length > 0 ? (
+            <div>
+              {groupHeader('var(--color-status-red-deep)', t('Firewalls', 'Firewalls'), cats.firewall.length)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cats.firewall.map((fw) => (
+                  <div key={fw.id} style={rowStyle}>
+                    <code style={{ fontSize: 11, fontWeight: 500 }}>{fw.name}</code>
+                    {fw.via_switches && fw.via_switches.length > 0 ? (
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {t('via', 'via')} {fw.via_switches.join(', ')}
+                      </span>
+                    ) : null}
+                    {usedBy(fw.used_by)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </Card>
