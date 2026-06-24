@@ -1,0 +1,60 @@
+name: CI
+
+# Test/quality gate for the Next.js frontend. Runs on GitHub-hosted
+# runners on every PR + push. IMPORTANT: this repo is PUBLIC — never add
+# a `self-hosted` runner job triggered by pull_request here, or a forked
+# PR could run arbitrary code on the pilot host.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-next-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # Next 16 / React 19 — Node 20.9+ required
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # NOTE: Playwright needs the app reachable. If playwright.config.ts
+      # does not already start a webServer (or the specs need the Go
+      # backend), wire a mock/proxy target here before relying on this
+      # job as a hard gate. Until then it surfaces failures without
+      # blocking — flip to required once green.
+      - name: e2e
+        run: npm run test:e2e
