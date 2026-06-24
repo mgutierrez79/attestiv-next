@@ -30,7 +30,12 @@ jobs:
           node-version: '22'   # Next 16 / React 19 — Node 20.9+ required
           cache: 'npm'
 
-      - run: npm ci
+      # Match the Dockerfile: use `npm install` rather than `npm ci`. The
+      # committed lock file is generated on a Windows host and is missing
+      # Linux-only optional binaries (e.g. @tailwindcss/oxide-wasm32-wasi),
+      # so `npm ci` fails on a Linux runner. `--no-audit --no-fund` mirrors
+      # the Dockerfile flags.
+      - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run test:unit
 
@@ -46,7 +51,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - run: npm ci
+      # Match the Dockerfile: use `npm install` rather than `npm ci`. The
+      # committed lock file is generated on a Windows host and is missing
+      # Linux-only optional binaries (e.g. @tailwindcss/oxide-wasm32-wasi),
+      # so `npm ci` fails on a Linux runner. `--no-audit --no-fund` mirrors
+      # the Dockerfile flags.
+      - run: npm install --no-audit --no-fund
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
