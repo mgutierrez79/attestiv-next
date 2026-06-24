@@ -506,7 +506,6 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // Storage-array network identity + headline capacity, stamped by the
   // PowerStore connector onto the array's own metadata (not under a guest).
   const arrayIPs = (asset?.metadata?.['ip_addresses'] as string[] | undefined) ?? undefined
-  const arrayMACs = (asset?.metadata?.['mac_addresses'] as string[] | undefined) ?? undefined
   const topVolumes = (asset?.metadata?.['top_volumes'] as
     | Array<{ name?: string; size?: string; size_bytes?: number; replicated?: boolean; replication_mode?: string }>
     | undefined) ?? undefined
@@ -516,6 +515,16 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const arrayUplinks = (asset?.metadata?.['uplinks'] as
     | Array<{ interface?: string; switch?: string; switch_port?: string; remote_mac?: string; vlan?: string; local_mac?: string }>
     | undefined) ?? undefined
+  // Storage array management endpoint + space utilisation. The array carries
+  // many data-path IPs/MACs (iSCSI/NVMe targets per node) that aren't useful
+  // here — surface only the management address. Capacity (total/used) +
+  // data-reduction come from the PowerStore space-metrics enrichment.
+  const arrayMgmtIP = String(asset?.metadata?.['management_address'] ?? '').trim()
+  const capacityTotal = Number(asset?.metadata?.['capacity_total_bytes'] ?? 0)
+  const capacityUsed = Number(asset?.metadata?.['capacity_used_bytes'] ?? 0)
+  const dataReduction = Number(asset?.metadata?.['data_reduction_ratio'] ?? 0)
+  const hasCapacity = capacityTotal > 0
+  const usedPct = hasCapacity ? Math.min(100, Math.round((capacityUsed / capacityTotal) * 100)) : 0
 
   // Physical host / server enrichment, stamped onto the asset's own
   // metadata (Dell OpenManage hardware + a parallel host-metadata pass).
@@ -888,42 +897,47 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </Card>
             ) : null}
 
-            {(arrayIPs && arrayIPs.length > 0) ||
-            (arrayMACs && arrayMACs.length > 0) ||
+            {arrayMgmtIP ||
+            hasCapacity ||
             (arrayUplinks && arrayUplinks.length > 0) ||
             (topVolumes && topVolumes.length > 0) ? (
               <Card>
                 <CardTitle>{t('Storage array', 'Storage array')}</CardTitle>
-                {(arrayIPs && arrayIPs.length > 0) || (arrayMACs && arrayMACs.length > 0) ? (
-                  <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
-                    {arrayIPs && arrayIPs.length > 0 ? (
-                      <div>
-                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {t('IP addresses', 'IP addresses')} ({arrayIPs.length})
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                          {arrayIPs.map((ip) => (
-                            <code key={ip} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
-                              {ip}
-                            </code>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                    {arrayMACs && arrayMACs.length > 0 ? (
-                      <div>
-                        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {t('MAC addresses', 'MAC addresses')} ({arrayMACs.length})
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                          {arrayMACs.map((mac) => (
-                            <code key={mac} style={{ fontSize: 11, padding: '2px 6px', background: 'var(--color-background-secondary)', borderRadius: 'var(--border-radius-sm)' }}>
-                              {mac}
-                            </code>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
+                {arrayMgmtIP ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+                    <Stat label={t('Management IP', 'Management IP')} value={arrayMgmtIP} mono />
+                  </div>
+                ) : null}
+                {hasCapacity ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {t('Capacity used', 'Capacity used')}
+                      </span>
+                      <span style={{ color: 'var(--color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatBytes(capacityUsed)} / {formatBytes(capacityTotal)} ({usedPct}%)
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 6, height: 8, borderRadius: 999, background: 'var(--color-background-secondary)', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${usedPct}%`,
+                          height: '100%',
+                          background:
+                            usedPct >= 90
+                              ? 'var(--color-status-red-mid)'
+                              : usedPct >= 75
+                                ? 'var(--color-status-amber-mid)'
+                                : 'var(--color-status-green-mid)',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                      <span>{t('Free', 'Free')}: {formatBytes(Math.max(0, capacityTotal - capacityUsed))}</span>
+                      {dataReduction > 0 ? (
+                        <span>{t('Data reduction', 'Data reduction')}: {dataReduction.toFixed(1)}:1</span>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
                 {arrayUplinks && arrayUplinks.length > 0 ? (
@@ -1420,6 +1434,22 @@ function healthTone(status?: string): 'green' | 'amber' | 'red' | 'gray' {
   if (s === 'warning' || s === 'degraded') return 'amber'
   if (s === 'critical' || s === 'error' || s === 'failed' || s === 'fault') return 'red'
   return 'gray'
+}
+
+// formatBytes renders a byte count in binary units (KiB/MiB/GiB/TiB/PiB),
+// one decimal below 100 in the chosen unit and whole numbers above, so a
+// capacity reads "12.4 TiB" / "340 GiB" rather than a raw byte figure.
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  const rendered = i === 0 || value >= 100 ? Math.round(value).toString() : value.toFixed(1)
+  return `${rendered} ${units[i]}`
 }
 
 function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
