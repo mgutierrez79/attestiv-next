@@ -872,26 +872,56 @@ function AppTopologyEmbed({
     positions.set(n.id, { x: cx + Math.cos(angle) * innerR, y: cy + Math.sin(angle) * innerR })
   })
 
-  function fillFor(node: Node): string {
+  // Token = role color + matching Tabler icon for a node. Keeping the
+  // color separate from the icon lets the disk render as a soft tint and
+  // the ring/glyph share the saturated tone, instead of one flat fill.
+  type Token = { color: string; icon: string }
+  function tokenFor(node: Node): Token {
     switch (node.asset_type) {
       case 'application':
-        return 'var(--color-status-blue-mid)'
+        return { color: 'var(--color-status-blue-mid)', icon: appIconFromLabel(node.label) }
       case 'vm':
-        return 'var(--color-status-amber-mid)'
+      case 'virtual_machine':
+        return { color: 'var(--color-status-amber-mid)', icon: 'ti-device-desktop' }
       case 'host':
       case 'hypervisor_host':
-        return 'var(--color-status-blue-deep)'
+        return { color: 'var(--color-status-blue-deep)', icon: 'ti-server' }
+      case 'cluster':
+        return { color: 'var(--color-status-blue-deep)', icon: 'ti-servers' }
       case 'storage_array':
+        return { color: 'var(--color-status-green-mid)', icon: 'ti-database' }
       case 'storage_volume':
-        return 'var(--color-status-green-mid)'
+        return { color: 'var(--color-status-green-mid)', icon: 'ti-disc' }
       case 'backup_appliance':
-        return 'var(--color-status-blue-deep)'
+        return { color: 'var(--color-status-blue-deep)', icon: 'ti-history' }
       case 'network_device':
+      case 'switch':
+      case 'router':
+        return { color: 'var(--color-status-red-deep)', icon: 'ti-router' }
       case 'firewall':
       case 'firewall_manager':
-        return 'var(--color-status-red-deep)'
+        return { color: 'var(--color-status-red-deep)', icon: 'ti-shield-lock' }
     }
-    return 'var(--color-background-tertiary)'
+    return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
+  }
+
+  // appIconFromLabel infers a meaningful icon from the application name as
+  // a free upgrade over a generic stack glyph: Active Directory → key,
+  // anything containing "database" → database, etc. Operators can later
+  // override per-app via a YAML `icon:` field (small backend addition).
+  function appIconFromLabel(label: string): string {
+    const s = label.toLowerCase()
+    if (/\b(active directory|domain controller|\bad\b|ldap|identity)\b/.test(s)) return 'ti-key'
+    if (/\b(database|sql|oracle|postgres|mysql|mongo)\b/.test(s)) return 'ti-database'
+    if (/\b(dns)\b/.test(s)) return 'ti-world'
+    if (/\b(mail|exchange|smtp|imap)\b/.test(s)) return 'ti-mail'
+    if (/\b(web|portal|frontend|nginx|apache)\b/.test(s)) return 'ti-world-www'
+    if (/\b(mes|scada|manufacturing|plc)\b/.test(s)) return 'ti-building-factory-2'
+    if (/\b(network|firewall|vpn|edge)\b/.test(s)) return 'ti-network'
+    if (/\b(backup|recovery|veeam)\b/.test(s)) return 'ti-history'
+    if (/\b(monitor|grafana|prometheus|telemetry|observ)\b/.test(s)) return 'ti-chart-line'
+    if (/\b(siem|sentinel|log|audit)\b/.test(s)) return 'ti-shield-lock'
+    return 'ti-stack-2'
   }
 
   function strokeFor(kind: string): string {
@@ -954,8 +984,14 @@ function AppTopologyEmbed({
         {drawnNodes.map((n) => {
           const pos = positions.get(n.id)
           if (!pos) return null
-          const r = n.id === appNodeID ? 18 : 11
+          // App nodes get a larger disk so the glyph reads at canvas scale;
+          // component VMs stay compact so a fan-out of 6–8 doesn't crowd.
+          const r = n.id === appNodeID ? 22 : 16
           const isSelected = n.id === selectedId
+          const { color, icon } = tokenFor(n)
+          // Glyph size = ~58% of disk diameter — the sweet spot where the
+          // icon dominates visually without crowding the ring.
+          const iconPx = Math.round(r * 1.15)
           return (
             <g
               key={n.id}
@@ -974,18 +1010,46 @@ function AppTopologyEmbed({
             >
               {isSelected ? (
                 <circle
-                  r={r + 4}
+                  r={r + 5}
                   fill="none"
                   stroke="var(--color-status-blue-deep)"
                   strokeWidth={2.5}
                 />
               ) : null}
+              {/* Soft tinted disk: role color washed against the card
+                  background. color-mix keeps the look consistent across
+                  light/dark themes without precomputing tints. */}
               <circle
                 r={r}
-                fill={fillFor(n)}
-                stroke={isSelected ? 'var(--color-status-blue-deep)' : 'var(--color-border-secondary)'}
-                strokeWidth={isSelected ? 2 : 1}
+                fill={`color-mix(in srgb, ${color} 18%, var(--color-background-primary))`}
+                stroke={color}
+                strokeWidth={isSelected ? 2.25 : 1.5}
               />
+              {/* Tabler glyph centered in the disk via foreignObject so
+                  we reuse the same icon-font class used everywhere else
+                  in the app — one visual vocabulary across the product. */}
+              <foreignObject
+                x={-r}
+                y={-r}
+                width={r * 2}
+                height={r * 2}
+                style={{ pointerEvents: 'none' }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color,
+                    fontSize: iconPx,
+                    lineHeight: 1,
+                  }}
+                >
+                  <i className={`ti ${icon}`} aria-hidden="true" />
+                </div>
+              </foreignObject>
               <text
                 y={r + 14}
                 textAnchor="middle"
@@ -1017,8 +1081,8 @@ function AppTopologyEmbed({
         </div>
       ) : null}
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Legend swatch="var(--color-status-blue-mid)" label={t('App', 'App')} />
-        <Legend swatch="var(--color-status-amber-mid)" label={t('Component VM', 'Component VM')} />
+        <Legend swatch="var(--color-status-blue-mid)" icon="ti-stack-2" label={t('App', 'App')} />
+        <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
       </div>
     </div>
   )
@@ -1173,10 +1237,31 @@ function NodeDetailCard({
   )
 }
 
-function Legend({ swatch, label }: { swatch: string; label: string }) {
+// Legend renders one entry under the topology canvas. The swatch is the
+// role color (matches the node's ring); `icon` overlays the role glyph in
+// that color so the legend mirrors the actual node design 1:1 rather than
+// being a plain colored dot. icon is optional for callers that haven't
+// migrated yet.
+function Legend({ swatch, label, icon }: { swatch: string; label: string; icon?: string }) {
   return (
     <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-      <span style={{ width: 10, height: 10, borderRadius: 5, background: swatch, border: '0.5px solid var(--color-border-secondary)' }} />
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          borderRadius: 7,
+          background: `color-mix(in srgb, ${swatch} 18%, var(--color-background-primary))`,
+          border: `1px solid ${swatch}`,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: swatch,
+          fontSize: 10,
+          lineHeight: 1,
+        }}
+      >
+        {icon ? <i className={`ti ${icon}`} aria-hidden="true" /> : null}
+      </span>
       {label}
     </span>
   )
