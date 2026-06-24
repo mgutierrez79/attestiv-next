@@ -63,6 +63,19 @@ type DependentApp = {
   criticality?: string
 }
 
+type DependencyItem = {
+  id: string
+  name: string
+  asset_type: string
+  site?: string
+}
+
+type DependencyGroup = {
+  key: string
+  label: string
+  items: DependencyItem[]
+}
+
 type GuestInfo = {
   os_name?: string
   os_full_name?: string
@@ -165,6 +178,10 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // vcenter_cluster MoRef, and the count of VMs that ride this host.
   const [hostClusterName, setHostClusterName] = useState<string | null>(null)
   const [hostedVMCount, setHostedVMCount] = useState<number | null>(null)
+  // Upstream dependencies — the infrastructure this asset rides on (host,
+  // storage, network, firewall), grouped by category. Populated from
+  // /inventory/assets/{id}/dependencies for every asset type.
+  const [dependencies, setDependencies] = useState<DependencyGroup[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -173,6 +190,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
       setError(null)
       setHostClusterName(null)
       setHostedVMCount(null)
+      setDependencies([])
       try {
         const response = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}`)
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -350,6 +368,19 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
           } catch {
             // Enrichment is additive — a failure just omits the rows.
           }
+        }
+        // Upstream dependencies — the infrastructure this asset rides on,
+        // resolved from the cross-source topology graph. Works for every
+        // asset type; an unwired asset comes back empty (card hides).
+        try {
+          const depRes = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}/dependencies`)
+          if (depRes.ok) {
+            const depBody = await depRes.json()
+            const groups = Array.isArray(depBody?.categories) ? (depBody.categories as DependencyGroup[]) : []
+            if (!cancelled) setDependencies(groups)
+          }
+        } catch {
+          // Dependencies are additive — a failure just hides the card.
         }
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? 'Failed to load asset')
@@ -1155,6 +1186,46 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       {v.last_sync ? (
                         <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('synced', 'synced')} {v.last_sync}</span>
                       ) : null}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {dependencies.length > 0 ? (
+              <Card>
+                <CardTitle
+                  right={
+                    <Badge tone="navy">{dependencies.reduce((n, g) => n + g.items.length, 0)}</Badge>
+                  }
+                >
+                  {t('Depends on', 'Depends on')}
+                </CardTitle>
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  {t(
+                    'Infrastructure this asset rides on, from the cross-source topology graph.',
+                    'Infrastructure this asset rides on, from the cross-source topology graph.',
+                  )}
+                </p>
+                <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
+                  {dependencies.map((group) => (
+                    <div key={group.key}>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {t(group.label, group.label)} ({group.items.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                        {group.items.map((item) => (
+                          <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                            <a href={`/inventory/${encodeURIComponent(item.id)}`} style={{ fontWeight: 500 }}>
+                              {item.name}
+                            </a>
+                            <Badge tone="gray">{item.asset_type}</Badge>
+                            {item.site ? (
+                              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{item.site}</span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
