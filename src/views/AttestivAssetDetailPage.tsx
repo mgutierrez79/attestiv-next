@@ -160,12 +160,19 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // links touch this switch, plus the friendly names of every
   // connected non-switch host.
   const [relatedLinks, setRelatedLinks] = useState<InventoryAsset[]>([])
+  // Hypervisor-host enrichment, derived on the detail page (no new
+  // collection): the friendly cluster name resolved from the host's
+  // vcenter_cluster MoRef, and the count of VMs that ride this host.
+  const [hostClusterName, setHostClusterName] = useState<string | null>(null)
+  const [hostedVMCount, setHostedVMCount] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
       setError(null)
+      setHostClusterName(null)
+      setHostedVMCount(null)
       try {
         const response = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}`)
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -307,6 +314,41 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               })
               setMemberAssets(list)
             }
+          }
+        }
+        // hypervisor-host enrichment — resolve the vcenter_cluster MoRef
+        // (e.g. "domain-c14059") to its friendly cluster name and count
+        // the VMs riding this host, so the host card shows real context
+        // instead of a raw MoRef. Both are best-effort; failure leaves
+        // the card showing what it already has.
+        const bodyType = String((body as InventoryAsset).asset_type ?? '').toLowerCase()
+        if (bodyType === 'host' || bodyType === 'hypervisor_host') {
+          const hostMeta = (body as InventoryAsset).metadata ?? {}
+          const clusterRef = String(hostMeta['vcenter_cluster'] ?? '').trim()
+          const hostMoRef = String((body as InventoryAsset).asset_id ?? '').trim().toLowerCase()
+          try {
+            const [clusterRes, vmsRes] = await Promise.all([
+              clusterRef
+                ? apiFetch(`/inventory/assets/${encodeURIComponent(clusterRef)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+                : Promise.resolve(null),
+              apiFetch('/inventory/assets?asset_type=vm&limit=5000').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+            ])
+            if (!cancelled) {
+              const clusterName = String((clusterRes as InventoryAsset | null)?.name ?? '').trim()
+              // Only adopt a resolved name that's friendlier than the MoRef.
+              if (clusterName && clusterName.toLowerCase() !== clusterRef.toLowerCase()) {
+                setHostClusterName(clusterName)
+              }
+              const vmItems = Array.isArray((vmsRes as any)?.items) ? ((vmsRes as any).items as InventoryAsset[]) : []
+              if (vmItems.length > 0 && hostMoRef) {
+                const count = vmItems.filter(
+                  (vm) => String(vm.metadata?.['vcenter_host'] ?? '').trim().toLowerCase() === hostMoRef,
+                ).length
+                setHostedVMCount(count)
+              }
+            }
+          } catch {
+            // Enrichment is additive — a failure just omits the rows.
           }
         }
       } catch (err: any) {
@@ -475,8 +517,25 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // server/host asset_type, OR a box stamped with manufacturer/service_tag
   // that is not a vCenter VM (no metadata.guest, not VM-shaped).
   const assetTypeLower = String(asset?.asset_type ?? '').toLowerCase()
+  // A vCenter-collected ESXi hypervisor host: asset_type host/hypervisor_host
+  // carrying a vcenter_cluster. These get a dedicated Hypervisor-host card
+  // (cluster, connection, hosted VMs) rather than the VM-details card (they
+  // aren't VMs) or the Server-details card (which targets Dell/physical
+  // boxes with manufacturer/model/service-tag). A bare physical host with no
+  // vcenter_cluster still flows to the Server-details path below.
+  const isHypervisorHost =
+    !isVM &&
+    ['host', 'hypervisor_host'].includes(assetTypeLower) &&
+    Boolean(vcenterCluster)
+  // connection_state is meant to be a word ("CONNECTED"/"DISCONNECTED"); a
+  // bare code or leaked structure is junk — sanitize so the field omits.
+  const connectionState = displayableMetaString(asset?.metadata?.['connection_state'], { digitsAreJunk: true })
+  // Friendly cluster name resolved from the MoRef (hostClusterName), falling
+  // back to the raw vcenter_cluster MoRef when the cluster asset wasn't found.
+  const clusterDisplay = hostClusterName ?? (vcenterCluster || '')
   const isPhysicalHost =
     !isVM &&
+    !isHypervisorHost &&
     (['server', 'host', 'hypervisor_host'].includes(assetTypeLower) ||
       ((Boolean(manufacturer) || Boolean(serviceTag)) && !guest))
   const hasServerDetails =
@@ -616,7 +675,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             </Card>
             ) : null}
 
-            {hasVMDetails ? (
+            {isVM && hasVMDetails ? (
               <Card>
                 <CardTitle>{t('VM details', 'VM details')}</CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
@@ -713,6 +772,31 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                     ) : null}
                   </div>
                 ) : null}
+              </Card>
+            ) : null}
+
+            {isHypervisorHost ? (
+              <Card>
+                <CardTitle
+                  right={
+                    connectionState ? (
+                      <Badge tone={connectionState.toLowerCase() === 'connected' ? 'green' : 'amber'}>
+                        {connectionState}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  {t('Hypervisor host', 'Hypervisor host')}
+                </CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+                  {clusterDisplay ? <Stat label={t('Cluster', 'Cluster')} value={clusterDisplay} mono /> : null}
+                  {powerState ? <Stat label={t('Power state', 'Power state')} value={powerState} /> : null}
+                  {connectionState ? <Stat label={t('Connection state', 'Connection state')} value={connectionState} /> : null}
+                  {asset?.datacenter_id ? <Stat label={t('Site', 'Site')} value={String(asset.datacenter_id)} mono /> : null}
+                  {hostedVMCount !== null ? (
+                    <Stat label={t('VMs hosted', 'VMs hosted')} value={String(hostedVMCount)} />
+                  ) : null}
+                </div>
               </Card>
             ) : null}
 
