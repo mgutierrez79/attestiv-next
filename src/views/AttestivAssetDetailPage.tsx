@@ -63,6 +63,19 @@ type DependentApp = {
   criticality?: string
 }
 
+type DependencyItem = {
+  id: string
+  name: string
+  asset_type: string
+  site?: string
+}
+
+type DependencyGroup = {
+  key: string
+  label: string
+  items: DependencyItem[]
+}
+
 type GuestInfo = {
   os_name?: string
   os_full_name?: string
@@ -160,12 +173,24 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // links touch this switch, plus the friendly names of every
   // connected non-switch host.
   const [relatedLinks, setRelatedLinks] = useState<InventoryAsset[]>([])
+  // Hypervisor-host enrichment, derived on the detail page (no new
+  // collection): the friendly cluster name resolved from the host's
+  // vcenter_cluster MoRef, and the count of VMs that ride this host.
+  const [hostClusterName, setHostClusterName] = useState<string | null>(null)
+  const [hostedVMCount, setHostedVMCount] = useState<number | null>(null)
+  // Upstream dependencies — the infrastructure this asset rides on (host,
+  // storage, network, firewall), grouped by category. Populated from
+  // /inventory/assets/{id}/dependencies for every asset type.
+  const [dependencies, setDependencies] = useState<DependencyGroup[]>([])
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
       setError(null)
+      setHostClusterName(null)
+      setHostedVMCount(null)
+      setDependencies([])
       try {
         const response = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}`)
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -308,6 +333,54 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               setMemberAssets(list)
             }
           }
+        }
+        // hypervisor-host enrichment — resolve the vcenter_cluster MoRef
+        // (e.g. "domain-c14059") to its friendly cluster name and count
+        // the VMs riding this host, so the host card shows real context
+        // instead of a raw MoRef. Both are best-effort; failure leaves
+        // the card showing what it already has.
+        const bodyType = String((body as InventoryAsset).asset_type ?? '').toLowerCase()
+        if (bodyType === 'host' || bodyType === 'hypervisor_host') {
+          const hostMeta = (body as InventoryAsset).metadata ?? {}
+          const clusterRef = String(hostMeta['vcenter_cluster'] ?? '').trim()
+          const hostMoRef = String((body as InventoryAsset).asset_id ?? '').trim().toLowerCase()
+          try {
+            const [clusterRes, vmsRes] = await Promise.all([
+              clusterRef
+                ? apiFetch(`/inventory/assets/${encodeURIComponent(clusterRef)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+                : Promise.resolve(null),
+              apiFetch('/inventory/assets?asset_type=vm&limit=5000').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+            ])
+            if (!cancelled) {
+              const clusterName = String((clusterRes as InventoryAsset | null)?.name ?? '').trim()
+              // Only adopt a resolved name that's friendlier than the MoRef.
+              if (clusterName && clusterName.toLowerCase() !== clusterRef.toLowerCase()) {
+                setHostClusterName(clusterName)
+              }
+              const vmItems = Array.isArray((vmsRes as any)?.items) ? ((vmsRes as any).items as InventoryAsset[]) : []
+              if (vmItems.length > 0 && hostMoRef) {
+                const count = vmItems.filter(
+                  (vm) => String(vm.metadata?.['vcenter_host'] ?? '').trim().toLowerCase() === hostMoRef,
+                ).length
+                setHostedVMCount(count)
+              }
+            }
+          } catch {
+            // Enrichment is additive — a failure just omits the rows.
+          }
+        }
+        // Upstream dependencies — the infrastructure this asset rides on,
+        // resolved from the cross-source topology graph. Works for every
+        // asset type; an unwired asset comes back empty (card hides).
+        try {
+          const depRes = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}/dependencies`)
+          if (depRes.ok) {
+            const depBody = await depRes.json()
+            const groups = Array.isArray(depBody?.categories) ? (depBody.categories as DependencyGroup[]) : []
+            if (!cancelled) setDependencies(groups)
+          }
+        } catch {
+          // Dependencies are additive — a failure just hides the card.
         }
       } catch (err: any) {
         if (!cancelled) setError(err?.message ?? 'Failed to load asset')
@@ -475,8 +548,25 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // server/host asset_type, OR a box stamped with manufacturer/service_tag
   // that is not a vCenter VM (no metadata.guest, not VM-shaped).
   const assetTypeLower = String(asset?.asset_type ?? '').toLowerCase()
+  // A vCenter-collected ESXi hypervisor host: asset_type host/hypervisor_host
+  // carrying a vcenter_cluster. These get a dedicated Hypervisor-host card
+  // (cluster, connection, hosted VMs) rather than the VM-details card (they
+  // aren't VMs) or the Server-details card (which targets Dell/physical
+  // boxes with manufacturer/model/service-tag). A bare physical host with no
+  // vcenter_cluster still flows to the Server-details path below.
+  const isHypervisorHost =
+    !isVM &&
+    ['host', 'hypervisor_host'].includes(assetTypeLower) &&
+    Boolean(vcenterCluster)
+  // connection_state is meant to be a word ("CONNECTED"/"DISCONNECTED"); a
+  // bare code or leaked structure is junk — sanitize so the field omits.
+  const connectionState = displayableMetaString(asset?.metadata?.['connection_state'], { digitsAreJunk: true })
+  // Friendly cluster name resolved from the MoRef (hostClusterName), falling
+  // back to the raw vcenter_cluster MoRef when the cluster asset wasn't found.
+  const clusterDisplay = hostClusterName ?? (vcenterCluster || '')
   const isPhysicalHost =
     !isVM &&
+    !isHypervisorHost &&
     (['server', 'host', 'hypervisor_host'].includes(assetTypeLower) ||
       ((Boolean(manufacturer) || Boolean(serviceTag)) && !guest))
   const hasServerDetails =
@@ -616,7 +706,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             </Card>
             ) : null}
 
-            {hasVMDetails ? (
+            {isVM && hasVMDetails ? (
               <Card>
                 <CardTitle>{t('VM details', 'VM details')}</CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
@@ -713,6 +803,31 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                     ) : null}
                   </div>
                 ) : null}
+              </Card>
+            ) : null}
+
+            {isHypervisorHost ? (
+              <Card>
+                <CardTitle
+                  right={
+                    connectionState ? (
+                      <Badge tone={connectionState.toLowerCase() === 'connected' ? 'green' : 'amber'}>
+                        {connectionState}
+                      </Badge>
+                    ) : null
+                  }
+                >
+                  {t('Hypervisor host', 'Hypervisor host')}
+                </CardTitle>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
+                  {clusterDisplay ? <Stat label={t('Cluster', 'Cluster')} value={clusterDisplay} mono /> : null}
+                  {powerState ? <Stat label={t('Power state', 'Power state')} value={powerState} /> : null}
+                  {connectionState ? <Stat label={t('Connection state', 'Connection state')} value={connectionState} /> : null}
+                  {asset?.datacenter_id ? <Stat label={t('Site', 'Site')} value={String(asset.datacenter_id)} mono /> : null}
+                  {hostedVMCount !== null ? (
+                    <Stat label={t('VMs hosted', 'VMs hosted')} value={String(hostedVMCount)} />
+                  ) : null}
+                </div>
               </Card>
             ) : null}
 
@@ -1071,6 +1186,46 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                       {v.last_sync ? (
                         <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{t('synced', 'synced')} {v.last_sync}</span>
                       ) : null}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {dependencies.length > 0 ? (
+              <Card>
+                <CardTitle
+                  right={
+                    <Badge tone="navy">{dependencies.reduce((n, g) => n + g.items.length, 0)}</Badge>
+                  }
+                >
+                  {t('Depends on', 'Depends on')}
+                </CardTitle>
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                  {t(
+                    'Infrastructure this asset rides on, from the cross-source topology graph.',
+                    'Infrastructure this asset rides on, from the cross-source topology graph.',
+                  )}
+                </p>
+                <div style={{ display: 'grid', gap: 14, marginTop: 10 }}>
+                  {dependencies.map((group) => (
+                    <div key={group.key}>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {t(group.label, group.label)} ({group.items.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                        {group.items.map((item) => (
+                          <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                            <a href={`/inventory/${encodeURIComponent(item.id)}`} style={{ fontWeight: 500 }}>
+                              {item.name}
+                            </a>
+                            <Badge tone="gray">{item.asset_type}</Badge>
+                            {item.site ? (
+                              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{item.site}</span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
