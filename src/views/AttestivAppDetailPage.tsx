@@ -79,6 +79,7 @@ type InfraStorage = {
   id: string
   name: string
   array_name?: string
+  site?: string
   replication_mode?: string
   replication_role?: string
   replicated?: boolean
@@ -663,8 +664,10 @@ function AppInfrastructureDeps({
                 {cats.storage.map((s) => (
                   <div key={s.id} style={rowStyle}>
                     <code style={{ fontSize: 11, fontWeight: 500 }}>{s.name}</code>
-                    {s.array_name ? (
-                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{s.array_name}</span>
+                    {s.array_name || s.site ? (
+                      <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                        {[s.array_name, s.site].filter(Boolean).join(' · ')}
+                      </span>
                     ) : null}
                     {s.replication_mode ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
