@@ -1370,12 +1370,31 @@ function AssetRow({
             )
           })()
         ) : isStorageVolume ? (
-          // Storage volume: render the parent array's name (e.g.
-          // "POWERSTOREA01") as the location identity. Backend
-          // stamps metadata.array_name at emission time. Site lives
-          // on the array row itself; repeating it 100+ times per
-          // volume isn't useful.
-          storageVolumeArrayName ? (
+          // Storage volume: its datacenter is INHERITED from the hosts
+          // running its VMs (deriveStorageVolumeSites). Show that real
+          // site when resolved, with the parent array name as a secondary
+          // identity; fall back to the array name alone before the
+          // derivation has a site (e.g. an unmounted / cross-DC volume).
+          currentSite ? (
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: '2px 6px',
+                  background: 'var(--color-background-secondary)',
+                  borderRadius: 'var(--border-radius-sm)',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-text-primary)',
+                }}
+                title={t('Site', 'Site')}
+              >
+                {currentSite}
+              </span>
+              {storageVolumeArrayName ? (
+                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{storageVolumeArrayName}</span>
+              ) : null}
+            </span>
+          ) : storageVolumeArrayName ? (
             <span
               style={{
                 fontSize: 11,
