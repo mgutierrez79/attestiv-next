@@ -11,7 +11,7 @@
 // Each section degrades gracefully when its endpoint is unavailable
 // or returns no_data; the page never blanks because one panel failed.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 
 import {
@@ -29,6 +29,14 @@ import {
   isAssetNode,
   neighboursOf,
 } from '../lib/topologyNeighbours'
+import {
+  buildLayeredGraph,
+  layoutGraph,
+  type InfraCategories,
+  type LayerKey,
+  type LayoutNode,
+  type RelationKind,
+} from '../lib/topologyLayers'
 
 import { useI18n } from '../lib/i18n';
 
@@ -326,7 +334,12 @@ export function AttestivAppDetailPage() {
           >
             {t('Network topology', 'Network topology')}
           </CardTitle>
-          <AppTopologyEmbed appID={app.application_id} t={t} />
+          <AppTopologyEmbed
+            appID={app.application_id}
+            dependencies={app.dependencies ?? []}
+            dependents={app.dependents ?? []}
+            t={t}
+          />
         </Card>
 
         <Card style={{ marginTop: 12 }}>
@@ -711,11 +724,33 @@ function AppInfrastructureDeps({
   )
 }
 
+// LAYER_KEYS drives both the toggle-chip row and the default state. The
+// app + component VMs are ALWAYS drawn; these are the optional overlays.
+// Default: declared app↔app relations ON, derived infra OFF — keeps the
+// out-of-the-box view focused on application dependencies, not plumbing.
+const LAYER_DEFAULTS: Record<LayerKey, boolean> = {
+  dependencies: true,
+  dependents: true,
+  host: false,
+  storage: false,
+  switch: false,
+  firewall: false,
+}
+
+// View box is enlarged vs. the old fixed radial because layers add nodes.
+const TOPO_W = 800
+const TOPO_H = 500
+const TOPO_ITER = 90
+
 function AppTopologyEmbed({
   appID,
+  dependencies,
+  dependents,
   t,
 }: {
   appID: string
+  dependencies: AppDependency[]
+  dependents: string[]
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
   type Node = {
@@ -738,6 +773,8 @@ function AppTopologyEmbed({
 
   const [nodes, setNodes] = useState<Node[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
+  const [infra, setInfra] = useState<InfraCategories | null>(null)
+  const [layers, setLayers] = useState<Record<LayerKey, boolean>>(LAYER_DEFAULTS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -791,6 +828,28 @@ function AppTopologyEmbed({
     }
   }, [appID])
 
+  // Infrastructure layers: a second, best-effort fetch of the categorized
+  // derived dependencies. Failure leaves infra null — the infra toggles
+  // simply add nothing rather than blocking the base map.
+  useEffect(() => {
+    let cancelled = false
+    async function loadInfra() {
+      try {
+        const res = await apiFetch(`/apps/${encodeURIComponent(appID)}/infrastructure`)
+        if (!res.ok) return
+        const body = (await res.json()) as AppInfrastructure
+        if (cancelled) return
+        setInfra(body.categories ?? null)
+      } catch {
+        if (!cancelled) setInfra(null)
+      }
+    }
+    void loadInfra()
+    return () => {
+      cancelled = true
+    }
+  }, [appID])
+
   // Enrichment: when a real inventory asset is selected, pull its
   // storage-capacity detail so each volume row can show array name +
   // size. Best-effort and non-blocking — failures leave the panel on
@@ -829,6 +888,29 @@ function AppTopologyEmbed({
     }
   }, [selectedId, nodes])
 
+  // Build the visible (layered) graph + its deterministic layout. Recomputed
+  // only when the underlying data or the enabled layers change — the force
+  // relaxation is the same every time for the same inputs, so the picture is
+  // stable across unrelated re-renders (e.g. selecting a node). Computed
+  // before the early returns so hook order stays constant across renders.
+  const { graphNodes, graphEdges, positions } = useMemo(() => {
+    const built = buildLayeredGraph({
+      appID,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra,
+      dependencies,
+      dependents,
+      enabled: layers,
+    })
+    const pos = layoutGraph(built.nodes, built.edges, {
+      width: TOPO_W,
+      height: TOPO_H,
+      iterations: TOPO_ITER,
+    })
+    return { graphNodes: built.nodes, graphEdges: built.edges, positions: pos }
+  }, [appID, nodes, edges, infra, dependencies, dependents, layers])
+
   if (loading) {
     return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '20px 0' }}>{t('Loading…', 'Loading…')}</div>
   }
@@ -848,122 +930,53 @@ function AppTopologyEmbed({
     )
   }
 
-  // DRAW only the application + its component VMs. The full topology
-  // (nodes/edges) is still fetched and kept in state so neighboursOf()
-  // can resolve a VM's storage/host/backup on click — we just don't
-  // render the storage/host/network/backup nodes (decluttered map).
-  const appNodeID = `app:${appID}`
-  const components = nodes.filter((n) => n.asset_type === 'vm')
-  const drawnNodes = nodes.filter((n) => n.id === appNodeID || n.asset_type === 'vm')
-  const drawnIds = new Set(drawnNodes.map((n) => n.id))
-  // Edges drawn: only those whose endpoints are both drawn (app↔VM
-  // membership). Storage/host/network edges are hidden by construction.
-  const drawnEdges = edges.filter((e) => drawnIds.has(e.source) && drawnIds.has(e.target))
-
-  // Lay out: app node at center, component VMs in a ring. Simple radial.
-  const cx = 320
-  const cy = 200
-  const innerR = 110
-
-  const positions = new Map<string, { x: number; y: number }>()
-  positions.set(appNodeID, { x: cx, y: cy })
-  components.forEach((n, i) => {
-    const angle = (i / Math.max(components.length, 1)) * 2 * Math.PI - Math.PI / 2
-    positions.set(n.id, { x: cx + Math.cos(angle) * innerR, y: cy + Math.sin(angle) * innerR })
-  })
-
-  // Token = role color + matching Tabler icon for a node. Keeping the
-  // color separate from the icon lets the disk render as a soft tint and
-  // the ring/glyph share the saturated tone, instead of one flat fill.
-  type Token = { color: string; icon: string }
-  function tokenFor(node: Node): Token {
-    switch (node.asset_type) {
-      case 'application':
-        return { color: 'var(--color-status-blue-mid)', icon: appIconFromLabel(node.label) }
-      case 'vm':
-      case 'virtual_machine':
-        return { color: 'var(--color-status-amber-mid)', icon: 'ti-device-desktop' }
-      case 'host':
-      case 'hypervisor_host':
-        return { color: 'var(--color-status-blue-deep)', icon: 'ti-server' }
-      case 'cluster':
-        return { color: 'var(--color-status-blue-deep)', icon: 'ti-servers' }
-      case 'storage_array':
-        return { color: 'var(--color-status-green-mid)', icon: 'ti-database' }
-      case 'storage_volume':
-        return { color: 'var(--color-status-green-mid)', icon: 'ti-disc' }
-      case 'backup_appliance':
-        return { color: 'var(--color-status-blue-deep)', icon: 'ti-history' }
-      case 'network_device':
-      case 'switch':
-      case 'router':
-        return { color: 'var(--color-status-red-deep)', icon: 'ti-router' }
-      case 'firewall':
-      case 'firewall_manager':
-        return { color: 'var(--color-status-red-deep)', icon: 'ti-shield-lock' }
-    }
-    return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
-  }
-
-  // appIconFromLabel infers a meaningful icon from the application name as
-  // a free upgrade over a generic stack glyph: Active Directory → key,
-  // anything containing "database" → database, etc. Operators can later
-  // override per-app via a YAML `icon:` field (small backend addition).
-  function appIconFromLabel(label: string): string {
-    const s = label.toLowerCase()
-    if (/\b(active directory|domain controller|\bad\b|ldap|identity)\b/.test(s)) return 'ti-key'
-    if (/\b(database|sql|oracle|postgres|mysql|mongo)\b/.test(s)) return 'ti-database'
-    if (/\b(dns)\b/.test(s)) return 'ti-world'
-    if (/\b(mail|exchange|smtp|imap)\b/.test(s)) return 'ti-mail'
-    if (/\b(web|portal|frontend|nginx|apache)\b/.test(s)) return 'ti-world-www'
-    if (/\b(mes|scada|manufacturing|plc)\b/.test(s)) return 'ti-building-factory-2'
-    if (/\b(network|firewall|vpn|edge)\b/.test(s)) return 'ti-network'
-    if (/\b(backup|recovery|veeam)\b/.test(s)) return 'ti-history'
-    if (/\b(monitor|grafana|prometheus|telemetry|observ)\b/.test(s)) return 'ti-chart-line'
-    if (/\b(siem|sentinel|log|audit)\b/.test(s)) return 'ti-shield-lock'
-    return 'ti-stack-2'
-  }
-
-  function strokeFor(kind: string): string {
-    switch (kind) {
-      case 'app_membership':
-        return 'var(--color-status-red-mid)'
-      case 'hypervisor_host':
-        return 'var(--color-status-amber-mid)'
-      case 'storage_attachment':
-        return 'var(--color-status-green-mid)'
-      case 'backup_coverage':
-        return 'var(--color-status-blue-deep)'
-      case 'network_port':
-        return 'var(--color-status-red-deep)'
-    }
-    return 'var(--color-border-tertiary)'
-  }
-
   // selectedNode / groups resolve against the FULL topology so a VM's
-  // hidden storage/host/backup neighbours are still discoverable on click.
+  // hidden storage/host/backup neighbours are still discoverable on click,
+  // even when those infra layers aren't rendered on the canvas.
   const selectedNode = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null
   const groups = neighboursOf(selectedId, nodes, edges)
   const selectedPos = selectedId ? positions.get(selectedId) ?? null : null
 
   return (
     <div style={{ overflow: 'hidden' }}>
+      {/* Layer toggle chips: app + component VMs always render; these add /
+          remove their nodes + edges live. */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          marginBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-tertiary)', marginRight: 2 }}>
+          {t('Layers', 'Layers')}
+        </span>
+        <LayerChip layer="dependencies" label={t('Dependencies', 'Dependencies')} icon="ti-arrow-up-right" swatch="var(--color-status-blue-mid)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="dependents" label={t('Dependents', 'Dependents')} icon="ti-arrow-down-left" swatch="var(--color-status-blue-mid)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="host" label={t('Hosts', 'Hosts')} icon="ti-server" swatch="var(--color-status-amber-mid)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="storage" label={t('Storage', 'Storage')} icon="ti-database" swatch="var(--color-status-green-mid)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="switch" label={t('Network', 'Network')} icon="ti-router" swatch="var(--color-status-red-deep)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="firewall" label={t('Firewalls', 'Firewalls')} icon="ti-shield-lock" swatch="var(--color-status-violet-mid)" layers={layers} setLayers={setLayers} />
+      </div>
+
       <svg
         width="100%"
-        height={400}
-        viewBox={`0 0 640 400`}
+        height={TOPO_H}
+        viewBox={`0 0 ${TOPO_W} ${TOPO_H}`}
         style={{ background: 'var(--color-background-secondary)', borderRadius: 6 }}
       >
         {/* Background rect: clicking empty canvas deselects. */}
         <rect
           x={0}
           y={0}
-          width={640}
-          height={400}
+          width={TOPO_W}
+          height={TOPO_H}
           fill="transparent"
           onClick={() => setSelectedId(null)}
         />
-        {drawnEdges.map((e) => {
+        {graphEdges.map((e) => {
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
@@ -974,23 +987,21 @@ function AppTopologyEmbed({
               y1={a.y}
               x2={b.x}
               y2={b.y}
-              stroke={strokeFor(e.kind)}
+              stroke={strokeForRelation(e.relation)}
               strokeWidth={1.5}
               opacity={0.7}
-              strokeDasharray={e.kind === 'app_membership' ? '4 2' : '0'}
+              strokeDasharray={dashForRelation(e.relation)}
             />
           )
         })}
-        {drawnNodes.map((n) => {
+        {graphNodes.map((n) => {
           const pos = positions.get(n.id)
           if (!pos) return null
-          // App nodes get a larger disk so the glyph reads at canvas scale;
-          // component VMs stay compact so a fan-out of 6–8 doesn't crowd.
-          const r = n.id === appNodeID ? 22 : 16
+          // App node largest; dependency/dependent apps slightly smaller so
+          // they read as related-but-distinct; VMs + infra compact.
+          const r = n.group === 'app' ? 22 : n.group === 'dependency' || n.group === 'dependent' ? 17 : 15
           const isSelected = n.id === selectedId
-          const { color, icon } = tokenFor(n)
-          // Glyph size = ~58% of disk diameter — the sweet spot where the
-          // icon dominates visually without crowding the ring.
+          const { color, icon } = tokenForGroup(n)
           const iconPx = Math.round(r * 1.15)
           return (
             <g
@@ -1015,6 +1026,11 @@ function AppTopologyEmbed({
                   stroke="var(--color-status-blue-deep)"
                   strokeWidth={2.5}
                 />
+              ) : null}
+              {/* Dependency / dependent apps get a double ring so they read
+                  as application nodes distinct from the central app. */}
+              {n.group === 'dependency' || n.group === 'dependent' ? (
+                <circle r={r + 2.5} fill="none" stroke={color} strokeWidth={1} opacity={0.6} />
               ) : null}
               {/* Soft tinted disk: role color washed against the card
                   background. color-mix keeps the look consistent across
@@ -1070,6 +1086,8 @@ function AppTopologyEmbed({
             groups={groups}
             storageDetail={storageDetail && storageDetail.id === selectedNode.id ? storageDetail : null}
             anchor={selectedPos}
+            viewW={TOPO_W}
+            viewH={TOPO_H}
             onClose={() => setSelectedId(null)}
             t={t}
           />
@@ -1083,8 +1101,151 @@ function AppTopologyEmbed({
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Legend swatch="var(--color-status-blue-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
+        {layers.dependencies ? (
+          <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
+        ) : null}
+        {layers.dependents ? (
+          <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-down-left" label={t('Dependents', 'Dependents')} />
+        ) : null}
+        {layers.host ? (
+          <Legend swatch="var(--color-status-amber-mid)" icon="ti-server" label={t('Hosts', 'Hosts')} />
+        ) : null}
+        {layers.storage ? (
+          <Legend swatch="var(--color-status-green-mid)" icon="ti-database" label={t('Storage', 'Storage')} />
+        ) : null}
+        {layers.switch ? (
+          <Legend swatch="var(--color-status-red-deep)" icon="ti-router" label={t('Network', 'Network')} />
+        ) : null}
+        {layers.firewall ? (
+          <Legend swatch="var(--color-status-violet-mid)" icon="ti-shield-lock" label={t('Firewalls', 'Firewalls')} />
+        ) : null}
       </div>
     </div>
+  )
+}
+
+// tokenForGroup maps a layout node's logical group to its disk color +
+// Tabler glyph. Dependency / dependent apps share the app blue (a related
+// application) but are visually set apart by a smaller radius + extra ring
+// drawn at the call site.
+function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
+  switch (node.group) {
+    case 'app':
+      return { color: 'var(--color-status-blue-mid)', icon: appIconFromLabel(node.label) }
+    case 'dependency':
+      return { color: 'var(--color-status-blue-mid)', icon: 'ti-arrow-up-right' }
+    case 'dependent':
+      return { color: 'var(--color-status-blue-mid)', icon: 'ti-arrow-down-left' }
+    case 'vm':
+      return { color: 'var(--color-status-amber-mid)', icon: 'ti-device-desktop' }
+    case 'host':
+      return { color: 'var(--color-status-amber-mid)', icon: 'ti-server' }
+    case 'storage':
+      return { color: 'var(--color-status-green-mid)', icon: 'ti-database' }
+    case 'switch':
+      return { color: 'var(--color-status-red-deep)', icon: 'ti-router' }
+    case 'firewall':
+      return { color: 'var(--color-status-violet-mid)', icon: 'ti-shield-lock' }
+  }
+  return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
+}
+
+// appIconFromLabel infers a meaningful icon from the application name as
+// a free upgrade over a generic stack glyph: Active Directory → key,
+// anything containing "database" → database, etc. Operators can later
+// override per-app via a YAML `icon:` field (small backend addition).
+function appIconFromLabel(label: string): string {
+  const s = label.toLowerCase()
+  if (/\b(active directory|domain controller|\bad\b|ldap|identity)\b/.test(s)) return 'ti-key'
+  if (/\b(database|sql|oracle|postgres|mysql|mongo)\b/.test(s)) return 'ti-database'
+  if (/\b(dns)\b/.test(s)) return 'ti-world'
+  if (/\b(mail|exchange|smtp|imap)\b/.test(s)) return 'ti-mail'
+  if (/\b(web|portal|frontend|nginx|apache)\b/.test(s)) return 'ti-world-www'
+  if (/\b(mes|scada|manufacturing|plc)\b/.test(s)) return 'ti-building-factory-2'
+  if (/\b(network|firewall|vpn|edge)\b/.test(s)) return 'ti-network'
+  if (/\b(backup|recovery|veeam)\b/.test(s)) return 'ti-history'
+  if (/\b(monitor|grafana|prometheus|telemetry|observ)\b/.test(s)) return 'ti-chart-line'
+  if (/\b(siem|sentinel|log|audit)\b/.test(s)) return 'ti-shield-lock'
+  return 'ti-stack-2'
+}
+
+// strokeForRelation / dashForRelation colour + dash each edge by the
+// relationship it represents, so the layers stay distinguishable when
+// several are on at once.
+function strokeForRelation(relation: RelationKind): string {
+  switch (relation) {
+    case 'app_membership':
+      return 'var(--color-status-red-mid)'
+    case 'dependency':
+    case 'dependent':
+      return 'var(--color-status-blue-mid)'
+    case 'host':
+      return 'var(--color-status-amber-mid)'
+    case 'storage':
+      return 'var(--color-status-green-mid)'
+    case 'switch':
+      return 'var(--color-status-red-deep)'
+    case 'firewall':
+      return 'var(--color-status-violet-mid)'
+  }
+  return 'var(--color-border-tertiary)'
+}
+
+function dashForRelation(relation: RelationKind): string {
+  switch (relation) {
+    case 'app_membership':
+      return '4 2'
+    case 'dependency':
+      return '6 3'
+    case 'dependent':
+      return '2 3'
+  }
+  return '0'
+}
+
+// LayerChip is a small toggle pill for one optional layer, styled to mirror
+// the legend swatches. Active → tinted + role-colored; inactive → muted.
+function LayerChip({
+  layer,
+  label,
+  icon,
+  swatch,
+  layers,
+  setLayers,
+}: {
+  layer: LayerKey
+  label: string
+  icon: string
+  swatch: string
+  layers: Record<LayerKey, boolean>
+  setLayers: React.Dispatch<React.SetStateAction<Record<LayerKey, boolean>>>
+}) {
+  const active = layers[layer]
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => setLayers((prev) => ({ ...prev, [layer]: !prev[layer] }))}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 11,
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        padding: '3px 8px',
+        borderRadius: 999,
+        border: `1px solid ${active ? swatch : 'var(--color-border-secondary)'}`,
+        background: active
+          ? `color-mix(in srgb, ${swatch} 16%, var(--color-background-primary))`
+          : 'transparent',
+        color: active ? swatch : 'var(--color-text-tertiary)',
+        lineHeight: 1.4,
+      }}
+    >
+      <i className={`ti ${icon}`} aria-hidden="true" />
+      {label}
+    </button>
   )
 }
 
@@ -1092,10 +1253,8 @@ function AppTopologyEmbed({
 // inside the SVG, anchored directly beneath the node's name label so it
 // reads as "<VM name> → its storage/host stacked below". Storage is the
 // headline (first); host + backup follow, kept brief. The card is
-// position-clamped so it never overflows the 640×400 viewBox — nudged
-// left/up near the right/bottom edges.
-const VIEW_W = 640
-const VIEW_H = 400
+// position-clamped so it never overflows the viewBox (passed in as
+// viewW/viewH) — nudged left/up near the right/bottom edges.
 const CARD_W = 200
 const MAX_LIST = 5
 function NodeDetailCard({
@@ -1103,6 +1262,8 @@ function NodeDetailCard({
   groups,
   storageDetail,
   anchor,
+  viewW,
+  viewH,
   onClose,
   t,
 }: {
@@ -1110,6 +1271,8 @@ function NodeDetailCard({
   groups: ReturnType<typeof neighboursOf>
   storageDetail: { topVolumes: Array<{ name?: string; size?: string }>; volumeCount?: number } | null
   anchor: { x: number; y: number }
+  viewW: number
+  viewH: number
   onClose: () => void
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
@@ -1138,8 +1301,8 @@ function NodeDetailCard({
   // fixed offset that clears the largest node radius + its text).
   const rawX = anchor.x - CARD_W / 2
   const rawY = anchor.y + 32
-  const x = Math.max(4, Math.min(rawX, VIEW_W - CARD_W - 4))
-  const y = Math.max(4, Math.min(rawY, VIEW_H - cardH - 4))
+  const x = Math.max(4, Math.min(rawX, viewW - CARD_W - 4))
+  const y = Math.max(4, Math.min(rawY, viewH - cardH - 4))
 
   const line = (
     key: string,
