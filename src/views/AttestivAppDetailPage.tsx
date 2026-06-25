@@ -988,8 +988,8 @@ function AppTopologyEmbed({
               x2={b.x}
               y2={b.y}
               stroke={strokeForRelation(e.relation)}
-              strokeWidth={1.5}
-              opacity={0.7}
+              strokeWidth={isInfraRelation(e.relation) ? 1.5 : 2.25}
+              opacity={isInfraRelation(e.relation) ? 0.6 : 0.9}
               strokeDasharray={dashForRelation(e.relation)}
             />
           )
@@ -1026,6 +1026,15 @@ function AppTopologyEmbed({
                   stroke="var(--color-status-blue-deep)"
                   strokeWidth={2.5}
                 />
+              ) : null}
+              {/* Focal app: a pulsing green halo so the application under
+                  view is unmistakable among its related app nodes. SMIL
+                  <animate> is supported in all evergreen browsers. */}
+              {n.group === 'app' ? (
+                <circle r={r + 4} fill="none" stroke="var(--color-status-green-mid)" strokeWidth={2}>
+                  <animate attributeName="r" values={`${r + 3};${r + 13};${r + 3}`} dur="1.8s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.7;0;0.7" dur="1.8s" repeatCount="indefinite" />
+                </circle>
               ) : null}
               {/* Dependency / dependent apps get a double ring so they read
                   as application nodes distinct from the central app. */}
@@ -1099,7 +1108,7 @@ function AppTopologyEmbed({
         </div>
       ) : null}
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <Legend swatch="var(--color-status-blue-mid)" icon="ti-stack-2" label={t('App', 'App')} />
+        <Legend swatch="var(--color-status-green-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
         {layers.dependencies ? (
           <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
@@ -1131,7 +1140,9 @@ function AppTopologyEmbed({
 function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
   switch (node.group) {
     case 'app':
-      return { color: 'var(--color-status-blue-mid)', icon: appIconFromLabel(node.label) }
+      // The app under view is the FOCAL node: green + a pulsing halo (drawn
+      // at the call site) set it apart from the blue dependency/dependent apps.
+      return { color: 'var(--color-status-green-mid)', icon: appIconFromLabel(node.label) }
     case 'dependency':
       return { color: 'var(--color-status-blue-mid)', icon: 'ti-arrow-up-right' }
     case 'dependent':
@@ -1139,6 +1150,8 @@ function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
     case 'vm':
       return { color: 'var(--color-status-amber-mid)', icon: 'ti-device-desktop' }
     case 'host':
+      // Distinct per-type glyphs so hosts / storage / switches / firewalls
+      // each read as their own kind of infrastructure.
       return { color: 'var(--color-status-amber-mid)', icon: 'ti-server' }
     case 'storage':
       return { color: 'var(--color-status-green-mid)', icon: 'ti-database' }
@@ -1167,6 +1180,13 @@ function appIconFromLabel(label: string): string {
   if (/\b(monitor|grafana|prometheus|telemetry|observ)\b/.test(s)) return 'ti-chart-line'
   if (/\b(siem|sentinel|log|audit)\b/.test(s)) return 'ti-shield-lock'
   return 'ti-stack-2'
+}
+
+// isInfraRelation: VM→infrastructure edges (host/storage/switch/firewall),
+// drawn lighter/thinner than the app↔app + app↔VM relations so the
+// dependency backbone stays the visual focus.
+function isInfraRelation(relation: RelationKind): boolean {
+  return relation === 'host' || relation === 'storage' || relation === 'switch' || relation === 'firewall'
 }
 
 // strokeForRelation / dashForRelation colour + dash each edge by the
