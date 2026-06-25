@@ -38,7 +38,7 @@ export function DORALandingPage() {
           A DORA evidence pipeline that ships your auditor a signed packet they verify offline.
         </h1>
         <p style={leadStyle}>
-          DORA didn't ask for slideware. Articles 5–17 ask for evidence
+          DORA didn&apos;t ask for slideware. Articles 5–17 ask for evidence
           of an ICT risk management framework; Articles 17–19 ask for
           incident classification under a 24h / 72h / 30d clock;
           Article 28 asks for a Register of Information your supervisor
@@ -107,7 +107,7 @@ export function DORALandingPage() {
         <h2 style={h2Style}>What goes into a DORA pre-packet</h2>
         <ol style={orderedListStyle}>
           <li>
-            <strong>framework_summary.json</strong> — DORA's overall
+            <strong>framework_summary.json</strong> — DORA&apos;s overall
             score plus PASS / REVIEW / WARN / FAIL counts.
           </li>
           <li>
@@ -133,15 +133,15 @@ export function DORALandingPage() {
           </li>
         </ol>
         <p style={callOutStyle}>
-          The supervisor (or the bank's external auditor) downloads
+          The supervisor (or the bank&apos;s external auditor) downloads
           the zip, verifies it offline against the embedded public key,
           and walks into the engagement already knowing the answer to
-          "what's outstanding?" — not still building the inventory.
+          &quot;what&apos;s outstanding?&quot; — not still building the inventory.
         </p>
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>What this isn't</h2>
+        <h2 style={h2Style}>What this isn&apos;t</h2>
         <ul style={listStyle}>
           <li>
             A replacement for your ICT risk policy document or your
@@ -166,9 +166,9 @@ export function DORALandingPage() {
         <h2 style={ctaH2Style}>Walk into your next DORA review with the answer pre-built</h2>
         <p style={ctaCopyStyle}>
           A working tenant can produce a real, signed DORA packet
-          right now. If you don't have one yet, the trust-center page
+          right now. If you don&apos;t have one yet, the trust-center page
           publishes a sample manifest you can verify with the
-          platform's published Ed25519 key.
+          platform&apos;s published Ed25519 key.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket?framework=dora" style={primaryButtonStyle}>

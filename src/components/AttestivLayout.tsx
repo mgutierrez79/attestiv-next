@@ -37,10 +37,6 @@ import { CommandPalette, type NavDestination } from './CommandPalette'
 function useNavTranslator() {
   const { t } = useI18n()
   return (label: string) => {
-    const {
-      t
-    } = useI18n();
-
     return t(label, label);
   };
 }
@@ -488,10 +484,6 @@ function sectionFromPath(pathname: string): SectionKey {
 function useRailLabel() {
   const { t } = useI18n()
   return (key: SectionKey, fallback: string) => {
-    const {
-      t
-    } = useI18n();
-
     const translated = t(RAIL_LABEL_TKEY[key])
     // The translator returns the key itself when nothing matches;
     // fall back to the seed English label so a missing entry doesn't

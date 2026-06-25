@@ -176,10 +176,6 @@ export function AttestivEvidenceStream() {
   const hero = useMemo(() => deriveEvidenceHero(items), [items])
 
   const verifyStatusLine = useMemo(() => {
-    const {
-      t
-    } = useI18n();
-
     if (!verifyResult) {
       return <span style={{ color: 'var(--color-text-tertiary)' }}>{t('Status: not checked', 'Status: not checked')}</span>;
     }
@@ -205,7 +201,7 @@ export function AttestivEvidenceStream() {
         {t('✗ INVALID —', '✗ INVALID —')} {verifyResult.reason}
       </span>
     );
-  }, [verifyResult])
+  }, [verifyResult, t])
 
   return (
     <>

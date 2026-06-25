@@ -205,10 +205,6 @@ export function AttestivDRApprovalsPage() {
               </thead>
               <tbody>
                 {decided.map(approval => {
-                  const {
-                    t
-                  } = useI18n();
-
                   return (
                     <tr key={approval.id} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
                       <td style={{ padding: '10px 10px 10px 0', fontWeight: 500 }}>

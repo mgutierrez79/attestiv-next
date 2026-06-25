@@ -11,6 +11,7 @@
 // THIS specific VM — what controls is it touching, and which fail?"
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 
 import {
   Badge,
@@ -593,9 +594,9 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
       <Topbar title={asset?.name ?? assetID} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '0 0 24px' }}>
         <nav aria-label={t('Breadcrumb', 'Breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-tertiary)', flexWrap: 'wrap' }}>
-          <a href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}>
+          <Link href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}>
             {t('Inventory', 'Inventory')}
-          </a>
+          </Link>
           {asset?.asset_type ? (
             <>
               <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />

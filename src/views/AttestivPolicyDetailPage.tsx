@@ -538,10 +538,6 @@ export function AttestivPolicyDetailPage() {
           ) : (
             <div>
               {links.map(link => {
-                const {
-                  t
-                } = useI18n();
-
                 return (
                   <div
                     key={link.id}

@@ -417,6 +417,7 @@ function RiskMatrix({
   selected: { likelihood: Level; impact: Level } | null
   onCellClick: (likelihood: Level, impact: Level) => void
 }) {
+  const { t } = useI18n()
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 480, fontSize: 11 }}>
@@ -424,10 +425,6 @@ function RiskMatrix({
           <tr>
             <th style={{ width: 90 }}></th>
             {LEVELS.map(impact => {
-              const {
-                t
-              } = useI18n();
-
               return (
                 <th
                   key={impact}
@@ -448,10 +445,6 @@ function RiskMatrix({
         </thead>
         <tbody>
           {LEVELS.map(likelihood => {
-            const {
-              t
-            } = useI18n();
-
             return (
               <tr key={likelihood}>
                 <td
