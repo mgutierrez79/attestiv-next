@@ -726,11 +726,14 @@ function AppInfrastructureDeps({
 
 // LAYER_KEYS drives both the toggle-chip row and the default state. The
 // app + component VMs are ALWAYS drawn; these are the optional overlays.
-// Default: declared app↔app relations ON, derived infra OFF — keeps the
-// out-of-the-box view focused on application dependencies, not plumbing.
+// Default: the app's UPSTREAM dependencies ON, everything else OFF — keeps
+// the view focused on what this app depends on. Dependents (downstream apps
+// that depend on this one) are intentionally not surfaced on this map: the
+// page is about the application's own dependency chain, and drawing the
+// reverse direction cluttered it with unrelated apps.
 const LAYER_DEFAULTS: Record<LayerKey, boolean> = {
   dependencies: true,
-  dependents: true,
+  dependents: false,
   host: false,
   storage: false,
   switch: false,
@@ -954,7 +957,6 @@ function AppTopologyEmbed({
           {t('Layers', 'Layers')}
         </span>
         <LayerChip layer="dependencies" label={t('Dependencies', 'Dependencies')} icon="ti-arrow-up-right" swatch="var(--color-status-blue-mid)" layers={layers} setLayers={setLayers} />
-        <LayerChip layer="dependents" label={t('Dependents', 'Dependents')} icon="ti-arrow-down-left" swatch="var(--color-status-blue-mid)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="host" label={t('Hosts', 'Hosts')} icon="ti-server" swatch="var(--color-status-amber-mid)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="storage" label={t('Storage', 'Storage')} icon="ti-database" swatch="var(--color-status-green-mid)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="switch" label={t('Network', 'Network')} icon="ti-router" swatch="var(--color-status-red-deep)" layers={layers} setLayers={setLayers} />
@@ -1112,9 +1114,6 @@ function AppTopologyEmbed({
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
         {layers.dependencies ? (
           <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
-        ) : null}
-        {layers.dependents ? (
-          <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-down-left" label={t('Dependents', 'Dependents')} />
         ) : null}
         {layers.host ? (
           <Legend swatch="var(--color-status-amber-mid)" icon="ti-server" label={t('Hosts', 'Hosts')} />
