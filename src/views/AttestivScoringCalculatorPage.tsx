@@ -476,10 +476,6 @@ function CalculatorTab({ frameworks }: { frameworks: FrameworkSummary[] }) {
           )}
         </div>
         {areas.map((area, index) => {
-          const {
-            t
-          } = useI18n();
-
           return (
             <div key={area.name} style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>

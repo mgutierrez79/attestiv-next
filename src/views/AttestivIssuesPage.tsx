@@ -463,10 +463,6 @@ function DLQTab({
         )}
       </p>
       {items.map(item => {
-        const {
-          t
-        } = useI18n();
-
         return (
           <Card key={item.queue_id}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -517,10 +513,6 @@ function DLQTab({
                     }}
                   >
                     {item.dlq_attempts.map(attempt => {
-                      const {
-                        t
-                      } = useI18n();
-
                       return (
                         <div key={attempt.attempt}>
                           {t('Attempt', 'Attempt')} {attempt.attempt}: {formatTimestamp(attempt.started_at)}
@@ -578,10 +570,6 @@ function StaleTab({ connectors }: { connectors: ConnectorStatus[] }) {
         )}
       </p>
       {connectors.map((connector) => {
-        const {
-          t
-        } = useI18n();
-
         const seen = lastSeenMs(connector)
         const overdue = seen ? now - seen - staleAfterMs(connector) : null
         const interval = connector.poll_interval_seconds ||

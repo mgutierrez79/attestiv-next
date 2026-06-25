@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 import {
   Badge,
@@ -803,7 +804,7 @@ export function InventoryPage() {
               'Showing inventory rows discovered by connectors (vCenter, PowerStore, Cisco, etc.) that no CMDB source (GLPI, ServiceNow) has observed. These are the registration gaps an auditor will flag.',
             )}
             {' '}
-            <a href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'underline' }}>{t('Clear filter', 'Clear filter')}</a>
+            <Link href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'underline' }}>{t('Clear filter', 'Clear filter')}</Link>
           </Banner>
         ) : null}
 
@@ -814,7 +815,7 @@ export function InventoryPage() {
               'Showing inventory rows discovered by connectors that no observability source (Dynatrace, Zabbix) has observed. These hosts are running without telemetry — auditor question: "what is watching this?"',
             )}
             {' '}
-            <a href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'underline' }}>{t('Clear filter', 'Clear filter')}</a>
+            <Link href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'underline' }}>{t('Clear filter', 'Clear filter')}</Link>
           </Banner>
         ) : null}
 

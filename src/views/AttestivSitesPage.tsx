@@ -224,10 +224,6 @@ export function AttestivSitesPage() {
               </thead>
               <tbody>
                 {filtered.map((site) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const conc = concentration.get(site.site_id)
                   return (
                     <tr

@@ -271,10 +271,6 @@ export function AttestivReportsPage() {
               </thead>
               <tbody>
                 {paged.map(report => {
-                  const {
-                    t
-                  } = useI18n();
-
                   return (
                     <tr key={report.id} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
                       <td style={{ padding: '10px 10px 10px 0', fontWeight: 500 }}>{report.framework ?? '—'}</td>

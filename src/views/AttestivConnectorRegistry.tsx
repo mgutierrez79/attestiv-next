@@ -357,10 +357,6 @@ export function AttestivConnectorRegistry() {
           }}
         >
           {visibleConnectors.map((connector) => {
-            const {
-              t
-            } = useI18n();
-
             const brandHex = connectorBrandHex(connector.name)
             const state = classifyConnector(connector)
             const isDisabled = (connector.status ?? '').toLowerCase() === 'disabled'

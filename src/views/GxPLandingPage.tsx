@@ -40,7 +40,7 @@ export function GxPLandingPage() {
           Signed, audit-ready evidence across your GxP-validated systems.
         </h1>
         <p style={leadStyle}>
-          A computer-systems validation team shouldn't spend six weeks
+          A computer-systems validation team shouldn&apos;t spend six weeks
           re-assembling the same screenshots every audit cycle. Attestiv
           continuously collects evidence from your MES, LIMS, historian,
           domain controllers, and storage — then ships an external
@@ -60,7 +60,7 @@ export function GxPLandingPage() {
         <h2 style={h2Style}>What the platform produces for a GxP scope</h2>
         <p style={sectionLeadStyle}>
           Every line below is a capability you can hit today against
-          a tenant's validated systems — not a roadmap promise. Click
+          a tenant&apos;s validated systems — not a roadmap promise. Click
           through to see what the auditor would see.
         </p>
         <div style={gridStyle}>
@@ -137,11 +137,11 @@ export function GxPLandingPage() {
       </section>
 
       <section style={sectionStyle}>
-        <h2 style={h2Style}>What this isn't</h2>
+        <h2 style={h2Style}>What this isn&apos;t</h2>
         <ul style={listStyle}>
           <li>A replacement for your validation master plan or your IQ/OQ/PQ deliverables.</li>
           <li>A document-management system. Existing controlled-document libraries stay where they are; Attestiv reads metadata, not full text.</li>
-          <li>An auditor. A human still has to read the gaps and decide what's a finding vs an observation — the platform just makes the evidence verifiable.</li>
+          <li>An auditor. A human still has to read the gaps and decide what&apos;s a finding vs an observation — the platform just makes the evidence verifiable.</li>
         </ul>
       </section>
 
@@ -149,9 +149,9 @@ export function GxPLandingPage() {
         <h2 style={ctaH2Style}>See it on your own scope</h2>
         <p style={ctaCopyStyle}>
           A working tenant can produce a real, signed GxP packet in
-          one click. If you don't have a tenant yet, the trust-center
+          one click. If you don&apos;t have a tenant yet, the trust-center
           page below has a public sample manifest you can verify with
-          the platform's published key.
+          the platform&apos;s published key.
         </p>
         <div style={ctaRowStyle}>
           <Link href="/audit/prepacket" style={primaryButtonStyle}>

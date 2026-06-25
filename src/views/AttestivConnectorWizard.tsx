@@ -1151,10 +1151,6 @@ function CredentialsStep(props: {
         </FormField>
       ) : null}
       {props.fields.map((field) => {
-        const {
-          t
-        } = useI18n();
-
         const wasMasked = props.originallyMasked.has(field.key)
         const hint = wasMasked
           ? t(

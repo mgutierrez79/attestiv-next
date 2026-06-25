@@ -3,7 +3,16 @@ import nextTypescript from 'eslint-config-next/typescript'
 
 const eslintConfig = [
   {
-    ignores: ['.next/**', 'node_modules/**', 'playwright-report/**', 'test-results/**'],
+    // Build/translation tooling and one-off utility scripts are not shipped
+    // app code; they use CommonJS `require` and contain raw translation data
+    // dumps that aren't valid JS modules. Exclude them from the app lint gate.
+    ignores: [
+      '.next/**',
+      'node_modules/**',
+      'playwright-report/**',
+      'test-results/**',
+      'scripts/**',
+    ],
   },
   ...nextVitals,
   ...nextTypescript,

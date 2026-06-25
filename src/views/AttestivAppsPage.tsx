@@ -195,10 +195,6 @@ export function AttestivAppsPage() {
               </thead>
               <tbody>
                 {filtered.map((app) => {
-                  const {
-                    t
-                  } = useI18n();
-
                   const tier = (app.criticality_tier ?? '').toLowerCase()
                   const tierTone = TIER_TONE[tier] ?? 'gray'
                   return (
