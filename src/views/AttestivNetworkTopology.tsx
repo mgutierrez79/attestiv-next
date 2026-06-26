@@ -704,6 +704,7 @@ function nodeFillFor(node: TopologyNode, overlay: Overlay): string {
   if (overlay === 'criticality') {
     switch (node.criticality || node.app_tier) {
       case 'critical':
+      case 'tier_0':
       case 'tier_1':
         return 'var(--color-status-red-mid)'
       case 'high':
@@ -711,9 +712,12 @@ function nodeFillFor(node: TopologyNode, overlay: Overlay): string {
         return 'var(--color-status-amber-mid)'
       case 'medium':
       case 'tier_3':
+      case 'tier_4':
         return 'var(--color-status-blue-mid)'
       case 'low':
         return 'var(--color-status-green-mid)'
+      case 'tier_5':
+        return 'var(--color-background-tertiary)'
     }
     return 'var(--color-background-tertiary)'
   }
@@ -756,11 +760,11 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
   switch (overlay) {
     case 'criticality':
       entries.push(
-        { color: 'var(--color-status-red-mid)', label: 'critical / tier_1' },
+        { color: 'var(--color-status-red-mid)', label: 'critical / tier_0 / tier_1' },
         { color: 'var(--color-status-amber-mid)', label: 'high / tier_2' },
-        { color: 'var(--color-status-blue-mid)', label: 'medium / tier_3' },
+        { color: 'var(--color-status-blue-mid)', label: 'medium / tier_3 / tier_4' },
         { color: 'var(--color-status-green-mid)', label: 'low' },
-        { color: 'var(--color-background-tertiary)', label: 'unspecified' },
+        { color: 'var(--color-background-tertiary)', label: 'tier_5 / unspecified' },
       )
       break
     case 'health':

@@ -122,20 +122,29 @@ function sortValue(a: InventoryAsset, key: SortKey): string | number {
   }
 }
 
-const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'blue' | 'gray'> = {
+  tier_0: 'red',
   tier_1: 'red',
   tier_2: 'amber',
   tier_3: 'navy',
+  tier_4: 'blue',
+  tier_5: 'gray',
 }
 
 function tierLabel(tier: string): string {
   switch (tier) {
+    case 'tier_0':
+      return 'Tier 0'
     case 'tier_1':
       return 'Tier 1'
     case 'tier_2':
       return 'Tier 2'
     case 'tier_3':
       return 'Tier 3'
+    case 'tier_4':
+      return 'Tier 4'
+    case 'tier_5':
+      return 'Tier 5'
   }
   return tier
 }

@@ -130,10 +130,13 @@ type CCR = {
   created_at?: string
 }
 
-const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'blue' | 'gray'> = {
+  tier_0: 'red',
   tier_1: 'red',
   tier_2: 'amber',
   tier_3: 'navy',
+  tier_4: 'blue',
+  tier_5: 'gray',
 }
 
 export function AttestivAppDetailPage() {

@@ -27,7 +27,8 @@ import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
 
-const CRITICALITY_TIERS = ['tier_1', 'tier_2', 'tier_3'] as const
+const CRITICALITY_TIERS = ['tier_0', 'tier_1', 'tier_2', 'tier_3', 'tier_4', 'tier_5'] as const
+type CriticalityTier = (typeof CRITICALITY_TIERS)[number]
 
 // slugify turns a display name into a backend-valid application_id
 // (lowercase, alphanumeric + dash). The backend regex is
@@ -52,7 +53,7 @@ export function AttestivAppCreatePage() {
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
   const [ownerEmail, setOwnerEmail] = useState('')
-  const [criticalityTier, setCriticalityTier] = useState<'tier_1' | 'tier_2' | 'tier_3'>('tier_2')
+  const [criticalityTier, setCriticalityTier] = useState<CriticalityTier>('tier_2')
   const [vmNames, setVmNames] = useState<string[]>([])
 
   const [dependencies, setDependencies] = useState<Dependency[]>([])
