@@ -129,7 +129,11 @@ export function buildLayeredGraph(input: BuildInput): BuiltGraph {
   }
 
   // app_membership edges between the app and its VMs (from the base graph).
+  // ONLY app_membership: declared app→app dependencies come from the
+  // `dependencies` input (and only when they exist), never from base edges,
+  // so an app_dependency base edge must not be drawn here mislabeled.
   for (const e of baseEdges) {
+    if (e.kind !== 'app_membership') continue
     if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue
     if (e.source === e.target) continue
     edges.push({ id: e.id, source: e.source, target: e.target, relation: 'app_membership' })

@@ -806,6 +806,12 @@ function AppTopologyEmbed({
         const appNodeID = `app:${appID}`
         const adj = new Map<string, string[]>()
         for (const e of body.edges) {
+          // Do NOT traverse app→app dependency edges here: the per-app map
+          // stays scoped to THIS application's own infrastructure. Its
+          // declared dependencies are added separately (and only when they
+          // exist), so the BFS must not walk through the dependency link
+          // and pull other applications' VMs/infra into this app's view.
+          if (e.kind === 'app_dependency') continue
           if (!adj.has(e.source)) adj.set(e.source, [])
           adj.get(e.source)!.push(e.target)
           if (!adj.has(e.target)) adj.set(e.target, [])
