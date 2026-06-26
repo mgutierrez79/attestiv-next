@@ -972,6 +972,21 @@ function AppTopologyEmbed({
         viewBox={`0 0 ${TOPO_W} ${TOPO_H}`}
         style={{ background: 'var(--color-background-secondary)', borderRadius: 6 }}
       >
+        <defs>
+          {/* Directional arrowhead for the app→dependency link. fill
+              context-stroke makes the arrow take the edge's colour. */}
+          <marker
+            id="app-dep-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
+          </marker>
+        </defs>
         {/* Background rect: clicking empty canvas deselects. */}
         <rect
           x={0}
@@ -996,6 +1011,7 @@ function AppTopologyEmbed({
               strokeWidth={isInfraRelation(e.relation) ? 1.5 : 2.25}
               opacity={isInfraRelation(e.relation) ? 0.6 : 0.9}
               strokeDasharray={dashForRelation(e.relation)}
+              markerEnd={e.relation === 'dependency' ? 'url(#app-dep-arrow)' : undefined}
             />
           )
         })}

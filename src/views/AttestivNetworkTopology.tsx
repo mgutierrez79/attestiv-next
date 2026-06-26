@@ -499,6 +499,20 @@ function TopologySVG({
   return (
     <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600 }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          {/* Directional arrowhead for app→dependency edges. */}
+          <marker
+            id="nt-app-dep-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
+          </marker>
+        </defs>
         {/* Site containers: one bounded, labelled box per site, sized
             to its node grid, so every component reads as belonging to
             its Site. */}
@@ -566,6 +580,13 @@ function TopologySVG({
               strokeWidth = 1
               dash = '4 2'
               break
+            case 'app_dependency':
+              // App → the app it depends on. Prominent so the
+              // application dependency backbone reads above the plumbing.
+              stroke = 'var(--color-status-blue-mid)'
+              strokeWidth = 2.5
+              dash = '6 3'
+              break
             case 'network_port':
               stroke = 'var(--color-status-blue-deep)'
               strokeWidth = 1.5
@@ -602,6 +623,7 @@ function TopologySVG({
                 strokeWidth={strokeWidth}
                 strokeDasharray={dash === '0' ? undefined : dash}
                 opacity={0.7}
+                markerEnd={edge.kind === 'app_dependency' ? 'url(#nt-app-dep-arrow)' : undefined}
               />
               {label ? (
                 <>
