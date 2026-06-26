@@ -965,7 +965,7 @@ function AppTopologyEmbed({
         <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-tertiary)', marginRight: 2 }}>
           {t('Layers', 'Layers')}
         </span>
-        <LayerChip layer="dependencies" label={t('Dependencies', 'Dependencies')} icon="ti-arrow-up-right" swatch="var(--color-status-blue-mid)" layers={layers} setLayers={setLayers} />
+        <LayerChip layer="dependencies" label={t('Dependencies', 'Dependencies')} icon="ti-arrow-up-right" swatch="var(--color-status-blue-deep)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="host" label={t('Hosts', 'Hosts')} icon="ti-server" swatch="var(--color-status-amber-mid)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="storage" label={t('Storage', 'Storage')} icon="ti-database" swatch="var(--color-status-green-mid)" layers={layers} setLayers={setLayers} />
         <LayerChip layer="switch" label={t('Network', 'Network')} icon="ti-router" swatch="var(--color-status-red-deep)" layers={layers} setLayers={setLayers} />
@@ -1138,7 +1138,7 @@ function AppTopologyEmbed({
         <Legend swatch="var(--color-status-green-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
         {layers.dependencies ? (
-          <Legend swatch="var(--color-status-blue-mid)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
+          <Legend swatch="var(--color-status-blue-deep)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
         ) : null}
         {layers.host ? (
           <Legend swatch="var(--color-status-amber-mid)" icon="ti-server" label={t('Hosts', 'Hosts')} />
@@ -1168,9 +1168,9 @@ function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
       // at the call site) set it apart from the blue dependency/dependent apps.
       return { color: 'var(--color-status-green-mid)', icon: appIconFromLabel(node.label) }
     case 'dependency':
-      return { color: 'var(--color-status-blue-mid)', icon: 'ti-arrow-up-right' }
+      return { color: 'var(--color-status-blue-deep)', icon: 'ti-arrow-up-right' }
     case 'dependent':
-      return { color: 'var(--color-status-blue-mid)', icon: 'ti-arrow-down-left' }
+      return { color: 'var(--color-status-blue-deep)', icon: 'ti-arrow-down-left' }
     case 'vm':
       return { color: 'var(--color-status-amber-mid)', icon: 'ti-device-desktop' }
     case 'host':
@@ -1222,7 +1222,7 @@ function strokeForRelation(relation: RelationKind): string {
       return 'var(--color-status-red-mid)'
     case 'dependency':
     case 'dependent':
-      return 'var(--color-status-blue-mid)'
+      return 'var(--color-status-blue-deep)'
     case 'host':
       return 'var(--color-status-amber-mid)'
     case 'storage':
