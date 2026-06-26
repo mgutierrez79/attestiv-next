@@ -583,7 +583,10 @@ function TopologySVG({
             case 'app_dependency':
               // App → the app it depends on. Prominent so the
               // application dependency backbone reads above the plumbing.
-              stroke = 'var(--color-status-blue-mid)'
+              // NOTE: blue-deep (not blue-mid) — --color-status-blue-mid is
+              // NOT a defined token, so it renders as an invalid colour
+              // (black fill / no stroke). blue-deep is the defined blue.
+              stroke = 'var(--color-status-blue-deep)'
               strokeWidth = 2.5
               dash = '6 3'
               break
