@@ -36,7 +36,10 @@ type AppSummary = {
   runtime_managed?: boolean
 }
 
-const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'blue' | 'gray'> = {
+  tier_0: 'red',
+  tier0: 'red',
+  '0': 'red',
   tier_1: 'red',
   tier1: 'red',
   '1': 'red',
@@ -46,6 +49,12 @@ const TIER_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
   tier_3: 'navy',
   tier3: 'navy',
   '3': 'navy',
+  tier_4: 'blue',
+  tier4: 'blue',
+  '4': 'blue',
+  tier_5: 'gray',
+  tier5: 'gray',
+  '5': 'gray',
 }
 
 export function AttestivAppsPage() {
@@ -117,10 +126,13 @@ export function AttestivAppsPage() {
   }, [apps, filter])
 
   const summary = useMemo(() => {
-    const totals = { total: apps.length, tier1: 0, gxp: 0 }
+    const totals = { total: apps.length, tier0: 0, tier1: 0, tier4: 0, tier5: 0, gxp: 0 }
     for (const a of apps) {
       const tier = (a.criticality_tier ?? '').toLowerCase()
+      if (tier === 'tier_0' || tier === 'tier0' || tier === '0') totals.tier0++
       if (tier === 'tier_1' || tier === 'tier1' || tier === '1') totals.tier1++
+      if (tier === 'tier_4' || tier === 'tier4' || tier === '4') totals.tier4++
+      if (tier === 'tier_5' || tier === 'tier5' || tier === '5') totals.tier5++
       if (a.gxp_validated) totals.gxp++
     }
     return totals
@@ -153,6 +165,7 @@ export function AttestivAppsPage() {
           }}
         >
           <SummaryCard label={t('Total', 'Total')} value={summary.total} icon="ti-apps" tone="navy" />
+          <SummaryCard label={t('Tier 0', 'Tier 0')} value={summary.tier0} icon="ti-flame" tone="red" />
           <SummaryCard label={t('Tier 1', 'Tier 1')} value={summary.tier1} icon="ti-flame" tone="red" />
           <SummaryCard label={t('GxP-validated', 'GxP-validated')} value={summary.gxp} icon="ti-flask" tone="navy" />
         </div>
@@ -355,7 +368,7 @@ function FilterBar({
       <SelectChip
         label={t('Tier', 'Tier')}
         value={value.tier}
-        options={['tier_1', 'tier_2', 'tier_3']}
+        options={['tier_0', 'tier_1', 'tier_2', 'tier_3', 'tier_4', 'tier_5']}
         onChange={(v) => onChange({ ...value, tier: v })}
       />
       <SelectChip

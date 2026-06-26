@@ -137,10 +137,13 @@ type CascadeImpact = {
   estimated_scope?: string
 }
 
-const CRITICALITY_TONE: Record<string, 'red' | 'amber' | 'navy' | 'gray'> = {
+const CRITICALITY_TONE: Record<string, 'red' | 'amber' | 'navy' | 'blue' | 'gray'> = {
+  tier_0: 'red',
   tier_1: 'red',
   tier_2: 'amber',
   tier_3: 'navy',
+  tier_4: 'blue',
+  tier_5: 'gray',
   critical: 'red',
   high: 'amber',
   medium: 'navy',

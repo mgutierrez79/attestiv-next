@@ -26,7 +26,8 @@ import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
 
-const CRITICALITY_TIERS = ['tier_1', 'tier_2', 'tier_3'] as const
+const CRITICALITY_TIERS = ['tier_0', 'tier_1', 'tier_2', 'tier_3', 'tier_4', 'tier_5'] as const
+type CriticalityTier = (typeof CRITICALITY_TIERS)[number]
 
 type ComponentRow = {
   vm_name: string
@@ -74,7 +75,7 @@ export function AttestivAppEditPage() {
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
   const [ownerEmail, setOwnerEmail] = useState('')
-  const [criticalityTier, setCriticalityTier] = useState<'tier_1' | 'tier_2' | 'tier_3'>('tier_2')
+  const [criticalityTier, setCriticalityTier] = useState<CriticalityTier>('tier_2')
   const [vmNames, setVmNames] = useState<string[]>([])
 
   const [dependencies, setDependencies] = useState<Dependency[]>([])
@@ -111,7 +112,7 @@ export function AttestivAppEditPage() {
         setDisplayName(body.display_name ?? '')
         setDescription(body.description ?? '')
         setOwnerEmail(body.owner_email ?? '')
-        const tier = (body.criticality_tier ?? 'tier_2') as 'tier_1' | 'tier_2' | 'tier_3'
+        const tier = (body.criticality_tier ?? 'tier_2') as CriticalityTier
         setCriticalityTier(CRITICALITY_TIERS.includes(tier) ? tier : 'tier_2')
         setVmNames(parseComponentList((body.components ?? []).map((c) => c.vm_name).filter(Boolean).join(', ')))
         const deps: Dependency[] = (body.dependencies ?? [])
