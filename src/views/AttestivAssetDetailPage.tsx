@@ -1012,7 +1012,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               />
             ) : null}
 
-            {asset.asset_type === 'network_device' || asset.asset_type === 'switch' || asset.asset_type === 'router' ? (
+            {asset.asset_type === 'network_device' || asset.asset_type === 'switch' || asset.asset_type === 'router' || asset.asset_type === 'firewall' || asset.asset_type === 'firewall_manager' ? (
               <NetworkDeviceDetails asset={asset} relatedLinks={relatedLinks} />
             ) : null}
 

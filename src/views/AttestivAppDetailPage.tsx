@@ -712,7 +712,9 @@ function AppInfrastructureDeps({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {cats.firewall.map((fw) => (
                   <div key={fw.id} style={rowStyle}>
-                    <code style={{ fontSize: 11, fontWeight: 500 }}>{fw.name}</code>
+                    <a href={`/inventory/${encodeURIComponent(fw.id)}`} style={{ textDecoration: 'none' }}>
+                      <code style={{ fontSize: 11, fontWeight: 500, color: 'var(--color-status-blue-deep)' }}>{fw.name}</code>
+                    </a>
                     {fw.via_switches && fw.via_switches.length > 0 ? (
                       <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
                         {t('via', 'via')} {fw.via_switches.join(', ')}

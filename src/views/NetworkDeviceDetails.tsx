@@ -47,16 +47,34 @@ export function NetworkDeviceDetails({
     return ''
   }
   const platform = pickStr('platform', 'platform_id', 'platformId', 'model')
-  const software = pickStr('software_version', 'softwareVersion', 'software-version', 'osVersion', 'iosXeVersion', 'version')
+  // 'sw-version' / 'software-version' are the Panorama (Palo Alto firewall)
+  // spellings; the camelCase / underscore variants cover DNAC / RESTCONF.
+  const software = pickStr('software_version', 'softwareVersion', 'software-version', 'sw-version', 'osVersion', 'iosXeVersion', 'version')
   const serial = pickStr('serial', 'serialNumber', 'serial_number', 'serial-number')
   const family = pickStr('family', 'product_family')
   const role = pickStr('role', 'deviceRole', 'roleSource')
-  const mgmtIP = pickStr('management_ip', 'managementIpAddress', 'mgmt_ip', 'ip')
+  // 'ip-address' is the Panorama management-IP key.
+  const mgmtIP = pickStr('management_ip', 'managementIpAddress', 'mgmt_ip', 'ip-address', 'ip_address', 'ip')
   const hostname = pickStr('hostname', 'name', 'displayName')
-  const haState = pickStr('ha_state', 'haState', 'state', 'redundancyState', 'redundancy_state')
+  // 'ha-state' is the Panorama HA role (active / passive); the others cover
+  // Catalyst Center redundancy state.
+  const haState = pickStr('ha-state', 'ha_state', 'haState', 'redundancyState', 'redundancy_state')
+  const cluster = pickStr('cluster_id', 'cluster')
+  const connected = pickStr('connected')
   const uptime = pickStr('uptime', 'upTime', 'lastReachableUptime')
   const reachability = pickStr('reachability', 'reachabilityStatus', 'connection_status', 'reachabilityFailureReason')
   const collectionStatus = pickStr('collectionStatus', 'collection_status')
+
+  // Firewall LLDP/CDP switch adjacency (metadata.switch_connections,
+  // attached server-side from the device_link network_adjacency rows) and
+  // the per-interface inventory (metadata.interfaces, stamped by the
+  // Panorama connector). Both arrays of plain objects; tolerate absence.
+  const switchConnections = Array.isArray(metadata['switch_connections'])
+    ? (metadata['switch_connections'] as Array<Record<string, unknown>>)
+    : []
+  const interfaces = Array.isArray(metadata['interfaces'])
+    ? (metadata['interfaces'] as Array<Record<string, unknown>>)
+    : []
 
   // Bundle related links by classification so we can show "5 host
   // trunks, 2 port-channels, 1 intersite link" plus per-category
@@ -114,13 +132,90 @@ export function NetworkDeviceDetails({
           {family && <DeviceStat label={t('Family', 'Family')} value={family} />}
           {software && <DeviceStat label={t('Software', 'Software')} value={software} mono />}
           {serial && <DeviceStat label={t('Serial', 'Serial')} value={serial} mono />}
-          {role && <DeviceStat label={t('Role', 'Role')} value={role} />}
+          {role && <DeviceStat label={t('HA role', 'HA role')} value={role} />}
           {mgmtIP && <DeviceStat label={t('Management IP', 'Management IP')} value={mgmtIP} mono />}
+          {cluster && <DeviceStat label={t('HA cluster', 'HA cluster')} value={cluster} mono />}
+          {connected && <DeviceStat label={t('Connected', 'Connected')} value={connected} />}
           {uptime && <DeviceStat label={t('Uptime', 'Uptime')} value={uptime} />}
           {reachability && <DeviceStat label={t('Reachability', 'Reachability')} value={reachability} />}
           {collectionStatus && <DeviceStat label={t('Collection', 'Collection')} value={collectionStatus} />}
         </div>
       </Card>
+
+      {switchConnections.length > 0 && (
+        <Card>
+          <CardTitle right={<Badge tone="navy">{switchConnections.length}</Badge>}>
+            {t('Switch connectivity', 'Switch connectivity')}
+          </CardTitle>
+          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+            {t(
+              'LLDP/CDP neighbours — which local interface reaches which switch port (cross-referenced from the network connectors).',
+              'LLDP/CDP neighbours — which local interface reaches which switch port (cross-referenced from the network connectors).',
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8, marginTop: 8 }}>
+            {switchConnections.slice(0, 48).map((c, i) => {
+              const local = String(c['local_interface'] ?? '—')
+              const peer = String(c['peer_device'] ?? '—')
+              const peerIface = String(c['peer_interface'] ?? '')
+              const discovery = String(c['discovery'] ?? '')
+              return (
+                <div
+                  key={`${local}-${peer}-${peerIface}-${i}`}
+                  style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 6, padding: '8px 10px', fontSize: 12 }}
+                >
+                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 500 }}>{local}</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
+                    → <span style={{ fontWeight: 500 }}>{peer}</span>
+                    {peerIface && <span style={{ fontFamily: 'var(--font-mono)' }}> : {peerIface}</span>}
+                  </div>
+                  {discovery && (
+                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
+                      {discovery}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
+      {interfaces.length > 0 && (
+        <Card>
+          <CardTitle right={<Badge tone="navy">{interfaces.length}</Badge>}>
+            {t('Interfaces', 'Interfaces')}
+          </CardTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, marginTop: 8 }}>
+            {interfaces.slice(0, 60).map((iface, i) => {
+              const name = String(iface['name'] ?? '—')
+              const zone = String(iface['zone'] ?? '')
+              const ip = String(iface['ip'] ?? '')
+              const vlanRaw = iface['vlan']
+              const vlan = typeof vlanRaw === 'number' && vlanRaw > 0 ? String(vlanRaw) : ''
+              const state = String(iface['state'] ?? '')
+              return (
+                <div
+                  key={`${name}-${i}`}
+                  style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 6, padding: '8px 10px', fontSize: 12 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500 }}>{name}</span>
+                    {state && (
+                      <Badge tone={state.toLowerCase() === 'up' ? 'green' : 'gray'}>{state}</Badge>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 3 }}>
+                    {zone && <span>{t('zone', 'zone')} {zone}</span>}
+                    {vlan && <span>· VLAN {vlan}</span>}
+                    {ip && <span style={{ fontFamily: 'var(--font-mono)' }}>· {ip}</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardTitle right={<Badge tone="navy">{relatedLinks.length}</Badge>}>
