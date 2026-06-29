@@ -100,6 +100,11 @@ export function NetworkDeviceDetails({
   const interfaces = Array.isArray(metadata['interfaces'])
     ? (metadata['interfaces'] as Array<Record<string, unknown>>)
     : []
+  // Switch-stack members (Catalyst Center /stack), one row per member
+  // switch with its switch number, role, serial, model, state, MAC.
+  const stackMembers = Array.isArray(metadata['stack_members'])
+    ? (metadata['stack_members'] as Array<Record<string, unknown>>)
+    : []
 
   // Bundle related links by classification so we can show "5 host
   // trunks, 2 port-channels, 1 intersite link" plus per-category
@@ -240,6 +245,56 @@ export function NetworkDeviceDetails({
                 </div>
               )
             })}
+          </div>
+        </Card>
+      )}
+
+      {stackMembers.length > 0 && (
+        <Card>
+          <CardTitle right={<Badge tone="navy">{stackMembers.length}</Badge>}>
+            {t('Stack members', 'Stack members')}
+          </CardTitle>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <th style={{ padding: '4px 8px' }}>{t('Switch #', 'Switch #')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('Role', 'Role')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('Model', 'Model')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('Serial', 'Serial')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('State', 'State')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('MAC', 'MAC')}</th>
+                  <th style={{ padding: '4px 8px' }}>{t('Priority', 'Priority')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stackMembers
+                  .slice()
+                  .sort((a, b) => Number(a['switch_number'] ?? 0) - Number(b['switch_number'] ?? 0))
+                  .map((m, i) => {
+                    const state = String(m['state'] ?? '')
+                    const role = String(m['role'] ?? '')
+                    const stateTone = state.toLowerCase() === 'ready' || state.toLowerCase() === 'ok'
+                      ? 'green'
+                      : state
+                        ? 'amber'
+                        : 'gray'
+                    return (
+                      <tr key={`${String(m['switch_number'] ?? i)}-${String(m['serial'] ?? i)}`} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                        <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{String(m['switch_number'] ?? '—')}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          {role ? <Badge tone={role.toLowerCase() === 'active' ? 'green' : 'navy'}>{role}</Badge> : '—'}
+                        </td>
+                        <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{String(m['model'] ?? '—')}</td>
+                        <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{String(m['serial'] ?? '—')}</td>
+                        <td style={{ padding: '6px 8px' }}>{state ? <Badge tone={stateTone}>{state}</Badge> : '—'}</td>
+                        <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)' }}>{String(m['mac'] ?? '—')}</td>
+                        <td style={{ padding: '6px 8px' }}>{String(m['priority'] ?? '—')}</td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}
