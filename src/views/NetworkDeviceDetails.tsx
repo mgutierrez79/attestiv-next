@@ -48,22 +48,47 @@ export function NetworkDeviceDetails({
   }
   const platform = pickStr('platform', 'platform_id', 'platformId', 'model')
   // 'sw-version' / 'software-version' are the Panorama (Palo Alto firewall)
-  // spellings; the camelCase / underscore variants cover DNAC / RESTCONF.
-  const software = pickStr('software_version', 'softwareVersion', 'software-version', 'sw-version', 'osVersion', 'iosXeVersion', 'version')
-  const serial = pickStr('serial', 'serialNumber', 'serial_number', 'serial-number')
+  // spellings; 'esxi_version' / 'build' / 'full_name' cover vCenter hosts;
+  // the camelCase / underscore variants cover DNAC / RESTCONF.
+  const software = pickStr('software_version', 'softwareVersion', 'software-version', 'sw-version', 'esxi_version', 'esx_version', 'build', 'full_name', 'osVersion', 'iosXeVersion', 'version')
+  // 'service_tag' is the Dell OpenManage serial cross-referenced onto the
+  // ESXi host when its hardware record merges in.
+  const serial = pickStr('serial', 'serialNumber', 'serial_number', 'serial-number', 'service_tag')
   const family = pickStr('family', 'product_family')
+  // 'manufacturer' (Dell OME) / 'vendor' for the hardware vendor.
+  const vendor = pickStr('manufacturer', 'vendor')
   const role = pickStr('role', 'deviceRole', 'roleSource')
-  // 'ip-address' is the Panorama management-IP key.
-  const mgmtIP = pickStr('management_ip', 'managementIpAddress', 'mgmt_ip', 'ip-address', 'ip_address', 'ip')
+  // 'ip-address' is the Panorama management-IP key; 'management_address'
+  // is the PowerStore/host-enricher key.
+  const mgmtIP = pickStr('management_ip', 'managementIpAddress', 'mgmt_ip', 'management_address', 'ip-address', 'ip_address', 'ip')
   const hostname = pickStr('hostname', 'name', 'displayName')
   // 'ha-state' is the Panorama HA role (active / passive); the others cover
   // Catalyst Center redundancy state.
   const haState = pickStr('ha-state', 'ha_state', 'haState', 'redundancyState', 'redundancy_state')
+  // Hardware health for physical hosts (Dell OpenManage / Redfish): normal
+  // / warning / critical.
+  const health = pickStr('health', 'health_state', 'hardware_health')
+  const power = pickStr('power_state', 'powerState')
   const cluster = pickStr('cluster_id', 'cluster')
   const connected = pickStr('connected')
   const uptime = pickStr('uptime', 'upTime', 'lastReachableUptime')
   const reachability = pickStr('reachability', 'reachabilityStatus', 'connection_status', 'reachabilityFailureReason')
   const collectionStatus = pickStr('collectionStatus', 'collection_status')
+
+  const healthTone = (h: string): 'green' | 'amber' | 'red' | 'gray' => {
+    const v = h.toLowerCase()
+    if (['normal', 'ok', 'healthy', 'green', 'good'].some((s) => v.includes(s))) return 'green'
+    if (['warning', 'degraded', 'amber', 'yellow'].some((s) => v.includes(s))) return 'amber'
+    if (['critical', 'error', 'fail', 'red'].some((s) => v.includes(s))) return 'red'
+    return 'gray'
+  }
+  // Posture badge in the card title: HA role for firewalls, hardware health
+  // for hosts.
+  const postureBadge = haState
+    ? <Badge tone={haState.toLowerCase().includes('active') ? 'green' : 'amber'}>{haState}</Badge>
+    : health
+      ? <Badge tone={healthTone(health)}>{health}</Badge>
+      : undefined
 
   // Firewall LLDP/CDP switch adjacency (metadata.switch_connections,
   // attached server-side from the device_link network_adjacency rows) and
@@ -123,16 +148,18 @@ export function NetworkDeviceDetails({
   return (
     <>
       <Card>
-        <CardTitle right={haState ? <Badge tone={haState.toLowerCase().includes('active') ? 'green' : 'amber'}>{haState}</Badge> : undefined}>
+        <CardTitle right={postureBadge}>
           {t('Device', 'Device')}
         </CardTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8 }}>
           {hostname && <DeviceStat label={t('Hostname', 'Hostname')} value={hostname} mono />}
-          {platform && <DeviceStat label={t('Platform', 'Platform')} value={platform} mono />}
+          {vendor && <DeviceStat label={t('Vendor', 'Vendor')} value={vendor} />}
+          {platform && <DeviceStat label={t('Model', 'Model')} value={platform} mono />}
           {family && <DeviceStat label={t('Family', 'Family')} value={family} />}
           {software && <DeviceStat label={t('Software', 'Software')} value={software} mono />}
           {serial && <DeviceStat label={t('Serial', 'Serial')} value={serial} mono />}
           {role && <DeviceStat label={t('HA role', 'HA role')} value={role} />}
+          {power && <DeviceStat label={t('Power', 'Power')} value={power} />}
           {mgmtIP && <DeviceStat label={t('Management IP', 'Management IP')} value={mgmtIP} mono />}
           {cluster && <DeviceStat label={t('HA cluster', 'HA cluster')} value={cluster} mono />}
           {connected && <DeviceStat label={t('Connected', 'Connected')} value={connected} />}
