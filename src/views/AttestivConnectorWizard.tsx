@@ -197,6 +197,21 @@ const CONNECTORS: ConnectorKind[] = [
     pollDefault: 1800,
   },
   {
+    // Veeam ONE — monitoring/reporting product, separate from the
+    // Backup Enterprise Manager (B&R) connector above. Own REST API on
+    // port 1239: OAuth2 password grant, then triggered alarms + SLA /
+    // health signals feed the resilience + backup-coverage surfaces.
+    value: 'veeam_one',
+    label: 'Veeam ONE',
+    category: 'Backup',
+    endpointHint: 'https://veeam-one.acme.internal:1239',
+    fields: [
+      { key: 'username', label: 'Veeam ONE username', required: true, hint: 'A Veeam ONE user with REST API access. Read-only monitoring access is sufficient.' },
+      { key: 'password', label: 'Veeam ONE password', type: 'password', required: true },
+    ],
+    pollDefault: 1800,
+  },
+  {
     value: 'oracle_rman',
     label: 'Oracle RMAN',
     category: 'Backup',
