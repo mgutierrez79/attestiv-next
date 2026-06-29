@@ -158,7 +158,8 @@ export function NetworkDeviceDetails({
               const local = String(c['local_interface'] ?? '—')
               const peer = String(c['peer_device'] ?? '—')
               const peerIface = String(c['peer_interface'] ?? '')
-              const discovery = String(c['discovery'] ?? '')
+              const discovery = String(c['discovery'] ?? '').replace(/_/g, ' ')
+              const vlan = String(c['vlan'] ?? '')
               return (
                 <div
                   key={`${local}-${peer}-${peerIface}-${i}`}
@@ -169,11 +170,10 @@ export function NetworkDeviceDetails({
                     → <span style={{ fontWeight: 500 }}>{peer}</span>
                     {peerIface && <span style={{ fontFamily: 'var(--font-mono)' }}> : {peerIface}</span>}
                   </div>
-                  {discovery && (
-                    <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
-                      {discovery}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                    {vlan && <span>VLAN {vlan}</span>}
+                    {discovery && <span style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{vlan ? '· ' : ''}{discovery}</span>}
+                  </div>
                 </div>
               )
             })}
