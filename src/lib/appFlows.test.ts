@@ -1,0 +1,136 @@
+import { describe, it, expect } from 'vitest'
+import {
+  buildFlowsCsv,
+  cleanFlows,
+  countFlows,
+  csvCell,
+  emptyFlow,
+  validationTone,
+  type DependencyFlow,
+  type FlowExportDependency,
+} from './appFlows'
+
+// These helpers back the per-dependency network flow matrix: the edit-form
+// normalization (cleanFlows), the detail-page CSV export (buildFlowsCsv),
+// and the validation-badge tone mapping. The contract that matters is that
+// the persisted/export shapes line up with the locked backend contract.
+
+describe('emptyFlow', () => {
+  it('defaults protocol to tcp and leaves the rest blank', () => {
+    expect(emptyFlow()).toEqual({
+      source: '',
+      destination: '',
+      protocol: 'tcp',
+      ports: '',
+      direction: undefined,
+      description: '',
+    })
+  })
+})
+
+describe('cleanFlows', () => {
+  it('trims strings and drops empty optional fields', () => {
+    const rows: DependencyFlow[] = [
+      { source: '  10.0.0.1 ', destination: 'db.internal ', protocol: 'tcp', ports: ' 443 ', description: ' web ' },
+    ]
+    expect(cleanFlows(rows)).toEqual([
+      { source: '10.0.0.1', destination: 'db.internal', protocol: 'tcp', ports: '443', description: 'web' },
+    ])
+  })
+
+  it('drops rows with no source, destination, ports or description', () => {
+    const rows: DependencyFlow[] = [
+      { source: '', destination: '', protocol: 'tcp', ports: '', description: '' },
+      { source: 'a', destination: 'b', protocol: 'udp', ports: '53' },
+    ]
+    expect(cleanFlows(rows)).toHaveLength(1)
+    expect(cleanFlows(rows)[0].source).toBe('a')
+  })
+
+  it('only includes direction when set', () => {
+    expect(cleanFlows([{ source: 'a', destination: 'b' }])[0]).not.toHaveProperty('direction')
+    expect(cleanFlows([{ source: 'a', destination: 'b', direction: 'egress' }])[0].direction).toBe('egress')
+  })
+
+  it('defaults a missing protocol to tcp', () => {
+    expect(cleanFlows([{ source: 'a' }])[0].protocol).toBe('tcp')
+  })
+
+  it('returns [] for undefined / non-array input', () => {
+    expect(cleanFlows(undefined)).toEqual([])
+  })
+
+  it('never persists client-side validation', () => {
+    const rows: DependencyFlow[] = [
+      { source: 'a', destination: 'b', validation: { status: 'permitted' } },
+    ]
+    expect(cleanFlows(rows)[0]).not.toHaveProperty('validation')
+  })
+})
+
+describe('validationTone', () => {
+  it('maps statuses to badge tones', () => {
+    expect(validationTone('permitted')).toBe('green')
+    expect(validationTone('not_permitted')).toBe('red')
+    expect(validationTone('unknown')).toBe('gray')
+  })
+})
+
+describe('csvCell', () => {
+  it('quotes values containing commas, quotes or newlines', () => {
+    expect(csvCell('plain')).toBe('plain')
+    expect(csvCell('a,b')).toBe('"a,b"')
+    expect(csvCell('a"b')).toBe('"a""b"')
+    expect(csvCell('a\nb')).toBe('"a\nb"')
+  })
+  it('renders null / undefined as empty', () => {
+    expect(csvCell(undefined)).toBe('')
+    expect(csvCell(null)).toBe('')
+  })
+})
+
+describe('buildFlowsCsv', () => {
+  it('flattens every flow across dependencies with the fixed header', () => {
+    const deps: FlowExportDependency[] = [
+      {
+        application_id: 'ad-core',
+        flows: [
+          { source: '10.0.0.1', destination: 'dc1', protocol: 'tcp', ports: '389,636', direction: 'egress', description: 'ldap' },
+        ],
+      },
+      {
+        application_id: 'sql-fin',
+        flows: [
+          { source: 'app01', destination: 'sql01', protocol: 'tcp', ports: '1433', description: 'db, primary' },
+        ],
+      },
+      { application_id: 'no-flows' },
+    ]
+    const csv = buildFlowsCsv(deps)
+    const lines = csv.split('\n')
+    expect(lines[0]).toBe('dependency_application_id,source,destination,protocol,ports,direction,description')
+    expect(lines[1]).toBe('ad-core,10.0.0.1,dc1,tcp,"389,636",egress,ldap')
+    // commas inside a free-text field are quoted; missing direction is blank
+    expect(lines[2]).toBe('sql-fin,app01,sql01,tcp,1433,,"db, primary"')
+    expect(lines).toHaveLength(3)
+  })
+
+  it('returns just the header when there are no flows', () => {
+    expect(buildFlowsCsv([])).toBe('dependency_application_id,source,destination,protocol,ports,direction,description')
+    expect(buildFlowsCsv(undefined)).toBe('dependency_application_id,source,destination,protocol,ports,direction,description')
+  })
+})
+
+describe('countFlows', () => {
+  it('totals flows across dependencies', () => {
+    expect(
+      countFlows([
+        { application_id: 'a', flows: [emptyFlow(), emptyFlow()] },
+        { application_id: 'b' },
+        { application_id: 'c', flows: [emptyFlow()] },
+      ]),
+    ).toBe(3)
+    expect(countFlows([])).toBe(0)
+    expect(countFlows(undefined)).toBe(0)
+  })
+})

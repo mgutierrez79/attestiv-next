@@ -22,6 +22,7 @@ import {
 } from '../components/AttestivUi'
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
 import { AppComponentsField, formatComponentList, parseComponentList } from '../components/AppComponentsField'
+import { cleanFlows, type DependencyFlow } from '../lib/appFlows'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
@@ -49,6 +50,7 @@ type DependencyRow = {
   application_id?: string
   dependency_type?: string
   criticality?: string
+  flows?: DependencyFlow[]
 }
 
 type AppDetail = {
@@ -123,6 +125,7 @@ export function AttestivAppEditPage() {
             criticality: (['critical', 'high', 'medium', 'low'].includes(d.criticality ?? '')
               ? (d.criticality as Dependency['criticality'])
               : 'high'),
+            flows: Array.isArray(d.flows) ? d.flows : [],
           }))
         setDependencies(deps)
         const gxp = body.gxp ?? {}
@@ -215,6 +218,7 @@ export function AttestivAppEditPage() {
         application_id: d.application_id.trim(),
         dependency_type: d.dependency_type.trim(),
         criticality: d.criticality,
+        flows: cleanFlows(d.flows),
       }))
       .filter((d) => d.application_id && d.application_id !== applicationId)
     for (const d of cleanDeps) {

@@ -26,6 +26,12 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import {
+  buildFlowsCsv,
+  countFlows,
+  validationTone,
+  type DependencyFlow,
+} from '../lib/appFlows'
+import {
   isAssetNode,
   neighboursOf,
 } from '../lib/topologyNeighbours'
@@ -72,6 +78,7 @@ type AppDependency = {
   dependency_type?: string
   criticality?: string
   description?: string
+  flows?: DependencyFlow[]
 }
 
 type InfraHost = { id: string; name: string; cluster?: string; site?: string; used_by: string[] }
@@ -243,6 +250,21 @@ export function AttestivAppDetailPage() {
   const tier = (app.criticality_tier ?? '').toLowerCase()
   const tierTone = TIER_TONE[tier] ?? 'gray'
 
+  const flowCount = countFlows(app.dependencies)
+
+  // Client-side CSV of every flow across all dependencies. Mirrors the
+  // Blob + anchor download used elsewhere (e.g. the Risks page export).
+  function exportFlows() {
+    const csv = buildFlowsCsv(app?.dependencies)
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `app-flows-${app?.application_id ?? 'export'}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <>
       <Topbar
@@ -347,7 +369,20 @@ export function AttestivAppDetailPage() {
         </Card>
 
         <Card style={{ marginTop: 12 }}>
-          <CardTitle right={<Badge tone="navy">{app.dependencies?.length ?? 0}</Badge>}>{t('Dependencies', 'Dependencies')}</CardTitle>
+          <CardTitle
+            right={
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {flowCount > 0 ? (
+                  <GhostButton onClick={exportFlows}>
+                    <i className="ti ti-download" aria-hidden="true" /> {t('Export flows (CSV)', 'Export flows (CSV)')}
+                  </GhostButton>
+                ) : null}
+                <Badge tone="navy">{app.dependencies?.length ?? 0}</Badge>
+              </div>
+            }
+          >
+            {t('Dependencies', 'Dependencies')}
+          </CardTitle>
           {!app.dependencies || app.dependencies.length === 0 ? (
             <EmptyState icon="ti-link-off" title={t('No declared dependencies', 'No declared dependencies')} description={t(
               'The application has no upstream dependency declarations.',
@@ -359,39 +394,47 @@ export function AttestivAppDetailPage() {
                 <div
                   key={`${d.application_id}-${i}`}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
                     padding: '10px 0',
                     borderBottom: '0.5px solid var(--color-border-tertiary)',
-                    fontSize: 12,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/apps/${encodeURIComponent(d.application_id)}`)}
+                  <div
                     style={{
-                      flex: 1,
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      fontFamily: 'inherit',
-                      color: 'var(--color-text-primary)',
-                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      fontSize: 12,
                     }}
                   >
-                    <div style={{ fontWeight: 500 }}>
-                      <code>{d.application_id}</code>
-                    </div>
-                    {d.description ? (
-                      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{d.description}</div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/apps/${encodeURIComponent(d.application_id)}`)}
+                      style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: 'inherit',
+                        color: 'var(--color-text-primary)',
+                        padding: 0,
+                      }}
+                    >
+                      <div style={{ fontWeight: 500 }}>
+                        <code>{d.application_id}</code>
+                      </div>
+                      {d.description ? (
+                        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{d.description}</div>
+                      ) : null}
+                    </button>
+                    {d.dependency_type ? (
+                      <Badge tone="gray">{d.dependency_type.replace(/_/g, ' ')}</Badge>
                     ) : null}
-                  </button>
-                  {d.dependency_type ? (
-                    <Badge tone="gray">{d.dependency_type.replace(/_/g, ' ')}</Badge>
+                    {d.criticality ? <Badge tone="amber">{d.criticality}</Badge> : null}
+                  </div>
+                  {d.flows && d.flows.length > 0 ? (
+                    <FlowMatrix flows={d.flows} t={t} />
                   ) : null}
-                  {d.criticality ? <Badge tone="amber">{d.criticality}</Badge> : null}
                 </div>
               ))}
             </div>
@@ -1476,6 +1519,62 @@ function Legend({ swatch, label, icon }: { swatch: string; label: string; icon?:
       </span>
       {label}
     </span>
+  )
+}
+
+// FlowMatrix renders one dependency's declared network flows as a compact
+// table, styled to match the Components table above. Columns: source,
+// destination, protocol, ports, direction, description. When a flow carries
+// the optional Phase-2 `validation` enrichment, a small status badge is
+// shown next to the source; when it's absent (today's default) nothing is
+// rendered — the matrix degrades gracefully.
+function FlowMatrix({
+  flows,
+  t,
+}: {
+  flows: DependencyFlow[]
+  t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
+}) {
+  return (
+    <div style={{ marginTop: 8, marginLeft: 2, overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={headerRowStyle}>
+            <th style={{ padding: '4px 10px 4px 0' }}>{t('Source', 'Source')}</th>
+            <th style={{ padding: '4px 10px' }}>{t('Destination', 'Destination')}</th>
+            <th style={{ padding: '4px 10px' }}>{t('Protocol', 'Protocol')}</th>
+            <th style={{ padding: '4px 10px' }}>{t('Ports', 'Ports')}</th>
+            <th style={{ padding: '4px 10px' }}>{t('Direction', 'Direction')}</th>
+            <th style={{ padding: '4px 0 4px 10px' }}>{t('Description', 'Description')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flows.map((f, i) => (
+            <tr key={i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+              <td style={{ padding: '6px 10px 6px 0' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <code style={{ fontSize: 11 }}>{f.source || '—'}</code>
+                  {f.validation ? (
+                    <Badge tone={validationTone(f.validation.status)}>{f.validation.status.replace(/_/g, ' ')}</Badge>
+                  ) : null}
+                </span>
+              </td>
+              <td style={{ padding: '6px 10px' }}>
+                <code style={{ fontSize: 11 }}>{f.destination || '—'}</code>
+              </td>
+              <td style={{ padding: '6px 10px' }}>
+                {f.protocol ? <Badge tone="gray">{f.protocol}</Badge> : '—'}
+              </td>
+              <td style={{ padding: '6px 10px', color: 'var(--color-text-secondary)' }}>
+                {f.ports ? <code style={{ fontSize: 11 }}>{f.ports}</code> : '—'}
+              </td>
+              <td style={{ padding: '6px 10px', color: 'var(--color-text-secondary)' }}>{f.direction ?? '—'}</td>
+              <td style={{ padding: '6px 0 6px 10px', color: 'var(--color-text-secondary)' }}>{f.description || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

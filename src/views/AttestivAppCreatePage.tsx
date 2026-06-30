@@ -23,6 +23,7 @@ import {
 } from '../components/AttestivUi'
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
 import { AppComponentsField, formatComponentList } from '../components/AppComponentsField'
+import { cleanFlows } from '../lib/appFlows'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
@@ -107,6 +108,7 @@ export function AttestivAppCreatePage() {
         application_id: d.application_id.trim(),
         dependency_type: d.dependency_type.trim(),
         criticality: d.criticality,
+        flows: cleanFlows(d.flows),
       }))
       .filter((d) => d.application_id && d.application_id !== id)
     for (const d of cleanDeps) {
