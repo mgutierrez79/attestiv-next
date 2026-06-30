@@ -27,9 +27,13 @@ import {
 import { apiFetch } from '../lib/api'
 import {
   buildFlowsCsv,
+  buildFlowValidationLookup,
   countFlows,
+  flowValidationKey,
   validationTone,
   type DependencyFlow,
+  type FlowValidation,
+  type FlowValidationResponse,
 } from '../lib/appFlows'
 import {
   isAssetNode,
@@ -158,6 +162,10 @@ export function AttestivAppDetailPage() {
   const [app, setApp] = useState<AppDetail | null>(null)
   const [availability, setAvailability] = useState<AvailabilityResult | null>(null)
   const [ccrs, setCCRs] = useState<CCR[]>([])
+  // Phase-2 flow-validation enrichment, keyed by flowValidationKey. Empty
+  // until the best-effort /flow-validation fetch resolves; absence of a key
+  // means "no badge for that flow" (the default behaviour).
+  const [flowValidation, setFlowValidation] = useState<Map<string, FlowValidation>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hostingSite, setHostingSite] = useState('')
@@ -187,10 +195,11 @@ export function AttestivAppDetailPage() {
       // Availability + CCRs are best-effort. They run AFTER the
       // detail loads so the page can render the summary even if
       // these endpoints are temporarily unavailable.
-      const [availRes, ccrRes, ovRes] = await Promise.allSettled([
+      const [availRes, ccrRes, ovRes, flowValRes] = await Promise.allSettled([
         apiFetch(`/apps/${encodeURIComponent(id)}/availability`),
         apiFetch(`/apps/${encodeURIComponent(id)}/change-control`),
         apiFetch('/site-registry/app-site-overrides'),
+        apiFetch(`/apps/${encodeURIComponent(id)}/flow-validation`),
       ])
       if (cancelled) return
       if (availRes.status === 'fulfilled' && availRes.value.ok) {
@@ -205,6 +214,12 @@ export function AttestivAppDetailPage() {
         const body = await ovRes.value.json()
         const overrides = (body?.overrides ?? {}) as Record<string, string>
         setHostingSite(overrides[id] ?? '')
+      }
+      // Flow validation is best-effort: degrade silently (no badges) on any
+      // failure or non-OK response.
+      if (flowValRes.status === 'fulfilled' && flowValRes.value.ok) {
+        const body = (await flowValRes.value.json().catch(() => null)) as FlowValidationResponse | null
+        setFlowValidation(buildFlowValidationLookup(body))
       }
       setLoading(false)
     }
@@ -433,7 +448,12 @@ export function AttestivAppDetailPage() {
                     {d.criticality ? <Badge tone="amber">{d.criticality}</Badge> : null}
                   </div>
                   {d.flows && d.flows.length > 0 ? (
-                    <FlowMatrix flows={d.flows} t={t} />
+                    <FlowMatrix
+                      flows={d.flows}
+                      dependencyId={d.application_id}
+                      validation={flowValidation}
+                      t={t}
+                    />
                   ) : null}
                 </div>
               ))}
@@ -1530,11 +1550,30 @@ function Legend({ swatch, label, icon }: { swatch: string; label: string; icon?:
 // rendered — the matrix degrades gracefully.
 function FlowMatrix({
   flows,
+  dependencyId,
+  validation,
   t,
 }: {
   flows: DependencyFlow[]
+  dependencyId: string
+  validation: Map<string, FlowValidation>
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
+  // Attach the validation enrichment onto each displayed flow by its
+  // identifying tuple. A flow with no matching entry keeps validation
+  // undefined → no badge (the default, graceful behaviour).
+  const enriched = flows.map((f) => {
+    const v = validation.get(
+      flowValidationKey({
+        dependency_application_id: dependencyId,
+        source: f.source,
+        destination: f.destination,
+        protocol: f.protocol,
+        ports: f.ports,
+      }),
+    )
+    return v ? { ...f, validation: v } : f
+  })
   return (
     <div style={{ marginTop: 8, marginLeft: 2, overflowX: 'auto' }}>
       <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
@@ -1549,13 +1588,18 @@ function FlowMatrix({
           </tr>
         </thead>
         <tbody>
-          {flows.map((f, i) => (
+          {enriched.map((f, i) => (
             <tr key={i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
               <td style={{ padding: '6px 10px 6px 0' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <code style={{ fontSize: 11 }}>{f.source || '—'}</code>
                   {f.validation ? (
-                    <Badge tone={validationTone(f.validation.status)}>{f.validation.status.replace(/_/g, ' ')}</Badge>
+                    <Badge
+                      tone={validationTone(f.validation.status)}
+                      title={[f.validation.matched_rule, f.validation.reason].filter(Boolean).join(' — ') || undefined}
+                    >
+                      {f.validation.status.replace(/_/g, ' ')}
+                    </Badge>
                   ) : null}
                 </span>
               </td>

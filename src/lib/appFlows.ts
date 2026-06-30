@@ -18,6 +18,9 @@ export type FlowValidationStatus = 'permitted' | 'not_permitted' | 'unknown'
 export type FlowValidation = {
   status: FlowValidationStatus
   matched_rule?: string
+  // Optional human-readable explanation of WHY a flow is (not) permitted —
+  // surfaced as the badge tooltip. Part of the same Phase-2 enrichment.
+  reason?: string
 }
 
 export type DependencyFlow = {
@@ -136,4 +139,104 @@ export function countFlows(dependencies: FlowExportDependency[] | undefined): nu
   let n = 0
   for (const dep of dependencies ?? []) n += dep.flows?.length ?? 0
   return n
+}
+
+// --- Flow-validation enrichment (Phase-2) ---------------------------------
+//
+// GET /apps/{id}/flow-validation returns, per declared flow, whether the
+// firewall rule-base permits it. The detail page builds a lookup keyed by
+// the flow's identifying tuple and attaches the result as `validation` on
+// each displayed flow so the existing badge lights up. The frontend never
+// writes these back (cleanFlows strips validation on save).
+
+// One evaluated flow as returned by the backend. The first four fields plus
+// the owning dependency's application_id form the matching key.
+export type FlowValidationEntry = {
+  dependency_application_id?: string
+  source?: string
+  destination?: string
+  protocol?: string
+  ports?: string
+  status: FlowValidationStatus
+  matched_rule?: string
+  reason?: string
+}
+
+export type FlowValidationResponse = {
+  application_id?: string
+  flows?: FlowValidationEntry[]
+  rules_evaluated?: number
+  firewalls?: number
+}
+
+// flowValidationKey builds the stable lookup key for a flow. The same
+// function is used for both sides of the match — the backend entry and the
+// displayed flow — so the field order and normalization stay identical.
+// Keyed by dependency_application_id | source | destination | protocol | ports.
+export function flowValidationKey(parts: {
+  dependency_application_id?: string
+  source?: string
+  destination?: string
+  protocol?: string
+  ports?: string
+}): string {
+  return [
+    parts.dependency_application_id ?? '',
+    parts.source ?? '',
+    parts.destination ?? '',
+    parts.protocol ?? '',
+    parts.ports ?? '',
+  ].join('|')
+}
+
+// buildFlowValidationLookup turns a flow-validation response into a Map from
+// flowValidationKey → FlowValidation, ready to attach onto displayed flows.
+export function buildFlowValidationLookup(
+  response: FlowValidationResponse | null | undefined,
+): Map<string, FlowValidation> {
+  const lookup = new Map<string, FlowValidation>()
+  for (const e of response?.flows ?? []) {
+    const key = flowValidationKey({
+      dependency_application_id: e.dependency_application_id,
+      source: e.source,
+      destination: e.destination,
+      protocol: e.protocol,
+      ports: e.ports,
+    })
+    lookup.set(key, { status: e.status, matched_rule: e.matched_rule, reason: e.reason })
+  }
+  return lookup
+}
+
+// --- Flow suggestions (edit page) -----------------------------------------
+//
+// GET /apps/{id}/flow-suggestions proposes flows the operator likely needs,
+// resolved to concrete source/destination addresses. The editor appends the
+// matching dependency's suggestions as new flow rows.
+
+export type FlowSuggestion = {
+  dependency_application_id?: string
+  source?: string
+  destination?: string
+  protocol?: FlowProtocol
+  ports?: string
+  source_addresses?: string[]
+  destination_addresses?: string[]
+}
+
+export type FlowSuggestionsResponse = {
+  application_id?: string
+  suggestions?: FlowSuggestion[]
+}
+
+// suggestionToFlow maps one suggestion onto the editor's flow-row shape,
+// using emptyFlow() as the base so unspecified fields keep their defaults.
+export function suggestionToFlow(s: FlowSuggestion): DependencyFlow {
+  return {
+    ...emptyFlow(),
+    source: s.source ?? '',
+    destination: s.destination ?? '',
+    protocol: s.protocol ?? 'tcp',
+    ports: s.ports ?? '',
+  }
 }

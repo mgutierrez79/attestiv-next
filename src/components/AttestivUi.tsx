@@ -44,8 +44,9 @@ export function Badge({
   tone = 'gray',
   icon,
   dot,
+  title,
   children,
-}: PropsWithChildren<{ tone?: Tone; icon?: string; dot?: boolean }>) {
+}: PropsWithChildren<{ tone?: Tone; icon?: string; dot?: boolean; title?: string }>) {
   const colors = badgePalette[tone]
   const baseBadge: CSSProperties = {
     display: 'inline-flex',
@@ -63,7 +64,7 @@ export function Badge({
     border: `1px solid ${colors.mid}33`, // 33 = 20% alpha — visible only on close inspection
   }
   return (
-    <span style={baseBadge}>
+    <span style={baseBadge} title={title}>
       {dot ? (
         <span
           aria-hidden="true"

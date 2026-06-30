@@ -6,13 +6,17 @@
 
 import { useEffect, useState } from 'react'
 
+import { GhostButton } from './AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import {
   emptyFlow,
   FLOW_DIRECTIONS,
   FLOW_PROTOCOLS,
+  suggestionToFlow,
   type DependencyFlow,
+  type FlowSuggestion,
+  type FlowSuggestionsResponse,
 } from '../lib/appFlows'
 
 export type Dependency = {
@@ -43,10 +47,15 @@ export function AppDependenciesField({
   value,
   onChange,
   selfId,
+  appId,
 }: {
   value: Dependency[]
   onChange: (next: Dependency[]) => void
   selfId?: string
+  // The saved application id. Present only on the edit page (the create
+  // page hasn't persisted the app yet). When present, each dependency gets
+  // a "Suggest flows" button backed by GET /apps/{appId}/flow-suggestions.
+  appId?: string
 }) {
   const { t } = useI18n()
   const [apps, setApps] = useState<AppOption[]>([])
@@ -105,6 +114,55 @@ export function AppDependenciesField({
     update(depIndex, {
       flows: (value[depIndex].flows ?? []).map((f, i) => (i === flowIndex ? { ...f, ...patch } : f)),
     })
+  }
+
+  // Suggest-flows state, keyed by dependency index: which row is currently
+  // fetching, and the resolved address hint to show under its button. Only
+  // wired up when `appId` is present (edit page).
+  const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null)
+  const [suggestHints, setSuggestHints] = useState<Record<number, string>>({})
+
+  // suggestFlows fetches GET /apps/{appId}/flow-suggestions and appends, to
+  // the given dependency, the suggestions whose dependency_application_id
+  // matches that dependency's target app. Best-effort: failures are shown as
+  // a brief hint and otherwise ignored.
+  async function suggestFlows(depIndex: number) {
+    if (!appId) return
+    const dep = value[depIndex]
+    setSuggestingIndex(depIndex)
+    try {
+      const response = await apiFetch(`/apps/${encodeURIComponent(appId)}/flow-suggestions`)
+      if (!response.ok) throw new Error(`${response.status}`)
+      const body = (await response.json().catch(() => ({}))) as FlowSuggestionsResponse
+      const matches: FlowSuggestion[] = (body.suggestions ?? []).filter(
+        (s) => s.dependency_application_id === dep.application_id,
+      )
+      if (matches.length === 0) {
+        setSuggestHints((prev) => ({
+          ...prev,
+          [depIndex]: t('No flow suggestions for this dependency.', 'No flow suggestions for this dependency.'),
+        }))
+        return
+      }
+      update(depIndex, { flows: [...(value[depIndex].flows ?? []), ...matches.map(suggestionToFlow)] })
+      // Surface the resolved source/destination addresses as a hint.
+      const addrs = Array.from(
+        new Set(matches.flatMap((s) => [...(s.source_addresses ?? []), ...(s.destination_addresses ?? [])])),
+      )
+      setSuggestHints((prev) => ({
+        ...prev,
+        [depIndex]: addrs.length > 0
+          ? t('Resolves to {addrs}', 'Resolves to {addrs}', { addrs: addrs.join(', ') })
+          : t('Added {n} suggested flow(s).', 'Added {n} suggested flow(s).', { n: matches.length }),
+      }))
+    } catch {
+      setSuggestHints((prev) => ({
+        ...prev,
+        [depIndex]: t('Could not load flow suggestions.', 'Could not load flow suggestions.'),
+      }))
+    } finally {
+      setSuggestingIndex(null)
+    }
   }
 
   if (loadError) {
@@ -199,6 +257,9 @@ export function AppDependenciesField({
               onAdd={() => addFlow(i)}
               onRemove={(flowIndex) => removeFlow(i, flowIndex)}
               onUpdate={(flowIndex, patch) => updateFlow(i, flowIndex, patch)}
+              onSuggest={appId ? () => suggestFlows(i) : undefined}
+              suggesting={suggestingIndex === i}
+              suggestHint={suggestHints[i]}
               t={t}
             />
           </div>
@@ -226,12 +287,20 @@ function FlowEditor({
   onAdd,
   onRemove,
   onUpdate,
+  onSuggest,
+  suggesting,
+  suggestHint,
   t,
 }: {
   flows: DependencyFlow[]
   onAdd: () => void
   onRemove: (flowIndex: number) => void
   onUpdate: (flowIndex: number, patch: Partial<DependencyFlow>) => void
+  // Suggest-flows action — only present (button rendered) when the parent
+  // has a saved appId (edit page).
+  onSuggest?: () => void
+  suggesting?: boolean
+  suggestHint?: string
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
   return (
@@ -324,9 +393,20 @@ function FlowEditor({
           </div>
         ))
       )}
-      <button type="button" onClick={onAdd} style={addButtonStyle}>
-        + {t('Add flow', 'Add flow')}
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={onAdd} style={addButtonStyle}>
+          + {t('Add flow', 'Add flow')}
+        </button>
+        {onSuggest ? (
+          <GhostButton type="button" onClick={onSuggest} disabled={suggesting}>
+            <i className="ti ti-bulb" aria-hidden="true" />{' '}
+            {suggesting ? t('Suggesting…', 'Suggesting…') : t('Suggest flows', 'Suggest flows')}
+          </GhostButton>
+        ) : null}
+        {suggestHint ? (
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{suggestHint}</span>
+        ) : null}
+      </div>
     </div>
   )
 }

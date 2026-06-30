@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildFlowsCsv,
+  buildFlowValidationLookup,
   cleanFlows,
   countFlows,
   csvCell,
   emptyFlow,
+  flowValidationKey,
+  suggestionToFlow,
   validationTone,
   type DependencyFlow,
   type FlowExportDependency,
@@ -132,5 +135,96 @@ describe('countFlows', () => {
     ).toBe(3)
     expect(countFlows([])).toBe(0)
     expect(countFlows(undefined)).toBe(0)
+  })
+})
+
+describe('flowValidationKey', () => {
+  it('joins the identifying tuple with pipes in a fixed order', () => {
+    expect(
+      flowValidationKey({
+        dependency_application_id: 'ad-core',
+        source: '10.0.0.1',
+        destination: 'dc1',
+        protocol: 'tcp',
+        ports: '389,636',
+      }),
+    ).toBe('ad-core|10.0.0.1|dc1|tcp|389,636')
+  })
+
+  it('treats missing parts as empty so both sides of a match align', () => {
+    expect(flowValidationKey({})).toBe('||||')
+    // A displayed flow with no ports and a backend entry with no ports
+    // produce the same key.
+    expect(flowValidationKey({ dependency_application_id: 'a', source: 's', destination: 'd', protocol: 'udp' })).toBe(
+      flowValidationKey({ dependency_application_id: 'a', source: 's', destination: 'd', protocol: 'udp', ports: '' }),
+    )
+  })
+})
+
+describe('buildFlowValidationLookup', () => {
+  it('keys entries by flowValidationKey and carries status/rule/reason', () => {
+    const lookup = buildFlowValidationLookup({
+      application_id: 'app1',
+      flows: [
+        {
+          dependency_application_id: 'ad-core',
+          source: '10.0.0.1',
+          destination: 'dc1',
+          protocol: 'tcp',
+          ports: '389',
+          status: 'permitted',
+          matched_rule: 'allow-ldap',
+          reason: 'explicit allow',
+        },
+      ],
+    })
+    const key = flowValidationKey({
+      dependency_application_id: 'ad-core',
+      source: '10.0.0.1',
+      destination: 'dc1',
+      protocol: 'tcp',
+      ports: '389',
+    })
+    expect(lookup.get(key)).toEqual({ status: 'permitted', matched_rule: 'allow-ldap', reason: 'explicit allow' })
+  })
+
+  it('returns an empty map for null / missing input', () => {
+    expect(buildFlowValidationLookup(null).size).toBe(0)
+    expect(buildFlowValidationLookup(undefined).size).toBe(0)
+    expect(buildFlowValidationLookup({}).size).toBe(0)
+  })
+})
+
+describe('suggestionToFlow', () => {
+  it('maps source/destination/protocol/ports onto an emptyFlow base', () => {
+    expect(
+      suggestionToFlow({
+        dependency_application_id: 'sql-fin',
+        source: 'app01',
+        destination: 'sql01',
+        protocol: 'tcp',
+        ports: '1433',
+        source_addresses: ['10.1.1.5'],
+        destination_addresses: ['10.2.2.9'],
+      }),
+    ).toEqual({
+      source: 'app01',
+      destination: 'sql01',
+      protocol: 'tcp',
+      ports: '1433',
+      direction: undefined,
+      description: '',
+    })
+  })
+
+  it('defaults protocol to tcp and blanks missing fields', () => {
+    expect(suggestionToFlow({ dependency_application_id: 'x' })).toEqual({
+      source: '',
+      destination: '',
+      protocol: 'tcp',
+      ports: '',
+      direction: undefined,
+      description: '',
+    })
   })
 })
