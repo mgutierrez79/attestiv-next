@@ -44,6 +44,16 @@ type Provider = {
   roi_included?: boolean
   roi_entity_identifier?: string
   status: string
+  dependencies?: ProviderDependency[]
+}
+
+// Platform-derived infrastructure that depends on this provider (carrier
+// inter-DC links, colo sites, and operator-attributed inventory assets such
+// as inter-site links / VMs / hosts). Read-only overlay from the backend.
+type ProviderDependency = {
+  asset_type: string
+  asset_ref: string
+  function?: string
 }
 
 const CRITICALITIES = ['critical', 'important', 'standard'] as const
@@ -65,6 +75,7 @@ export function AttestivThirdPartyDetailPage() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id
 
   const [provider, setProvider] = useState<Provider | null>(null)
+  const [dependencies, setDependencies] = useState<ProviderDependency[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -100,6 +111,7 @@ export function AttestivThirdPartyDetailPage() {
       }
       const body: Provider = await response.json()
       setProvider(body)
+      setDependencies(Array.isArray(body.dependencies) ? body.dependencies : [])
       setName(body.provider_name)
       setCountry(body.provider_country || '')
       setServices(body.services_provided)
@@ -235,6 +247,49 @@ export function AttestivThirdPartyDetailPage() {
             )}
           </Banner>
         ) : null}
+
+        <Card>
+          <CardTitle right={<Badge tone="navy">{dependencies.length}</Badge>}>
+            {t('Dependent infrastructure', 'Dependent infrastructure')}
+          </CardTitle>
+          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+            {t(
+              'Carrier inter-DC links, colocation sites, and inventory assets (inter-site links, VMs, hosts) attributed to this provider. Read-only — derived from site connectivity + per-asset provider attribution.',
+              'Carrier inter-DC links, colocation sites, and inventory assets (inter-site links, VMs, hosts) attributed to this provider. Read-only — derived from site connectivity + per-asset provider attribution.',
+            )}
+          </div>
+          {dependencies.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 10 }}>
+              {t(
+                'No dependent infrastructure yet. Attribute assets to this provider from an asset detail page, or declare a carrier on a site’s WAN links.',
+                'No dependent infrastructure yet. Attribute assets to this provider from an asset detail page, or declare a carrier on a site’s WAN links.',
+              )}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '4px 8px' }}>{t('Type', 'Type')}</th>
+                    <th style={{ padding: '4px 8px' }}>{t('Reference', 'Reference')}</th>
+                    <th style={{ padding: '4px 8px' }}>{t('Function', 'Function')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dependencies.map((d, i) => (
+                    <tr key={`${d.asset_type}-${d.asset_ref}-${i}`} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <td style={{ padding: '6px 8px' }}>
+                        <Badge tone="gray">{(d.asset_type || 'asset').replace(/_/g, ' ')}</Badge>
+                      </td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>{d.asset_ref}</td>
+                      <td style={{ padding: '6px 8px', color: 'var(--color-text-secondary)' }}>{d.function || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
 
         <Card>
           <CardTitle>{t('Edit', 'Edit')}</CardTitle>
