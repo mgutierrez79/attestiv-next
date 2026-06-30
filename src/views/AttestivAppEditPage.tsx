@@ -409,7 +409,7 @@ export function AttestivAppEditPage() {
                 'Other applications this one needs at runtime (e.g. an AD/LDAP service or a database backend). Cascade analysis uses these to compute blast radius.',
               )}
             </p>
-            <AppDependenciesField value={dependencies} onChange={setDependencies} selfId={applicationId} />
+            <AppDependenciesField value={dependencies} onChange={setDependencies} selfId={applicationId} appId={applicationId} />
           </Card>
 
           <Card style={{ marginTop: 12 }}>
