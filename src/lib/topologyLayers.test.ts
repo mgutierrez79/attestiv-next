@@ -197,6 +197,45 @@ describe('buildLayeredGraph — user networks', () => {
   })
 })
 
+describe('buildLayeredGraph — switch routing', () => {
+  it('routes switches through the VM hypervisor host (switch → host → VM)', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra,
+      dependencies: [],
+      dependents: [],
+      enabled: { ...allOff, switch: true }, // Hosts layer stays OFF
+    })
+    // The switch node renders, and the host node is materialised even though
+    // the Hosts toggle is off — the switch → host → VM path needs it.
+    expect(g.nodes.some((n) => n.id === 'switch:sw1')).toBe(true)
+    expect(g.nodes.some((n) => n.id === 'host:h1')).toBe(true)
+    // Switch attaches to the host, NOT straight to the VM…
+    expect(g.edges.some((e) => e.source === 'host:h1' && e.target === 'switch:sw1')).toBe(true)
+    expect(g.edges.some((e) => e.target === 'switch:sw1' && e.source === 'vm:web01')).toBe(false)
+    // …and the host → VM hop completes the cascade path.
+    expect(g.edges.some((e) => e.source === 'vm:web01' && e.target === 'host:h1')).toBe(true)
+  })
+
+  it('falls back to a direct switch → VM edge when the VM has no known host', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: { host: [], storage: [], switch: [{ id: 'sw1', name: 'leaf-1', used_by: ['web01'] }], firewall: [] },
+      dependencies: [],
+      dependents: [],
+      enabled: { ...allOff, switch: true },
+    })
+    expect(g.edges.some((e) => e.source === 'vm:web01' && e.target === 'switch:sw1')).toBe(true)
+    expect(g.nodes.some((n) => n.id.startsWith('host:'))).toBe(false)
+  })
+})
+
 describe('layout is deterministic', () => {
   const opts = { width: 800, height: 500, iterations: 60 }
 

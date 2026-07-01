@@ -217,10 +217,61 @@ export function buildLayeredGraph(input: BuildInput): BuiltGraph {
     }
   }
 
+  // Switches attach to the VM's hypervisor HOST, not to each VM — the
+  // physical path is switch → host uplink → the VMs on that host, so a
+  // switch/uplink failure cascades to every VM on the host. We draw
+  // switch → host → VM in full (materialising the host node + host→VM edge
+  // even when the Hosts layer toggle is off, since the path needs them),
+  // and fall back to switch → VM only when the VM's host is unknown.
+  const hostEntryByVM = new Map<string, InfraEntry>()
+  for (const h of infra?.host ?? []) {
+    for (const vmLabel of h.used_by) {
+      if (!hostEntryByVM.has(vmLabel)) hostEntryByVM.set(vmLabel, h)
+    }
+  }
+  const addSwitchesThroughHost = (switches: InfraEntry[]) => {
+    const drawnEdge = new Set<string>(edges.map((e) => e.id))
+    for (const sw of switches) {
+      const swNodeID = `switch:${sw.id}`
+      let drewSwitch = false
+      const seenTarget = new Set<string>()
+      const drawSwitchEdge = (targetID: string) => {
+        if (seenTarget.has(targetID)) return
+        seenTarget.add(targetID)
+        if (!drewSwitch) {
+          push({ id: swNodeID, label: sw.name, group: INFRA_GROUPS.switch, asset_type: 'switch' })
+          drewSwitch = true
+        }
+        const id = `switch:${sw.id}->${targetID}`
+        if (!drawnEdge.has(id)) {
+          drawnEdge.add(id)
+          edges.push({ id, source: targetID, target: swNodeID, relation: 'switch' })
+        }
+      }
+      for (const vmLabel of sw.used_by) {
+        const vmID = vmByLabel.get(vmLabel)
+        if (!vmID) continue
+        const hostEntry = hostEntryByVM.get(vmLabel)
+        if (hostEntry) {
+          const hostID = `host:${hostEntry.id}`
+          push({ id: hostID, label: hostEntry.name, group: INFRA_GROUPS.host, asset_type: 'host' })
+          const hvID = `host:${hostEntry.id}->${vmID}`
+          if (!drawnEdge.has(hvID)) {
+            drawnEdge.add(hvID)
+            edges.push({ id: hvID, source: vmID, target: hostID, relation: 'host' })
+          }
+          drawSwitchEdge(hostID)
+        } else {
+          drawSwitchEdge(vmID) // no known host → attach directly (fallback)
+        }
+      }
+    }
+  }
+
   if (infra) {
     if (enabled.host) addInfra('host', infra.host, 'host')
     if (enabled.storage) addInfra('storage', infra.storage, 'storage')
-    if (enabled.switch) addInfra('switch', infra.switch, 'switch')
+    if (enabled.switch) addSwitchesThroughHost(infra.switch)
     if (enabled.firewall) addInfra('firewall', infra.firewall, 'firewall')
   }
 
