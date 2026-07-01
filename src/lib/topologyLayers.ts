@@ -68,7 +68,10 @@ export type BaseEdge = { id: string; source: string; target: string; kind: strin
 
 // Infrastructure entries — used_by holds component VM DISPLAY NAMES which
 // we match against the drawn VM nodes by label.
-export type InfraEntry = { id: string; name: string; used_by: string[] }
+// via_switches is populated for FIREWALL entries only: the name(s) of the
+// switch(es) that bridge the app's L2 path to the firewall, so a firewall can
+// be routed firewall → switch → host → VM rather than straight to each VM.
+export type InfraEntry = { id: string; name: string; used_by: string[]; via_switches?: string[] }
 export type InfraCategories = {
   host: InfraEntry[]
   storage: InfraEntry[]
@@ -229,25 +232,34 @@ export function buildLayeredGraph(input: BuildInput): BuiltGraph {
       if (!hostEntryByVM.has(vmLabel)) hostEntryByVM.set(vmLabel, h)
     }
   }
-  const addSwitchesThroughHost = (switches: InfraEntry[]) => {
+  if (infra) {
+    if (enabled.host) addInfra('host', infra.host, 'host')
+    if (enabled.storage) addInfra('storage', infra.storage, 'storage')
+
+    // Shared dedup for the switch + firewall cascade routing. Seed from the
+    // edges already drawn (incl. addInfra's host edges) so we never
+    // double-draw the same connection.
     const drawnEdge = new Set<string>(edges.map((e) => e.id))
-    for (const sw of switches) {
+    const switchByName = new Map<string, InfraEntry>()
+    for (const sw of infra.switch) switchByName.set(sw.name, sw)
+
+    // Route one switch through its VMs' hosts (switch → host → VM), drawing
+    // the host node + host→VM hop even when the Hosts toggle is off. Idempotent
+    // (safe to call from both the switch loop and firewall routing); returns
+    // the switch node id so a firewall can attach to it.
+    const routeSwitchThroughHost = (sw: InfraEntry): string => {
       const swNodeID = `switch:${sw.id}`
-      let drewSwitch = false
       const seenTarget = new Set<string>()
       const drawSwitchEdge = (targetID: string) => {
         if (seenTarget.has(targetID)) return
         seenTarget.add(targetID)
-        if (!drewSwitch) {
-          push({ id: swNodeID, label: sw.name, group: INFRA_GROUPS.switch, asset_type: 'switch' })
-          drewSwitch = true
-        }
         const id = `switch:${sw.id}->${targetID}`
         if (!drawnEdge.has(id)) {
           drawnEdge.add(id)
           edges.push({ id, source: targetID, target: swNodeID, relation: 'switch' })
         }
       }
+      push({ id: swNodeID, label: sw.name, group: INFRA_GROUPS.switch, asset_type: 'switch' })
       for (const vmLabel of sw.used_by) {
         const vmID = vmByLabel.get(vmLabel)
         if (!vmID) continue
@@ -265,14 +277,54 @@ export function buildLayeredGraph(input: BuildInput): BuiltGraph {
           drawSwitchEdge(vmID) // no known host → attach directly (fallback)
         }
       }
+      return swNodeID
     }
-  }
 
-  if (infra) {
-    if (enabled.host) addInfra('host', infra.host, 'host')
-    if (enabled.storage) addInfra('storage', infra.storage, 'storage')
-    if (enabled.switch) addSwitchesThroughHost(infra.switch)
-    if (enabled.firewall) addInfra('firewall', infra.firewall, 'firewall')
+    // Firewalls sit behind the switches (Panorama LLDP), so the physical path
+    // is firewall → switch → host → VM. Attach each firewall to its bridging
+    // switch(es) (via_switches) — routing the switch chain in full even when
+    // the Network layer toggle is off — so a firewall failure cascades down
+    // the whole path. Fall back to a direct firewall → VM edge when no
+    // bridging switch is known.
+    const routeFirewallThroughSwitch = (fw: InfraEntry) => {
+      const fwNodeID = `firewall:${fw.id}`
+      const targets: string[] = []
+      for (const swName of fw.via_switches ?? []) {
+        const sw = switchByName.get(swName)
+        if (sw) targets.push(routeSwitchThroughHost(sw))
+      }
+      if (targets.length === 0) {
+        let drew = false
+        for (const vmLabel of fw.used_by) {
+          const vmID = vmByLabel.get(vmLabel)
+          if (!vmID) continue
+          if (!drew) {
+            push({ id: fwNodeID, label: fw.name, group: INFRA_GROUPS.firewall, asset_type: 'firewall' })
+            drew = true
+          }
+          const id = `firewall:${fw.id}->${vmID}`
+          if (!drawnEdge.has(id)) {
+            drawnEdge.add(id)
+            edges.push({ id, source: vmID, target: fwNodeID, relation: 'firewall' })
+          }
+        }
+        return
+      }
+      push({ id: fwNodeID, label: fw.name, group: INFRA_GROUPS.firewall, asset_type: 'firewall' })
+      const seen = new Set<string>()
+      for (const swNodeID of targets) {
+        if (seen.has(swNodeID)) continue
+        seen.add(swNodeID)
+        const id = `firewall:${fw.id}->${swNodeID}`
+        if (!drawnEdge.has(id)) {
+          drawnEdge.add(id)
+          edges.push({ id, source: swNodeID, target: fwNodeID, relation: 'firewall' })
+        }
+      }
+    }
+
+    if (enabled.switch) for (const sw of infra.switch) routeSwitchThroughHost(sw)
+    if (enabled.firewall) for (const fw of infra.firewall) routeFirewallThroughSwitch(fw)
   }
 
   return { nodes, edges }
