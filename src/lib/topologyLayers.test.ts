@@ -156,6 +156,47 @@ describe('buildLayeredGraph — infra layers', () => {
   })
 })
 
+describe('buildLayeredGraph — user networks', () => {
+  it('draws a user_network node + user_access edge into the app, deduped by type', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: null,
+      dependencies: [],
+      dependents: [],
+      enabled: allOff,
+      userNetworks: [
+        { type: 'vpn', label: 'VPN' },
+        { type: 'vpn', label: 'VPN' },
+        { type: 'internet', label: 'Internet' },
+      ],
+    })
+    const un = g.nodes.filter((n) => n.group === 'user_network')
+    // two distinct types → two nodes (the duplicate vpn is deduped)
+    expect(un.map((n) => n.id).sort()).toEqual([`usernet:${APP}:internet`, `usernet:${APP}:vpn`])
+    const ua = g.edges.filter((e) => e.relation === 'user_access')
+    expect(ua.every((e) => e.target === `app:${APP}`)).toBe(true)
+    expect(ua.every((e) => e.source.startsWith(`usernet:${APP}:`))).toBe(true)
+  })
+
+  it('degrades gracefully with no user networks', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: null,
+      dependencies: [],
+      dependents: [],
+      enabled: allOff,
+    })
+    expect(g.nodes.some((n) => n.group === 'user_network')).toBe(false)
+    expect(g.edges.some((e) => e.relation === 'user_access')).toBe(false)
+  })
+})
+
 describe('layout is deterministic', () => {
   const opts = { width: 800, height: 500, iterations: 60 }
 

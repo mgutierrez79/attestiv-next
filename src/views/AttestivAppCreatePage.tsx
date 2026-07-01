@@ -22,8 +22,10 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { AppDependenciesField, type Dependency } from '../components/AppDependenciesField'
+import { AppUserAccessField } from '../components/AppUserAccessField'
 import { AppComponentsField, formatComponentList } from '../components/AppComponentsField'
 import { cleanFlows } from '../lib/appFlows'
+import { cleanUserAccess, type UserAccessNetwork } from '../lib/appUserAccess'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useRoles } from '../lib/roles'
@@ -58,6 +60,7 @@ export function AttestivAppCreatePage() {
   const [vmNames, setVmNames] = useState<string[]>([])
 
   const [dependencies, setDependencies] = useState<Dependency[]>([])
+  const [userAccess, setUserAccess] = useState<UserAccessNetwork[]>([])
 
   const [gxpValidated, setGxpValidated] = useState(false)
   const [gxpRegulation, setGxpRegulation] = useState('21_cfr_11')
@@ -126,6 +129,7 @@ export function AttestivAppCreatePage() {
       criticality_tier: criticalityTier,
       components,
       dependencies: cleanDeps,
+      user_access: cleanUserAccess(userAccess),
     }
     if (gxpValidated) {
       body.gxp = {
@@ -286,6 +290,17 @@ export function AttestivAppCreatePage() {
               )}
             </p>
             <AppDependenciesField value={dependencies} onChange={setDependencies} selfId={applicationId} />
+          </Card>
+
+          <Card style={{ marginTop: 12 }}>
+            <CardTitle>{t('User access', 'User access')}</CardTitle>
+            <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4, marginBottom: 8 }}>
+              {t(
+                'Where users connect from (an external network, a private LAN, VPN, a partner network or the internet). Surfaced as ingress flows in the flow matrix and network topology.',
+                'Where users connect from (an external network, a private LAN, VPN, a partner network or the internet). Surfaced as ingress flows in the flow matrix and network topology.',
+              )}
+            </p>
+            <AppUserAccessField value={userAccess} onChange={setUserAccess} />
           </Card>
 
           <Card style={{ marginTop: 12 }}>

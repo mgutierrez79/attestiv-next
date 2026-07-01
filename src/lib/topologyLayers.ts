@@ -22,13 +22,25 @@ export type RelationKind =
   | 'storage'
   | 'switch'
   | 'firewall'
+  // user_access: a user-network → app ingress edge (where users connect from).
+  | 'user_access'
 
 export type LayoutNode = {
   id: string
   label: string
   // Logical group, distinct from the wire asset_type: drives styling and
   // the deterministic seed ring.
-  group: 'app' | 'vm' | 'dependency' | 'dependent' | 'host' | 'storage' | 'switch' | 'firewall'
+  group:
+    | 'app'
+    | 'vm'
+    | 'dependency'
+    | 'dependent'
+    | 'host'
+    | 'storage'
+    | 'switch'
+    | 'firewall'
+    // user_network: a source network (VPN / internet / …) users connect from.
+    | 'user_network'
   asset_type: string
   criticality?: string
   health?: string
@@ -66,6 +78,12 @@ export type InfraCategories = {
 
 export type AppDep = { application_id: string; dependency_type?: string; criticality?: string }
 
+// A user-network the application's users connect from. `type` is the raw
+// network_type (external / private / vpn / …); `label` is the friendly badge
+// label, used as the node label. Kept minimal + framework-free so this module
+// stays unit-testable without pulling in the i18n / lib helpers.
+export type UserNetwork = { type: string; label: string }
+
 export type BuildInput = {
   appID: string
   baseNodes: BaseNode[]
@@ -74,6 +92,10 @@ export type BuildInput = {
   dependencies: AppDep[]
   dependents: string[]
   enabled: Record<LayerKey, boolean>
+  // Optional user-networks (where users connect from). Additive: always
+  // drawn when present, absent → nothing changes. No toggle — like the app +
+  // component VMs, these are part of the base picture.
+  userNetworks?: UserNetwork[]
 }
 
 export type BuiltGraph = { nodes: LayoutNode[]; edges: LayoutEdge[] }
@@ -90,7 +112,7 @@ const INFRA_GROUPS: Record<'host' | 'storage' | 'switch' | 'firewall', LayoutNod
 // infra / dependency node is deduplicated (one node even when used by
 // several VMs); an edge is drawn from each using VM to the shared node.
 export function buildLayeredGraph(input: BuildInput): BuiltGraph {
-  const { appID, baseNodes, baseEdges, infra, dependencies, dependents, enabled } = input
+  const { appID, baseNodes, baseEdges, infra, dependencies, dependents, enabled, userNetworks } = input
   const appNodeID = `app:${appID}`
 
   const nodes: LayoutNode[] = []
@@ -159,6 +181,19 @@ export function buildLayeredGraph(input: BuildInput): BuiltGraph {
       push({ id, label: depID, group: 'dependent', asset_type: 'application' })
       edges.push({ id: `dependent:${depID}`, source: id, target: appNodeID, relation: 'dependent' })
     }
+  }
+
+  // --- User networks: usernet → app ingress. Always drawn when present
+  // (no toggle) so the "where users connect from" context is part of the
+  // base picture; deduped by network type so several entries of the same
+  // type collapse to one node. Node id mirrors the backend's
+  // `usernet:<app>:<type>` so verdicts / server-emitted nodes line up.
+  for (const un of userNetworks ?? []) {
+    const type = (un.type ?? '').trim()
+    if (!type) continue
+    const id = `usernet:${appID}:${type}`
+    push({ id, label: un.label || type, group: 'user_network', asset_type: 'user_network' })
+    edges.push({ id: `user_access:${type}`, source: id, target: appNodeID, relation: 'user_access' })
   }
 
   // --- Infra layers: each entry deduped, an edge from each using VM. ---
