@@ -1124,6 +1124,38 @@ function AppTopologyEmbed({
   const groups = neighboursOf(selectedId, nodes, edges)
   const selectedPos = selectedId ? positions.get(selectedId) ?? null : null
 
+  // Compact "protocol/ports" label for a dependency or user-access edge,
+  // built from the app's flow matrix (dependency.flows / user_access). It's
+  // rendered as a mini box near the DESTINATION end of the cable.
+  const flowLabelForEdge = (e: { id: string; relation: RelationKind; target: string }): string => {
+    const fmt = (proto?: string, ports?: string): string => {
+      const p = (proto ?? '').trim()
+      const pt = (ports ?? '').trim()
+      if (p && pt) return `${p}/${pt}`
+      return p || pt
+    }
+    const parts: string[] = []
+    if (e.relation === 'dependency') {
+      const depID = e.id.startsWith('dep:') ? e.id.slice(4) : e.target.replace(/^app:/, '')
+      const dep = dependencies.find((d) => d.application_id === depID)
+      for (const f of dep?.flows ?? []) {
+        const l = fmt(f.protocol, f.ports)
+        if (l) parts.push(l)
+      }
+    } else if (e.relation === 'user_access') {
+      const type = e.id.startsWith('user_access:') ? e.id.slice('user_access:'.length) : ''
+      for (const u of userAccess) {
+        if (u.network_type === type) {
+          const l = fmt(u.protocol, u.ports)
+          if (l) parts.push(l)
+        }
+      }
+    }
+    const uniq = Array.from(new Set(parts))
+    if (uniq.length === 0) return ''
+    return uniq.length <= 2 ? uniq.join(', ') : `${uniq.slice(0, 2).join(', ')} +${uniq.length - 2}`
+  }
+
   return (
     <div style={{ overflow: 'hidden' }}>
       {/* Layer toggle chips: app + component VMs always render; these add /
@@ -1284,6 +1316,39 @@ function AppTopologyEmbed({
                 fill="var(--color-text-primary)"
               >
                 {n.label.length > 22 ? n.label.slice(0, 20) + '…' : n.label}
+              </text>
+            </g>
+          )
+        })}
+        {/* Flow labels: a "protocol/ports" mini box near the DESTINATION
+            end of each dependency / user-access cable, drawn above the
+            nodes so it isn't hidden. Only edges that carry a flow. */}
+        {graphEdges.map((e) => {
+          const label = flowLabelForEdge(e)
+          if (!label) return null
+          const a = positions.get(e.source)
+          const b = positions.get(e.target)
+          if (!a || !b) return null
+          // 74% of the way toward the destination — near the target node
+          // but clear of its circle + arrowhead.
+          const lx = a.x + (b.x - a.x) * 0.74
+          const ly = a.y + (b.y - a.y) * 0.74
+          const w = label.length * 5 + 8
+          return (
+            <g key={`${e.id}-flow`} pointerEvents="none">
+              <rect
+                x={lx - w / 2}
+                y={ly - 7}
+                width={w}
+                height={14}
+                rx={3}
+                fill="var(--color-background-primary)"
+                stroke={strokeForRelation(e.relation)}
+                strokeOpacity={0.55}
+                strokeWidth={0.75}
+              />
+              <text x={lx} y={ly + 3} textAnchor="middle" fontSize={8.5} fontFamily="var(--font-mono)" fill="var(--color-text-secondary)">
+                {label}
               </text>
             </g>
           )
