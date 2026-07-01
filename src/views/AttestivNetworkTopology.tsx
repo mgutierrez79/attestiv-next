@@ -223,6 +223,37 @@ export function AttestivNetworkTopology() {
     [selectedId, visibleNodes],
   )
 
+  // Fetch the clicked node's FULL inventory detail so the panel shows
+  // rich, node-specific facts (vendor / model / serial / OS / mgmt IP /
+  // switch connectivity) rather than only the thin graph summary. Skip
+  // synthetic nodes (app:, usernet:, mac:, veeam-…) which aren't assets.
+  const [nodeDetail, setNodeDetail] = useState<Record<string, unknown> | null>(null)
+  const [nodeDetailLoading, setNodeDetailLoading] = useState(false)
+  useEffect(() => {
+    const synthetic = ['app:', 'usernet:', 'mac:', 'veeam']
+    if (!selectedId || synthetic.some((p) => selectedId.toLowerCase().startsWith(p))) {
+      setNodeDetail(null)
+      return
+    }
+    let cancelled = false
+    setNodeDetail(null)
+    setNodeDetailLoading(true)
+    apiFetch(`/inventory/assets/${encodeURIComponent(selectedId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled) setNodeDetail(body as Record<string, unknown> | null)
+      })
+      .catch(() => {
+        if (!cancelled) setNodeDetail(null)
+      })
+      .finally(() => {
+        if (!cancelled) setNodeDetailLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
+
   return (
     <>
       <Topbar
@@ -343,6 +374,8 @@ export function AttestivNetworkTopology() {
           {selected ? (
             <NodeDetailPanel
               node={selected}
+              detail={nodeDetail}
+              detailLoading={nodeDetailLoading}
               onClose={() => setSelectedId(null)}
               onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)}
               onFocus={() => {
@@ -818,6 +851,8 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
 
 function NodeDetailPanel({
   node,
+  detail,
+  detailLoading,
   onClose,
   onOpen,
   onFocus,
@@ -825,12 +860,41 @@ function NodeDetailPanel({
   t,
 }: {
   node: TopologyNode
+  detail: Record<string, unknown> | null
+  detailLoading: boolean
   onClose: () => void
   onOpen: () => void
   onFocus: () => void
   isFocused: boolean
   t: (key: string, fallback?: string) => string
 }) {
+  // Pull rich, node-specific facts out of the fetched asset metadata,
+  // tolerant of the per-connector key spellings (same candidates the asset
+  // detail page uses). guest.* covers vCenter VMs; raw.* covers OME/Redfish.
+  const meta: Record<string, unknown> = (detail?.['metadata'] as Record<string, unknown>) ?? {}
+  const guest: Record<string, unknown> = (meta['guest'] as Record<string, unknown>) ?? {}
+  const raw: Record<string, unknown> = (meta['raw'] as Record<string, unknown>) ?? {}
+  const pick = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = meta[k] ?? guest[k] ?? raw[k]
+      if (typeof v === 'string' && v.trim() !== '') return v.trim()
+      if (typeof v === 'number') return String(v)
+    }
+    return ''
+  }
+  const vendor = pick('manufacturer', 'vendor')
+  const model = pick('model', 'platform', 'platformId', 'platform_id')
+  const serial = pick('serial', 'serialNumber', 'serial_number', 'service_tag')
+  const software = pick('software_version', 'sw-version', 'softwareVersion', 'os_version', 'osVersion', 'operating_system', 'version', 'full_name')
+  const mgmtIP = pick('management_ip', 'management_address', 'mgmt_ip', 'ip-address', 'ip_address', 'primary_ip', 'ip')
+  const owner = pick('owner')
+  const description = pick('description')
+  const switchConns = Array.isArray(meta['switch_connections'])
+    ? (meta['switch_connections'] as Array<Record<string, unknown>>)
+    : []
+  const stackMembers = Array.isArray(meta['stack_members'])
+    ? (meta['stack_members'] as Array<Record<string, unknown>>)
+    : []
   return (
     <Card>
       <CardTitle right={<GhostButton onClick={onClose}><i className="ti ti-x" aria-hidden="true" /></GhostButton>}>
@@ -839,15 +903,51 @@ function NodeDetailPanel({
       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
         {node.id}
       </div>
+      {description ? (
+        <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 8 }}>{description}</div>
+      ) : null}
       <Row label={t('Asset type', 'Asset type')} value={node.asset_type || '—'} />
       <Row label={t('Criticality', 'Criticality')} value={node.criticality || node.app_tier || '—'} />
       <Row label={t('Site', 'Site')} value={node.site_name || node.site_id || '—'} />
-      <Row label={t('Application', 'Application')} value={node.app_id || '—'} />
-      <Row label={t('Health', 'Health')} value={node.health || '—'} />
-      <Row label={t('Backup', 'Backup')} value={node.backup_state || '—'} />
-      <Row label={t('Compliance', 'Compliance')} value={node.compliance || '—'} />
-      <Row label={t('Switch port', 'Switch port')} value={node.switch_port || '—'} />
-      <Row label={t('Seen by', 'Seen by')} value={(node.present_in || []).join(', ') || '—'} />
+      {node.app_id ? <Row label={t('Application', 'Application')} value={node.app_id} /> : null}
+      {/* Rich, node-specific detail fetched from inventory (only rows that
+          actually have a value for THIS node are shown). */}
+      {vendor ? <Row label={t('Vendor', 'Vendor')} value={vendor} /> : null}
+      {model ? <Row label={t('Model', 'Model')} value={model} /> : null}
+      {serial ? <Row label={t('Serial', 'Serial')} value={serial} /> : null}
+      {software ? <Row label={t('Software / OS', 'Software / OS')} value={software} /> : null}
+      {mgmtIP ? <Row label={t('Management IP', 'Management IP')} value={mgmtIP} /> : null}
+      {owner ? <Row label={t('Owner', 'Owner')} value={owner} /> : null}
+      {node.health || pick('health', 'health_state') ? (
+        <Row label={t('Health', 'Health')} value={node.health || pick('health', 'health_state')} />
+      ) : null}
+      {node.backup_state ? <Row label={t('Backup', 'Backup')} value={node.backup_state} /> : null}
+      {node.compliance || pick('compliance_state') ? (
+        <Row label={t('Compliance', 'Compliance')} value={node.compliance || pick('compliance_state')} />
+      ) : null}
+      {stackMembers.length > 0 ? (
+        <Row label={t('Stack members', 'Stack members')} value={String(stackMembers.length)} />
+      ) : null}
+      {node.switch_port ? <Row label={t('Switch port', 'Switch port')} value={node.switch_port} /> : null}
+      {switchConns.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+            {t('Switch connectivity', 'Switch connectivity')} ({switchConns.length})
+          </div>
+          {switchConns.slice(0, 8).map((c, i) => (
+            <div key={i} style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', padding: '2px 0' }}>
+              {String(c['local_interface'] ?? '—')} → {String(c['peer_device'] ?? '—')}
+              {c['peer_interface'] ? ` : ${String(c['peer_interface'])}` : ''}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {(node.present_in || []).length > 0 ? (
+        <Row label={t('Seen by', 'Seen by')} value={(node.present_in || []).join(', ')} />
+      ) : null}
+      {detailLoading ? (
+        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6 }}>{t('Loading details…', 'Loading details…')}</div>
+      ) : null}
       <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
         <GhostButton onClick={onFocus}>
           <i className={isFocused ? 'ti ti-zoom-out' : 'ti ti-zoom-in'} aria-hidden="true" />
