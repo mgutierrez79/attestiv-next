@@ -1314,7 +1314,7 @@ function AppTopologyEmbed({
         <Legend swatch="var(--color-status-green-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
         {userNetworks.length > 0 ? (
-          <Legend swatch="var(--color-status-blue-deep)" icon="ti-cloud" label={t('User network', 'User network')} />
+          <Legend swatch="var(--color-status-blue-deep)" icon="ti-users" label={t('User network', 'User network')} />
         ) : null}
         {layers.dependencies ? (
           <Legend swatch="var(--color-status-blue-deep)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
@@ -1363,9 +1363,9 @@ function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
     case 'firewall':
       return { color: 'var(--color-status-violet-mid)', icon: 'ti-shield-lock' }
     case 'user_network':
-      // Where users connect from — a distinct cloud glyph + blue so it reads
-      // as "external inbound" rather than infrastructure.
-      return { color: 'var(--color-status-blue-deep)', icon: 'ti-cloud' }
+      // Where users connect from — a people glyph + blue so it reads as
+      // "users / inbound access" rather than infrastructure.
+      return { color: 'var(--color-status-blue-deep)', icon: 'ti-users' }
   }
   return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
 }
@@ -1522,11 +1522,14 @@ function NodeDetailCard({
     }
     return ''
   }
+  // A user-network node (where users connect from) is NOT infrastructure —
+  // it has no storage / host / backup, and its label already names it.
+  const isUserNetwork = node.asset_type === 'user_network'
   const ownFacts: Array<[string, string]> = []
   const pushFact = (label: string, value: string) => {
     if (value) ownFacts.push([label, value])
   }
-  pushFact(t('Type', 'Type'), node.asset_type || '')
+  pushFact(t('Type', 'Type'), isUserNetwork ? '' : node.asset_type || '')
   pushFact(t('Criticality', 'Criticality'), node.criticality || '')
   pushFact(t('Vendor', 'Vendor'), pickMeta('manufacturer', 'vendor'))
   pushFact(t('Model', 'Model'), pickMeta('model', 'platform', 'platformId', 'platform_id'))
@@ -1547,14 +1550,15 @@ function NodeDetailCard({
   const backup = groups.backup.slice(0, MAX_LIST)
 
   // Estimate card height from its rows so the up-nudge clamp is accurate.
-  const rows =
-    1 /* header */ +
-    ownFacts.length +
-    1 /* storage label */ +
-    Math.max(storage.length, 1) +
-    (storageMore > 0 ? 1 : 0) +
-    (host.length > 0 ? 1 + host.length : 0) +
-    (backup.length > 0 ? 1 + backup.length : 0)
+  const rows = isUserNetwork
+    ? 1 /* header */ + ownFacts.length + 1 /* note */
+    : 1 /* header */ +
+      ownFacts.length +
+      1 /* storage label */ +
+      Math.max(storage.length, 1) +
+      (storageMore > 0 ? 1 : 0) +
+      (host.length > 0 ? 1 + host.length : 0) +
+      (backup.length > 0 ? 1 + backup.length : 0)
   const cardH = 24 + rows * 16
 
   // Anchor below the node's label (label sits ~r+14 below centre; use a
@@ -1624,45 +1628,57 @@ function NodeDetailCard({
           </div>
         ) : null}
 
-        {/* Connected storage. */}
-        <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {t('Storage', 'Storage')}
-        </div>
-        {storage.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
-            {t('No storage attached.', 'No storage attached.')}
+        {isUserNetwork ? (
+          // A user-access network: describe what it is, not infrastructure.
+          <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: '15px' }}>
+            {t(
+              'Network users connect from to reach this application (inbound access).',
+              'Network users connect from to reach this application (inbound access).',
+            )}
           </div>
         ) : (
           <>
-            {storage.map((s) => {
-              const size = sizeByName.get(s.label)
-              return line(s.id, '·', size ? `${s.label} (${size})` : s.label, 'var(--color-status-green-mid)')
-            })}
-            {storageMore > 0 ? (
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
-                {t('+{n} more', '+{n} more', { n: storageMore })}
+            {/* Connected storage. */}
+            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {t('Storage', 'Storage')}
+            </div>
+            {storage.length === 0 ? (
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
+                {t('No storage attached.', 'No storage attached.')}
+              </div>
+            ) : (
+              <>
+                {storage.map((s) => {
+                  const size = sizeByName.get(s.label)
+                  return line(s.id, '·', size ? `${s.label} (${size})` : s.label, 'var(--color-status-green-mid)')
+                })}
+                {storageMore > 0 ? (
+                  <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', lineHeight: '15px' }}>
+                    {t('+{n} more', '+{n} more', { n: storageMore })}
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            {/* Host + backup — brief, below storage. */}
+            {host.length > 0 ? (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('Runs on host', 'Runs on host')}
+                </div>
+                {host.map((h) => line(h.id, '·', h.label))}
+              </div>
+            ) : null}
+            {backup.length > 0 ? (
+              <div style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('Backup', 'Backup')}
+                </div>
+                {backup.map((b) => line(b.id, '·', b.label))}
               </div>
             ) : null}
           </>
         )}
-
-        {/* Host + backup — brief, below storage. */}
-        {host.length > 0 ? (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {t('Runs on host', 'Runs on host')}
-            </div>
-            {host.map((h) => line(h.id, '·', h.label))}
-          </div>
-        ) : null}
-        {backup.length > 0 ? (
-          <div style={{ marginTop: 4 }}>
-            <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {t('Backup', 'Backup')}
-            </div>
-            {backup.map((b) => line(b.id, '·', b.label))}
-          </div>
-        ) : null}
       </div>
     </foreignObject>
   )
