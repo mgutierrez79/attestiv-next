@@ -387,8 +387,24 @@ export function seedPositions(nodes: LayoutNode[], opts: LayoutOptions): Map<str
         break
       }
       default: {
-        // Infra on an outer ring.
-        const a = (i / Math.max(total, 1)) * 2 * Math.PI
+        // Infra / user-network on the outer ring. Each group gets its OWN
+        // base angle so single-member groups (one host, one switch, one
+        // firewall) don't all seed at angle 0 on top of each other — that
+        // coincident seed made the relaxed layout collapse into a straight
+        // line once switches/firewalls chained through the host. Base angles
+        // sit in the top and bottom sectors, clear of the left/right
+        // dependency / dependent arcs; members of a group fan out within it.
+        const base: Record<string, number> = {
+          host: -Math.PI / 2 - 0.5, // top-left
+          storage: -Math.PI / 2 + 0.5, // top-right
+          switch: Math.PI / 2 + 0.5, // bottom-left
+          firewall: Math.PI / 2 - 0.5, // bottom-right
+          backup: -Math.PI / 2, // top-centre
+          user_network: Math.PI / 2, // bottom-centre
+        }
+        const b = base[n.group] ?? (i / Math.max(total, 1)) * 2 * Math.PI
+        const span = Math.PI / 4
+        const a = b + (total > 1 ? (i / (total - 1) - 0.5) * span : 0)
         x = cx + Math.cos(a) * outerR
         y = cy + Math.sin(a) * outerR
         break
