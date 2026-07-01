@@ -297,6 +297,34 @@ describe('layout is deterministic', () => {
     expect(seed.get(`app:${APP}`)).toEqual({ x: 400, y: 250 })
   })
 
+  it('seeds each single-member infra group at a distinct point (no collinear collapse)', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: {
+        host: [{ id: 'h1', name: 'esx-01', used_by: ['web01'] }],
+        storage: [{ id: 'st1', name: 'ds-1', used_by: ['web01'] }],
+        switch: [{ id: 'sw1', name: 'leaf-1', used_by: ['web01'] }],
+        firewall: [{ id: 'fw1', name: 'pan-edge', used_by: ['web01'], via_switches: ['leaf-1'] }],
+      },
+      dependencies: [],
+      dependents: [],
+      enabled: { dependencies: false, dependents: false, host: true, storage: true, switch: true, firewall: true },
+    })
+    const seed = seedPositions(g.nodes, opts)
+    const pts = ['host:h1', 'storage:st1', 'switch:sw1', 'firewall:fw1'].map((id) => seed.get(id)!)
+    for (const p of pts) expect(p).toBeDefined()
+    // No two infra seeds coincide — the old code put them all at angle 0.
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const apart = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)
+        expect(apart).toBeGreaterThan(1)
+      }
+    }
+  })
+
   it('produces identical positions for identical inputs', () => {
     const { nodes, edges } = baseGraph()
     const build = () =>
