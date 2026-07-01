@@ -236,6 +236,49 @@ describe('buildLayeredGraph — switch routing', () => {
   })
 })
 
+describe('buildLayeredGraph — firewall routing', () => {
+  it('routes firewalls through the bridging switch → host → VM', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: {
+        host: [{ id: 'h1', name: 'esx-01', used_by: ['web01'] }],
+        storage: [],
+        switch: [{ id: 'sw1', name: 'leaf-1', used_by: ['web01'] }],
+        firewall: [{ id: 'fw1', name: 'pan-edge', used_by: ['web01'], via_switches: ['leaf-1'] }],
+      },
+      dependencies: [],
+      dependents: [],
+      enabled: { ...allOff, firewall: true }, // Network + Hosts layers stay OFF
+    })
+    // Firewall attaches to its bridging switch, NOT straight to the VM…
+    expect(g.edges.some((e) => e.source === 'switch:sw1' && e.target === 'firewall:fw1')).toBe(true)
+    expect(g.edges.some((e) => e.target === 'firewall:fw1' && e.source === 'vm:web01')).toBe(false)
+    // …and the whole switch → host → VM chain is materialised behind it.
+    expect(g.nodes.some((n) => n.id === 'switch:sw1')).toBe(true)
+    expect(g.nodes.some((n) => n.id === 'host:h1')).toBe(true)
+    expect(g.edges.some((e) => e.source === 'host:h1' && e.target === 'switch:sw1')).toBe(true)
+    expect(g.edges.some((e) => e.source === 'vm:web01' && e.target === 'host:h1')).toBe(true)
+  })
+
+  it('falls back to a direct firewall → VM edge when no bridging switch is known', () => {
+    const { nodes, edges } = baseGraph()
+    const g = buildLayeredGraph({
+      appID: APP,
+      baseNodes: nodes,
+      baseEdges: edges,
+      infra: { host: [], storage: [], switch: [], firewall: [{ id: 'fw1', name: 'pan-edge', used_by: ['web01'] }] },
+      dependencies: [],
+      dependents: [],
+      enabled: { ...allOff, firewall: true },
+    })
+    expect(g.edges.some((e) => e.source === 'vm:web01' && e.target === 'firewall:fw1')).toBe(true)
+    expect(g.nodes.some((n) => n.id === 'firewall:fw1')).toBe(true)
+  })
+})
+
 describe('layout is deterministic', () => {
   const opts = { width: 800, height: 500, iterations: 60 }
 
