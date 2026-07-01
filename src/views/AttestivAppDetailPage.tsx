@@ -949,6 +949,10 @@ function AppTopologyEmbed({
     topVolumes: Array<{ name?: string; size?: string }>
     volumeCount?: number
   } | null>(null)
+  // Full inventory detail of the selected node (for the node-OWN facts on
+  // the detail card: vendor/model/serial/OS/IP/switch connectivity), keyed
+  // by node id. Fetched alongside the storage enrichment below.
+  const [nodeAsset, setNodeAsset] = useState<{ id: string; body: Record<string, unknown> } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1027,6 +1031,7 @@ function AppTopologyEmbed({
     const selected = selectedId ? nodes.find((n) => n.id === selectedId) ?? null : null
     if (!selected || !isAssetNode(selected)) {
       setStorageDetail(null)
+      setNodeAsset(null)
       return
     }
     let cancelled = false
@@ -1041,6 +1046,7 @@ function AppTopologyEmbed({
           }
         }
         if (cancelled) return
+        setNodeAsset({ id, body: body as Record<string, unknown> })
         const top = body.metadata?.top_volumes
         if (Array.isArray(top) && top.length > 0) {
           setStorageDetail({ id, topVolumes: top, volumeCount: body.metadata?.volume_count })
@@ -1048,7 +1054,10 @@ function AppTopologyEmbed({
           setStorageDetail(null)
         }
       } catch {
-        if (!cancelled) setStorageDetail(null)
+        if (!cancelled) {
+          setStorageDetail(null)
+          setNodeAsset(null)
+        }
       }
     }
     void loadDetail(selected.id)
@@ -1286,6 +1295,7 @@ function AppTopologyEmbed({
           <NodeDetailCard
             node={selectedNode}
             groups={groups}
+            asset={nodeAsset && nodeAsset.id === selectedNode.id ? nodeAsset.body : null}
             storageDetail={storageDetail && storageDetail.id === selectedNode.id ? storageDetail : null}
             anchor={selectedPos}
             viewW={TOPO_W}
@@ -1481,6 +1491,7 @@ const MAX_LIST = 5
 function NodeDetailCard({
   node,
   groups,
+  asset,
   storageDetail,
   anchor,
   viewW,
@@ -1490,6 +1501,7 @@ function NodeDetailCard({
 }: {
   node: { id: string; label: string; asset_type: string; criticality?: string; health?: string; backup_state?: string }
   groups: ReturnType<typeof neighboursOf>
+  asset: Record<string, unknown> | null
   storageDetail: { topVolumes: Array<{ name?: string; size?: string }>; volumeCount?: number } | null
   anchor: { x: number; y: number }
   viewW: number
@@ -1497,6 +1509,32 @@ function NodeDetailCard({
   onClose: () => void
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
+  // This node's OWN facts, pulled from its fetched inventory detail
+  // (tolerant of per-connector key spellings). These lead the card so it
+  // reads as "about this node" before its connected storage/host/backup.
+  const meta: Record<string, unknown> = (asset?.['metadata'] as Record<string, unknown>) ?? {}
+  const guest: Record<string, unknown> = (meta['guest'] as Record<string, unknown>) ?? {}
+  const pickMeta = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = meta[k] ?? guest[k]
+      if (typeof v === 'string' && v.trim() !== '') return v.trim()
+      if (typeof v === 'number') return String(v)
+    }
+    return ''
+  }
+  const ownFacts: Array<[string, string]> = []
+  const pushFact = (label: string, value: string) => {
+    if (value) ownFacts.push([label, value])
+  }
+  pushFact(t('Type', 'Type'), node.asset_type || '')
+  pushFact(t('Criticality', 'Criticality'), node.criticality || '')
+  pushFact(t('Vendor', 'Vendor'), pickMeta('manufacturer', 'vendor'))
+  pushFact(t('Model', 'Model'), pickMeta('model', 'platform', 'platformId', 'platform_id'))
+  pushFact(t('Serial', 'Serial'), pickMeta('serial', 'serialNumber', 'serial_number', 'service_tag'))
+  pushFact(t('Software / OS', 'Software / OS'), pickMeta('software_version', 'sw-version', 'softwareVersion', 'os_version', 'osVersion', 'operating_system', 'version'))
+  pushFact(t('Management IP', 'Management IP'), pickMeta('management_ip', 'management_address', 'mgmt_ip', 'ip-address', 'ip_address', 'primary_ip', 'ip'))
+  pushFact(t('Health', 'Health'), node.health || pickMeta('health', 'health_state'))
+
   // Capacity enrichment keyed by volume name; falls back to graph data.
   const sizeByName = new Map<string, string>()
   for (const v of storageDetail?.topVolumes ?? []) {
@@ -1511,6 +1549,7 @@ function NodeDetailCard({
   // Estimate card height from its rows so the up-nudge clamp is accurate.
   const rows =
     1 /* header */ +
+    ownFacts.length +
     1 /* storage label */ +
     Math.max(storage.length, 1) +
     (storageMore > 0 ? 1 : 0) +
@@ -1577,7 +1616,15 @@ function NodeDetailCard({
           </button>
         </div>
 
-        {/* Storage — the headline, stacked first. */}
+        {/* This node's OWN facts, first — so the card is about the node,
+            not only the storage/host it connects to. */}
+        {ownFacts.length > 0 ? (
+          <div style={{ marginBottom: 5 }}>
+            {ownFacts.map(([label, value]) => line(label, label, value, 'var(--color-text-primary)'))}
+          </div>
+        ) : null}
+
+        {/* Connected storage. */}
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {t('Storage', 'Storage')}
         </div>
