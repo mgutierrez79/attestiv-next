@@ -1304,7 +1304,7 @@ function AppTopologyEmbed({
         <Legend swatch="var(--color-status-green-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
         {userNetworks.length > 0 ? (
-          <Legend swatch="var(--color-status-blue-mid)" icon="ti-cloud" label={t('User network', 'User network')} />
+          <Legend swatch="var(--color-status-blue-deep)" icon="ti-cloud" label={t('User network', 'User network')} />
         ) : null}
         {layers.dependencies ? (
           <Legend swatch="var(--color-status-blue-deep)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
@@ -1355,7 +1355,7 @@ function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
     case 'user_network':
       // Where users connect from — a distinct cloud glyph + blue so it reads
       // as "external inbound" rather than infrastructure.
-      return { color: 'var(--color-status-blue-mid)', icon: 'ti-cloud' }
+      return { color: 'var(--color-status-blue-deep)', icon: 'ti-cloud' }
   }
   return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
 }
@@ -1405,7 +1405,7 @@ function strokeForRelation(relation: RelationKind): string {
     case 'firewall':
       return 'var(--color-status-violet-mid)'
     case 'user_access':
-      return 'var(--color-status-blue-mid)'
+      return 'var(--color-status-blue-deep)'
   }
   return 'var(--color-border-tertiary)'
 }
