@@ -27,14 +27,23 @@ import {
 import { apiFetch } from '../lib/api'
 import {
   buildFlowsCsv,
+  buildUserAccessCsv,
   buildFlowValidationLookup,
   countFlows,
   flowValidationKey,
+  userAccessToFlows,
+  USER_ACCESS_DEP_PREFIX,
   validationTone,
   type DependencyFlow,
   type FlowValidation,
   type FlowValidationResponse,
 } from '../lib/appFlows'
+import {
+  countUserAccess,
+  networkTypeLabel,
+  networkTypeTone,
+  type UserAccessNetwork,
+} from '../lib/appUserAccess'
 import {
   isAssetNode,
   neighboursOf,
@@ -46,6 +55,7 @@ import {
   type LayerKey,
   type LayoutNode,
   type RelationKind,
+  type UserNetwork,
 } from '../lib/topologyLayers'
 
 import { useI18n } from '../lib/i18n';
@@ -61,6 +71,7 @@ type AppDetail = {
   dependency_count?: number
   components?: AppComponent[]
   dependencies?: AppDependency[]
+  user_access?: UserAccessNetwork[]
   dependency_chain?: string
   dependents?: string[]
   dr_requirements?: { rto_minutes?: number; rpo_minutes?: number; tier?: string; classification?: string }
@@ -265,12 +276,21 @@ export function AttestivAppDetailPage() {
   const tier = (app.criticality_tier ?? '').toLowerCase()
   const tierTone = TIER_TONE[tier] ?? 'gray'
 
-  const flowCount = countFlows(app.dependencies)
+  // The app's display label (falls back to id) — used as the destination for
+  // user-access ingress flows in the matrix + CSV.
+  const appLabel = app.display_name || app.application_id
+  const userAccessCount = countUserAccess(app.user_access)
+  // Export enables when there is EITHER a dependency flow or a user-access
+  // ingress entry to write.
+  const flowCount = countFlows(app.dependencies) + userAccessCount
 
-  // Client-side CSV of every flow across all dependencies. Mirrors the
-  // Blob + anchor download used elsewhere (e.g. the Risks page export).
+  // Client-side CSV of every flow across all dependencies PLUS the
+  // user-access ingress rows (marked with the USER_ACCESS_DEP_PREFIX in the
+  // dependency column). Mirrors the Blob + anchor download used elsewhere.
   function exportFlows() {
-    const csv = buildFlowsCsv(app?.dependencies)
+    const depCsv = buildFlowsCsv(app?.dependencies)
+    const uaCsv = buildUserAccessCsv(app?.user_access, appLabel)
+    const csv = uaCsv ? `${depCsv}\n${uaCsv}` : depCsv
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -379,6 +399,7 @@ export function AttestivAppDetailPage() {
             appID={app.application_id}
             dependencies={app.dependencies ?? []}
             dependents={app.dependents ?? []}
+            userAccess={app.user_access ?? []}
             t={t}
           />
         </Card>
@@ -464,6 +485,72 @@ export function AttestivAppDetailPage() {
               {t('Resolved chain:', 'Resolved chain:')} <code>{app.dependency_chain}</code>
             </div>
           ) : null}
+        </Card>
+
+        <Card style={{ marginTop: 12 }}>
+          <CardTitle right={<Badge tone="navy">{userAccessCount}</Badge>}>
+            {t('User access', 'User access')}
+          </CardTitle>
+          {userAccessCount === 0 ? (
+            <EmptyState
+              icon="ti-users"
+              title={t('No user access declared', 'No user access declared')}
+              description={t(
+                'No user-connectivity networks are declared for this application. Add them from the edit page to record where users connect from.',
+                'No user-connectivity networks are declared for this application. Add them from the edit page to record where users connect from.',
+              )}
+            />
+          ) : (
+            <div>
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ padding: '6px 10px 6px 0' }}>{t('Network', 'Network')}</th>
+                    <th style={{ padding: '6px 10px' }}>{t('Source', 'Source')}</th>
+                    <th style={{ padding: '6px 10px' }}>{t('Protocol', 'Protocol')}</th>
+                    <th style={{ padding: '6px 10px' }}>{t('Ports', 'Ports')}</th>
+                    <th style={{ padding: '6px 0 6px 10px' }}>{t('Description', 'Description')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(app.user_access ?? []).map((u, i) => (
+                    <tr key={i} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                      <td style={{ padding: '8px 10px 8px 0' }}>
+                        <Badge tone={networkTypeTone(u.network_type)}>{networkTypeLabel(u.network_type)}</Badge>
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {u.source ? <code style={{ fontSize: 11 }}>{u.source}</code> : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        {u.protocol ? <Badge tone="gray">{u.protocol}</Badge> : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', color: 'var(--color-text-secondary)' }}>
+                        {u.ports ? <code style={{ fontSize: 11 }}>{u.ports}</code> : '—'}
+                      </td>
+                      <td style={{ padding: '8px 0 8px 10px', color: 'var(--color-text-secondary)' }}>
+                        {u.description || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* The same entries, folded into the flow-matrix styling as
+                  ingress flows into the app itself. Validation verdicts for
+                  these come back keyed with the "user-access:" dependency id,
+                  so FlowMatrix's existing lookup lights their badge. */}
+              <div style={{ marginTop: 12 }}>
+                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('User access (ingress)', 'User access (ingress)')}
+                </span>
+                <FlowMatrix
+                  flows={userAccessToFlows(app.user_access, appLabel)}
+                  dependencyId={USER_ACCESS_DEP_PREFIX}
+                  validation={flowValidation}
+                  t={t}
+                />
+              </div>
+            </div>
+          )}
         </Card>
 
         <AppInfrastructureDeps appID={app.application_id} t={t} />
@@ -820,11 +907,13 @@ function AppTopologyEmbed({
   appID,
   dependencies,
   dependents,
+  userAccess,
   t,
 }: {
   appID: string
   dependencies: AppDependency[]
   dependents: string[]
+  userAccess: UserAccessNetwork[]
   t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string
 }) {
   type Node = {
@@ -973,6 +1062,14 @@ function AppTopologyEmbed({
   // relaxation is the same every time for the same inputs, so the picture is
   // stable across unrelated re-renders (e.g. selecting a node). Computed
   // before the early returns so hook order stays constant across renders.
+  // Map the app's user-access entries to the topology's UserNetwork shape:
+  // the raw network_type + its friendly label. buildLayeredGraph dedupes by
+  // type, so several entries of one type collapse to a single node.
+  const userNetworks: UserNetwork[] = useMemo(
+    () => userAccess.map((u) => ({ type: u.network_type, label: networkTypeLabel(u.network_type) })),
+    [userAccess],
+  )
+
   const { graphNodes, graphEdges, positions } = useMemo(() => {
     const built = buildLayeredGraph({
       appID,
@@ -982,6 +1079,7 @@ function AppTopologyEmbed({
       dependencies,
       dependents,
       enabled: layers,
+      userNetworks,
     })
     const pos = layoutGraph(built.nodes, built.edges, {
       width: TOPO_W,
@@ -989,7 +1087,7 @@ function AppTopologyEmbed({
       iterations: TOPO_ITER,
     })
     return { graphNodes: built.nodes, graphEdges: built.edges, positions: pos }
-  }, [appID, nodes, edges, infra, dependencies, dependents, layers])
+  }, [appID, nodes, edges, infra, dependencies, dependents, layers, userNetworks])
 
   if (loading) {
     return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '20px 0' }}>{t('Loading…', 'Loading…')}</div>
@@ -1085,7 +1183,7 @@ function AppTopologyEmbed({
               strokeWidth={isInfraRelation(e.relation) ? 1.5 : 2.25}
               opacity={isInfraRelation(e.relation) ? 0.6 : 0.9}
               strokeDasharray={dashForRelation(e.relation)}
-              markerEnd={e.relation === 'dependency' ? 'url(#app-dep-arrow)' : undefined}
+              markerEnd={e.relation === 'dependency' || e.relation === 'user_access' ? 'url(#app-dep-arrow)' : undefined}
             />
           )
         })}
@@ -1205,6 +1303,9 @@ function AppTopologyEmbed({
       <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Legend swatch="var(--color-status-green-mid)" icon="ti-stack-2" label={t('App', 'App')} />
         <Legend swatch="var(--color-status-amber-mid)" icon="ti-device-desktop" label={t('Component VM', 'Component VM')} />
+        {userNetworks.length > 0 ? (
+          <Legend swatch="var(--color-status-blue-mid)" icon="ti-cloud" label={t('User network', 'User network')} />
+        ) : null}
         {layers.dependencies ? (
           <Legend swatch="var(--color-status-blue-deep)" icon="ti-arrow-up-right" label={t('Dependencies', 'Dependencies')} />
         ) : null}
@@ -1251,6 +1352,10 @@ function tokenForGroup(node: LayoutNode): { color: string; icon: string } {
       return { color: 'var(--color-status-red-deep)', icon: 'ti-router' }
     case 'firewall':
       return { color: 'var(--color-status-violet-mid)', icon: 'ti-shield-lock' }
+    case 'user_network':
+      // Where users connect from — a distinct cloud glyph + blue so it reads
+      // as "external inbound" rather than infrastructure.
+      return { color: 'var(--color-status-blue-mid)', icon: 'ti-cloud' }
   }
   return { color: 'var(--color-text-tertiary)', icon: 'ti-circle' }
 }
@@ -1299,6 +1404,8 @@ function strokeForRelation(relation: RelationKind): string {
       return 'var(--color-status-red-deep)'
     case 'firewall':
       return 'var(--color-status-violet-mid)'
+    case 'user_access':
+      return 'var(--color-status-blue-mid)'
   }
   return 'var(--color-border-tertiary)'
 }
@@ -1311,6 +1418,8 @@ function dashForRelation(relation: RelationKind): string {
       return '6 3'
     case 'dependent':
       return '2 3'
+    case 'user_access':
+      return '3 3'
   }
   return '0'
 }

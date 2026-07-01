@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildFlowsCsv,
+  buildUserAccessCsv,
   buildFlowValidationLookup,
   cleanFlows,
   countFlows,
@@ -8,10 +9,14 @@ import {
   emptyFlow,
   flowValidationKey,
   suggestionToFlow,
+  userAccessFlowSource,
+  userAccessToFlows,
+  USER_ACCESS_DEP_PREFIX,
   validationTone,
   type DependencyFlow,
   type FlowExportDependency,
 } from './appFlows'
+import type { UserAccessNetwork } from './appUserAccess'
 
 // These helpers back the per-dependency network flow matrix: the edit-form
 // normalization (cleanFlows), the detail-page CSV export (buildFlowsCsv),
@@ -226,5 +231,58 @@ describe('suggestionToFlow', () => {
       direction: undefined,
       description: '',
     })
+  })
+})
+
+describe('userAccessFlowSource', () => {
+  it('labels the network type, appending the source range when present', () => {
+    expect(userAccessFlowSource({ network_type: 'vpn', source: '10.8.0.0/24' })).toBe('VPN (10.8.0.0/24)')
+    expect(userAccessFlowSource({ network_type: 'internet' })).toBe('Internet')
+  })
+})
+
+describe('userAccessToFlows', () => {
+  it('renders each entry as an ingress flow into the app', () => {
+    const entries: UserAccessNetwork[] = [
+      { network_type: 'vpn', source: '10.8.0.0/24', protocol: 'tcp', ports: '443', description: 'remote staff' },
+    ]
+    expect(userAccessToFlows(entries, 'Billing')).toEqual([
+      {
+        source: 'VPN (10.8.0.0/24)',
+        destination: 'Billing',
+        protocol: 'tcp',
+        ports: '443',
+        description: 'remote staff',
+        direction: 'ingress',
+      },
+    ])
+  })
+
+  it('drops an unrecognised protocol and blanks missing optional fields', () => {
+    const [flow] = userAccessToFlows([{ network_type: 'internet', protocol: 'quic' }], 'app-x')
+    expect(flow.protocol).toBeUndefined()
+    expect(flow.ports).toBeUndefined()
+    expect(flow.description).toBeUndefined()
+    expect(flow.direction).toBe('ingress')
+    expect(flow.destination).toBe('app-x')
+  })
+
+  it('returns [] for undefined input', () => {
+    expect(userAccessToFlows(undefined, 'app')).toEqual([])
+  })
+})
+
+describe('buildUserAccessCsv', () => {
+  it('flattens entries with the user-access marker in the dependency column', () => {
+    const entries: UserAccessNetwork[] = [
+      { network_type: 'external', source: '203.0.113.0/24', protocol: 'tcp', ports: '443', description: 'partner, edge' },
+    ]
+    const csv = buildUserAccessCsv(entries, 'Billing')
+    expect(csv).toBe(`${USER_ACCESS_DEP_PREFIX},External Network (203.0.113.0/24),Billing,tcp,443,ingress,"partner, edge"`)
+  })
+
+  it('returns an empty string when there are no entries', () => {
+    expect(buildUserAccessCsv([], 'Billing')).toBe('')
+    expect(buildUserAccessCsv(undefined, 'Billing')).toBe('')
   })
 })

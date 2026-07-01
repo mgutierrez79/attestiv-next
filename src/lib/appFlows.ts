@@ -240,3 +240,81 @@ export function suggestionToFlow(s: FlowSuggestion): DependencyFlow {
     ports: s.ports ?? '',
   }
 }
+
+// --- User-access (ingress) flows ------------------------------------------
+//
+// A user-access entry describes WHERE users connect FROM (an external
+// network, VPN, the internet, …). For the flow matrix + CSV we surface each
+// as an INGRESS flow into the application itself: source = the network-type
+// label (+ source range when present), destination = the app's display name,
+// protocol/ports carried through. Kept in appFlows so the matrix and CSV
+// treat user access and dependency flows uniformly.
+//
+// The backend's flow-validation verdicts for these come back keyed with a
+// dependency_application_id of `"user-access:"` (USER_ACCESS_DEP_PREFIX), so
+// the same flowValidationKey lookup lights their badge.
+
+import type { UserAccessNetwork } from './appUserAccess'
+import { networkTypeLabel } from './appUserAccess'
+
+// Prefix the flow-validation backend stamps onto user-access verdicts'
+// dependency_application_id. Exposed so the detail page can build the lookup
+// key that matches.
+export const USER_ACCESS_DEP_PREFIX = 'user-access:'
+
+// userAccessFlowSource renders the "from" label for a user-access ingress
+// flow: the friendly network-type label, plus the declared source range in
+// parentheses when present (e.g. "VPN (10.8.0.0/24)").
+export function userAccessFlowSource(entry: UserAccessNetwork): string {
+  const label = networkTypeLabel(entry.network_type)
+  const src = (entry.source ?? '').trim()
+  return src ? `${label} (${src})` : label
+}
+
+// userAccessToFlows converts the app's user-access entries into ingress
+// DependencyFlow rows destined for the application itself, so they can render
+// in the same flow-matrix table styling and export through the same CSV.
+// `appLabel` is the app's display name (or id) used as the destination.
+export function userAccessToFlows(
+  entries: UserAccessNetwork[] | undefined,
+  appLabel: string,
+): DependencyFlow[] {
+  const out: DependencyFlow[] = []
+  for (const e of entries ?? []) {
+    const protocol = (e.protocol ?? '').trim().toLowerCase()
+    out.push({
+      source: userAccessFlowSource(e),
+      destination: appLabel,
+      protocol: FLOW_PROTOCOLS.includes(protocol as FlowProtocol) ? (protocol as FlowProtocol) : undefined,
+      ports: (e.ports ?? '').trim() || undefined,
+      description: (e.description ?? '').trim() || undefined,
+      direction: 'ingress',
+    })
+  }
+  return out
+}
+
+// buildUserAccessCsv flattens user-access entries into the SAME column shape
+// as buildFlowsCsv (header + one row each), using USER_ACCESS_DEP_PREFIX as
+// the dependency_application_id marker column so an operator can tell ingress
+// user-access rows apart from dependency flows in the export.
+export function buildUserAccessCsv(
+  entries: UserAccessNetwork[] | undefined,
+  appLabel: string,
+): string {
+  const lines: string[] = []
+  for (const f of userAccessToFlows(entries, appLabel)) {
+    lines.push(
+      [
+        csvCell(USER_ACCESS_DEP_PREFIX),
+        csvCell(f.source),
+        csvCell(f.destination),
+        csvCell(f.protocol),
+        csvCell(f.ports),
+        csvCell(f.direction),
+        csvCell(f.description),
+      ].join(','),
+    )
+  }
+  return lines.join('\n')
+}
