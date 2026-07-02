@@ -1334,13 +1334,14 @@ function AppTopologyEmbed({
           const len = Math.hypot(dx, dy) || 1
           // 74% of the way toward the destination — near the target node but
           // clear of its circle + arrowhead — then nudged perpendicular to the
-          // cable so the chip floats just OFF the line, reading as its own
-          // small independent label rather than sitting on the wire.
-          const off = 9
+          // cable so the chip floats clearly OFF the line. Small and neutral
+          // (a thin grey border, NOT the cable's colour) so each port/protocol
+          // reads as its own independent tag rather than part of the wire.
+          const off = 11
           const lx = a.x + dx * 0.74 + (-dy / len) * off
           const ly = a.y + dy * 0.74 + (dx / len) * off
-          const w = label.length * 4.1 + 6
-          const h = 11
+          const w = label.length * 3.55 + 5
+          const h = 9
           return (
             <g key={`${e.id}-flow`} pointerEvents="none">
               <rect
@@ -1348,13 +1349,12 @@ function AppTopologyEmbed({
                 y={ly - h / 2}
                 width={w}
                 height={h}
-                rx={2.5}
+                rx={2}
                 fill="var(--color-background-primary)"
-                stroke={strokeForRelation(e.relation)}
-                strokeOpacity={0.5}
-                strokeWidth={0.6}
+                stroke="var(--color-border-secondary)"
+                strokeWidth={0.5}
               />
-              <text x={lx} y={ly + 2.6} textAnchor="middle" fontSize={7} fontFamily="var(--font-mono)" fill="var(--color-text-secondary)">
+              <text x={lx} y={ly + 2.2} textAnchor="middle" fontSize={6.5} fontFamily="var(--font-mono)" fill="var(--color-text-tertiary)">
                 {label}
               </text>
             </g>
