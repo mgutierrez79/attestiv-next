@@ -1329,25 +1329,32 @@ function AppTopologyEmbed({
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
-          // 74% of the way toward the destination — near the target node
-          // but clear of its circle + arrowhead.
-          const lx = a.x + (b.x - a.x) * 0.74
-          const ly = a.y + (b.y - a.y) * 0.74
-          const w = label.length * 5 + 8
+          const dx = b.x - a.x
+          const dy = b.y - a.y
+          const len = Math.hypot(dx, dy) || 1
+          // 74% of the way toward the destination — near the target node but
+          // clear of its circle + arrowhead — then nudged perpendicular to the
+          // cable so the chip floats just OFF the line, reading as its own
+          // small independent label rather than sitting on the wire.
+          const off = 9
+          const lx = a.x + dx * 0.74 + (-dy / len) * off
+          const ly = a.y + dy * 0.74 + (dx / len) * off
+          const w = label.length * 4.1 + 6
+          const h = 11
           return (
             <g key={`${e.id}-flow`} pointerEvents="none">
               <rect
                 x={lx - w / 2}
-                y={ly - 7}
+                y={ly - h / 2}
                 width={w}
-                height={14}
-                rx={3}
+                height={h}
+                rx={2.5}
                 fill="var(--color-background-primary)"
                 stroke={strokeForRelation(e.relation)}
-                strokeOpacity={0.55}
-                strokeWidth={0.75}
+                strokeOpacity={0.5}
+                strokeWidth={0.6}
               />
-              <text x={lx} y={ly + 3} textAnchor="middle" fontSize={8.5} fontFamily="var(--font-mono)" fill="var(--color-text-secondary)">
+              <text x={lx} y={ly + 2.6} textAnchor="middle" fontSize={7} fontFamily="var(--font-mono)" fill="var(--color-text-secondary)">
                 {label}
               </text>
             </g>
