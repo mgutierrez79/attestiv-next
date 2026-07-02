@@ -1127,7 +1127,9 @@ function AppTopologyEmbed({
   // Compact "protocol/ports" label for a dependency or user-access edge,
   // built from the app's flow matrix (dependency.flows / user_access). It's
   // rendered as a mini box near the DESTINATION end of the cable.
-  const flowLabelForEdge = (e: { id: string; relation: RelationKind; target: string }): string => {
+  // One label per port/protocol on the edge — each rendered as its OWN small
+  // box, rather than all crammed into a single comma-joined chip.
+  const flowLabelsForEdge = (e: { id: string; relation: RelationKind; target: string }): string[] => {
     const fmt = (proto?: string, ports?: string): string => {
       const p = (proto ?? '').trim()
       const pt = (ports ?? '').trim()
@@ -1151,9 +1153,7 @@ function AppTopologyEmbed({
         }
       }
     }
-    const uniq = Array.from(new Set(parts))
-    if (uniq.length === 0) return ''
-    return uniq.length <= 2 ? uniq.join(', ') : `${uniq.slice(0, 2).join(', ')} +${uniq.length - 2}`
+    return Array.from(new Set(parts))
   }
 
   return (
@@ -1324,39 +1324,51 @@ function AppTopologyEmbed({
             end of each dependency / user-access cable, drawn above the
             nodes so it isn't hidden. Only edges that carry a flow. */}
         {graphEdges.map((e) => {
-          const label = flowLabelForEdge(e)
-          if (!label) return null
+          const labels = flowLabelsForEdge(e)
+          if (labels.length === 0) return null
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
           const dx = b.x - a.x
           const dy = b.y - a.y
           const len = Math.hypot(dx, dy) || 1
-          // 74% of the way toward the destination — near the target node but
-          // clear of its circle + arrowhead — then nudged perpendicular to the
-          // cable so the chip floats clearly OFF the line. Small and neutral
-          // (a thin grey border, NOT the cable's colour) so each port/protocol
-          // reads as its own independent tag rather than part of the wire.
-          const off = 11
-          const lx = a.x + dx * 0.74 + (-dy / len) * off
-          const ly = a.y + dy * 0.74 + (dx / len) * off
-          const w = label.length * 3.55 + 5
+          // Anchor 74% of the way toward the destination — near the target node
+          // but clear of its circle + arrowhead. nx/ny is the unit vector
+          // perpendicular to the cable: each port gets its OWN small, neutral
+          // box, stacked along that perpendicular so they float clearly off the
+          // wire as independent tags instead of one crammed chip.
+          const nx = -dy / len
+          const ny = dx / len
+          const bx = a.x + dx * 0.74
+          const by = a.y + dy * 0.74
           const h = 9
+          const shown = labels.slice(0, 5)
+          const chips = labels.length > shown.length ? [...shown, `+${labels.length - shown.length}`] : shown
           return (
             <g key={`${e.id}-flow`} pointerEvents="none">
-              <rect
-                x={lx - w / 2}
-                y={ly - h / 2}
-                width={w}
-                height={h}
-                rx={2}
-                fill="var(--color-background-primary)"
-                stroke="var(--color-border-secondary)"
-                strokeWidth={0.5}
-              />
-              <text x={lx} y={ly + 2.2} textAnchor="middle" fontSize={6.5} fontFamily="var(--font-mono)" fill="var(--color-text-tertiary)">
-                {label}
-              </text>
+              {chips.map((label, i) => {
+                const off = 11 + i * (h + 3)
+                const lx = bx + nx * off
+                const ly = by + ny * off
+                const w = label.length * 3.55 + 5
+                return (
+                  <g key={i}>
+                    <rect
+                      x={lx - w / 2}
+                      y={ly - h / 2}
+                      width={w}
+                      height={h}
+                      rx={2}
+                      fill="var(--color-background-primary)"
+                      stroke="var(--color-border-secondary)"
+                      strokeWidth={0.5}
+                    />
+                    <text x={lx} y={ly + 2.2} textAnchor="middle" fontSize={6.5} fontFamily="var(--font-mono)" fill="var(--color-text-tertiary)">
+                      {label}
+                    </text>
+                  </g>
+                )
+              })}
             </g>
           )
         })}
