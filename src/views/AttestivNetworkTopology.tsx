@@ -219,7 +219,16 @@ export function AttestivNetworkTopology() {
     return counts
   }, [visibleEdges])
 
-  const layout = useMemo(() => layoutNodes(visibleNodes), [visibleNodes])
+  const layout = useMemo(
+    () =>
+      layoutNodes(visibleNodes, {
+        applications: t('Applications', 'Applications'),
+        userNetworks: t('User networks', 'User networks'),
+        unassigned: t('Unassigned', 'Unassigned'),
+        unresolvedMacs: t('Unresolved MACs', 'Unresolved MACs'),
+      }),
+    [visibleNodes, t],
+  )
 
   const selected = useMemo(
     () => (selectedId ? visibleNodes.find((n) => n.id === selectedId) ?? null : null),
@@ -449,13 +458,17 @@ function EdgeToggle({
   )
 }
 
-// layoutNodes places each site's nodes in a GRID inside a bounded
-// "site container" box. Containers flow left-to-right and wrap to a
-// new row when they would overflow the canvas width — so every
-// component is visually grouped under its Site, nodes never collapse
-// onto a single overlapping column, and edges get room to route. Site
-// "" (no site) sorts last.
-function layoutNodes(nodes: TopologyNode[]) {
+// layoutNodes places each container's nodes in a GRID inside a bounded,
+// labelled box. Real sites come first (alphabetical); nodes with no site are
+// NOT dumped into one "(no site)" bucket — they're split into meaningful
+// virtual containers (Applications, User networks, Unassigned, Unresolved
+// MACs) so every box has a real display name. Containers flow left-to-right,
+// wrap when they'd overflow the canvas, and each row is centred so the
+// distribution reads balanced rather than ragged.
+function layoutNodes(
+  nodes: TopologyNode[],
+  labels: { applications: string; userNetworks: string; unassigned: string; unresolvedMacs: string },
+) {
   const CELL_W = 116
   const CELL_H = 84
   const SITE_PAD = 18
@@ -464,71 +477,105 @@ function layoutNodes(nodes: TopologyNode[]) {
   const CANVAS_MAX_W = 1480
   const typeOrder = ['firewall', 'firewall_manager', 'network_device', 'host', 'cluster', 'server', 'vm', 'storage_array', 'storage_volume', 'backup_appliance', 'computer', 'unknown']
 
-  const sitesMap = new Map<string, TopologyNode[]>()
-  for (const node of nodes) {
-    const key = node.site_id || ''
-    if (!sitesMap.has(key)) sitesMap.set(key, [])
-    sitesMap.get(key)!.push(node)
+  // Bucket: real site by id, else a virtual category by node nature.
+  const bucketFor = (node: TopologyNode): { key: string; name: string; virtual: boolean } => {
+    if (node.site_id) return { key: `site:${node.site_id}`, name: node.site_name || node.site_id, virtual: false }
+    if (node.id.startsWith('app:') || node.asset_type === 'application') return { key: '~apps', name: labels.applications, virtual: true }
+    if (node.id.startsWith('usernet:') || node.asset_type === 'user_network') return { key: '~usernet', name: labels.userNetworks, virtual: true }
+    if (node.id.startsWith('mac:')) return { key: '~mac', name: labels.unresolvedMacs, virtual: true }
+    return { key: '~other', name: labels.unassigned, virtual: true }
   }
-  const sites = Array.from(sitesMap.entries()).sort((a, b) => {
-    if (a[0] === '') return 1
-    if (b[0] === '') return -1
-    return a[0].localeCompare(b[0])
+  const groupsMap = new Map<string, { name: string; virtual: boolean; members: TopologyNode[] }>()
+  for (const node of nodes) {
+    const b = bucketFor(node)
+    if (!groupsMap.has(b.key)) groupsMap.set(b.key, { name: b.name, virtual: b.virtual, members: [] })
+    groupsMap.get(b.key)!.members.push(node)
+  }
+  // Real sites alphabetically, then the virtual containers in a fixed,
+  // meaningful order: the application layer first, user networks next,
+  // leftovers and unresolved MACs last.
+  const virtualOrder = ['~apps', '~usernet', '~other', '~mac']
+  const groups = Array.from(groupsMap.entries()).sort((a, b) => {
+    const av = a[1].virtual
+    const bv = b[1].virtual
+    if (av !== bv) return av ? 1 : -1
+    if (av && bv) return virtualOrder.indexOf(a[0]) - virtualOrder.indexOf(b[0])
+    return a[1].name.localeCompare(b[1].name)
   })
 
-  const positions = new Map<string, { x: number; y: number }>()
-  const nodeById = new Map<string, TopologyNode>()
-  const containers: Array<{ siteID: string; siteName: string; x: number; y: number; w: number; h: number }> = []
-
-  let cursorX = SITE_PAD
-  let cursorY = SITE_PAD
-  let rowMaxH = 0
-  let canvasW = 0
-
-  for (const [siteID, members] of sites) {
-    members.sort((a, b) => {
+  // Pass 1 — measure every box.
+  type Box = { key: string; name: string; virtual: boolean; members: TopologyNode[]; cols: number; w: number; h: number }
+  const boxes: Box[] = groups.map(([key, g]) => {
+    g.members.sort((a, b) => {
       const ai = typeOrder.indexOf(a.asset_type || 'unknown')
       const bi = typeOrder.indexOf(b.asset_type || 'unknown')
       return (ai === -1 ? typeOrder.length : ai) - (bi === -1 ? typeOrder.length : bi)
     })
-    const n = members.length
+    const n = g.members.length
     // Roughly-square grid, capped so a huge site doesn't sprawl wider
     // than the canvas before wrapping.
     const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(n * 1.3))))
     const rows = Math.ceil(n / cols)
-    const boxW = cols * CELL_W + SITE_PAD * 2
-    const boxH = HEADER_H + rows * CELL_H + SITE_PAD
-
-    // Wrap to the next container row when this box would overflow.
-    if (cursorX > SITE_PAD && cursorX + boxW > CANVAS_MAX_W) {
-      cursorX = SITE_PAD
-      cursorY += rowMaxH + SITE_GAP
-      rowMaxH = 0
+    return {
+      key,
+      name: g.name,
+      virtual: g.virtual,
+      members: g.members,
+      cols,
+      w: cols * CELL_W + SITE_PAD * 2,
+      h: HEADER_H + rows * CELL_H + SITE_PAD,
     }
+  })
 
-    const siteName = members[0]?.site_name || siteID || '(no site)'
-    containers.push({ siteID, siteName, x: cursorX, y: cursorY, w: boxW, h: boxH })
+  // Pass 2 — assign boxes to rows (wrap on overflow)…
+  const rows: Box[][] = []
+  let current: Box[] = []
+  let currentW = 0
+  for (const b of boxes) {
+    const nextW = currentW + (current.length > 0 ? SITE_GAP : 0) + b.w
+    if (current.length > 0 && SITE_PAD + nextW > CANVAS_MAX_W) {
+      rows.push(current)
+      current = [b]
+      currentW = b.w
+    } else {
+      current.push(b)
+      currentW = nextW
+    }
+  }
+  if (current.length > 0) rows.push(current)
+  const rowWidth = (row: Box[]) => row.reduce((s, b) => s + b.w, 0) + SITE_GAP * (row.length - 1)
+  const innerW = Math.max(...rows.map(rowWidth), 600 - SITE_PAD * 2)
 
-    members.forEach((node, i) => {
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      const x = cursorX + SITE_PAD + col * CELL_W + CELL_W / 2
-      const y = cursorY + HEADER_H + SITE_PAD + row * CELL_H + 22
-      positions.set(node.id, { x, y })
-      nodeById.set(node.id, node)
-    })
-
-    cursorX += boxW + SITE_GAP
-    rowMaxH = Math.max(rowMaxH, boxH)
-    canvasW = Math.max(canvasW, cursorX)
+  // Pass 3 — place: each row centred within the canvas.
+  const positions = new Map<string, { x: number; y: number }>()
+  const nodeById = new Map<string, TopologyNode>()
+  const containers: Array<{ siteID: string; siteName: string; virtual: boolean; count: number; x: number; y: number; w: number; h: number }> = []
+  let cursorY = SITE_PAD
+  for (const row of rows) {
+    let cursorX = SITE_PAD + (innerW - rowWidth(row)) / 2
+    const maxH = Math.max(...row.map((b) => b.h))
+    for (const b of row) {
+      containers.push({ siteID: b.key, siteName: b.name, virtual: b.virtual, count: b.members.length, x: cursorX, y: cursorY, w: b.w, h: b.h })
+      b.members.forEach((node, i) => {
+        const col = i % b.cols
+        const r = Math.floor(i / b.cols)
+        positions.set(node.id, {
+          x: cursorX + SITE_PAD + col * CELL_W + CELL_W / 2,
+          y: cursorY + HEADER_H + SITE_PAD + r * CELL_H + 22,
+        })
+        nodeById.set(node.id, node)
+      })
+      cursorX += b.w + SITE_GAP
+    }
+    cursorY += maxH + SITE_GAP
   }
 
   return {
     positions,
     nodeById,
     containers,
-    width: Math.max(canvasW + SITE_PAD, 600),
-    height: Math.max(cursorY + rowMaxH + SITE_PAD, 400),
+    width: innerW + SITE_PAD * 2,
+    height: Math.max(cursorY - SITE_GAP + SITE_PAD, 400),
   }
 }
 
@@ -613,26 +660,28 @@ function TopologySVG({
             to its node grid, so every component reads as belonging to
             its Site. */}
         {containers.map((c) => (
-          <g key={c.siteID || `nosite-${c.x}-${c.y}`}>
+          <g key={c.siteID}>
+            {/* Physical sites: solid hairline + tinted wash. Virtual groups
+                (Applications, User networks, …): dashed hairline + no wash,
+                so "real location" vs "logical grouping" reads instantly. */}
             <rect
               x={c.x}
               y={c.y}
               width={c.w}
               height={c.h}
               rx={10}
-              fill="var(--color-background-secondary)"
-              opacity={0.45}
+              fill={c.virtual ? 'none' : 'var(--color-background-secondary)'}
+              opacity={c.virtual ? 1 : 0.45}
               stroke="var(--color-border-secondary)"
               strokeWidth={1}
+              strokeDasharray={c.virtual ? '5 4' : undefined}
             />
-            <text
-              x={c.x + 12}
-              y={c.y + 18}
-              fontSize={11}
-              fontWeight={700}
-              fill="var(--color-text-secondary)"
-            >
+            <text x={c.x + 12} y={c.y + 18} fontSize={11} fontWeight={700} fill="var(--color-text-secondary)">
+              {c.virtual ? '' : '⌖ '}
               {c.siteName}
+            </text>
+            <text x={c.x + c.w - 12} y={c.y + 18} fontSize={10} textAnchor="end" fill="var(--color-text-tertiary)">
+              {c.count}
             </text>
           </g>
         ))}
