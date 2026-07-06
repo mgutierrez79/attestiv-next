@@ -941,6 +941,9 @@ function AppTopologyEmbed({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Hover previews the same relational emphasis selection commits — matching
+  // the full network map's behaviour so both topologies feel identical.
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   // Optional storage-capacity enrichment for the selected node, keyed by
   // node id. Best-effort: GET /inventory/assets/{id} → metadata.top_volumes
   // / volume_count. Absent → the panel falls back to graph data only.
@@ -1098,6 +1101,25 @@ function AppTopologyEmbed({
     return { graphNodes: built.nodes, graphEdges: built.edges, positions: pos }
   }, [appID, nodes, edges, infra, dependencies, dependents, layers, userNetworks])
 
+  // Relational emphasis (same model as the full network map): the active
+  // node — hovered, else selected — lights up itself, its direct neighbours
+  // and the edges between them; the rest of the graph fades back.
+  const activeId = hoveredId ?? selectedId
+  const { emphNeighbours, emphEdges } = useMemo(() => {
+    if (!activeId) return { emphNeighbours: null as Set<string> | null, emphEdges: null as Set<string> | null }
+    const nb = new Set<string>([activeId])
+    const ie = new Set<string>()
+    for (const e of graphEdges) {
+      if (e.source === activeId || e.target === activeId) {
+        ie.add(e.id)
+        nb.add(e.source)
+        nb.add(e.target)
+      }
+    }
+    return { emphNeighbours: nb, emphEdges: ie }
+  }, [activeId, graphEdges])
+  const emphasising = emphNeighbours !== null
+
   if (loading) {
     return <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '20px 0' }}>{t('Loading…', 'Loading…')}</div>
   }
@@ -1213,6 +1235,9 @@ function AppTopologyEmbed({
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
+          const incident = emphEdges ? emphEdges.has(e.id) : false
+          const baseOpacity = isInfraRelation(e.relation) ? 0.6 : 0.9
+          const baseWidth = isInfraRelation(e.relation) ? 1.5 : 2.25
           return (
             <line
               key={e.id}
@@ -1221,8 +1246,8 @@ function AppTopologyEmbed({
               x2={b.x}
               y2={b.y}
               stroke={strokeForRelation(e.relation)}
-              strokeWidth={isInfraRelation(e.relation) ? 1.5 : 2.25}
-              opacity={isInfraRelation(e.relation) ? 0.6 : 0.9}
+              strokeWidth={emphasising && incident ? baseWidth + 0.75 : baseWidth}
+              opacity={emphasising ? (incident ? 0.95 : 0.08) : baseOpacity}
               strokeDasharray={dashForRelation(e.relation)}
               markerEnd={e.relation === 'dependency' || e.relation === 'user_access' ? 'url(#app-dep-arrow)' : undefined}
             />
@@ -1235,6 +1260,7 @@ function AppTopologyEmbed({
           // they read as related-but-distinct; VMs + infra compact.
           const r = n.group === 'app' ? 22 : n.group === 'dependency' || n.group === 'dependent' ? 17 : 15
           const isSelected = n.id === selectedId
+          const dim = emphasising && !emphNeighbours!.has(n.id)
           const { color, icon } = tokenForGroup(n)
           const iconPx = Math.round(r * 1.15)
           return (
@@ -1244,8 +1270,10 @@ function AppTopologyEmbed({
               role="button"
               tabIndex={0}
               aria-label={n.label}
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer', opacity: dim ? 0.25 : 1, transition: 'opacity 120ms ease' }}
               onClick={() => setSelectedId(n.id)}
+              onMouseEnter={() => setHoveredId(n.id)}
+              onMouseLeave={() => setHoveredId(null)}
               onKeyDown={(ev) => {
                 if (ev.key === 'Enter' || ev.key === ' ') {
                   ev.preventDefault()
@@ -1326,6 +1354,9 @@ function AppTopologyEmbed({
         {graphEdges.map((e) => {
           const labels = flowLabelsForEdge(e)
           if (labels.length === 0) return null
+          // Port chips follow their cable: hidden while the cable is faded
+          // out of the active node's neighbourhood.
+          if (emphasising && !emphEdges!.has(e.id)) return null
           const a = positions.get(e.source)
           const b = positions.get(e.target)
           if (!a || !b) return null
