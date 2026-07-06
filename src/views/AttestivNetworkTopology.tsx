@@ -11,7 +11,7 @@
 // estates (449 assets max) the layered layout is more legible than
 // physics anyway — sites stay separated, types stay grouped.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import {
@@ -94,6 +94,13 @@ export function AttestivNetworkTopology() {
   // In the app-filtered view, clicking an application node expands it to
   // reveal its member VMs (clicking again collapses). Reset on filter change.
   const [expandedApps, setExpandedApps] = useState<Set<string>>(new Set())
+  // Nodes pinned via the detail card's Highlight toggle — they keep a warm
+  // glow and never fade, so the operator can mark several and compare.
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
+  // Canvas zoom (SVG drawn at width×zoom). Fit computes the zoom that shows
+  // the whole map in the viewport.
+  const [zoom, setZoom] = useState(1)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
   // Hover mirrors selection's emphasis but transiently — moving the pointer
   // over a node previews its relationships without committing a selection.
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -269,6 +276,18 @@ export function AttestivNetworkTopology() {
     [selectedId, visibleNodes],
   )
 
+  // Anchor for the floating detail card: just right of the selected node,
+  // clamped inside the canvas (in zoomed pixel space).
+  const selectedPopoverPos = useMemo(() => {
+    if (!selectedId) return null
+    const pos = layout.positions.get(selectedId)
+    if (!pos) return null
+    return {
+      left: Math.max(8, Math.min(pos.x * zoom + 26, layout.width * zoom - 292)),
+      top: Math.max(8, pos.y * zoom - 24),
+    }
+  }, [selectedId, layout, zoom])
+
   // Label lookup spanning visible + synthetic nodes, so a neighbour row can
   // show a friendly name (not the raw id) even for app/usernet endpoints.
   const nodeLabelById = useMemo(() => {
@@ -294,6 +313,31 @@ export function AttestivNetworkTopology() {
     }
     return out
   }, [selectedId, visibleEdges, nodeLabelById])
+
+  // Network scores for the detail card (VisibleNetworkLabs-style): total /
+  // in / out degree of the selected node over the visible edges.
+  const selectedScores = useMemo(() => {
+    if (!selectedId) return null
+    let inD = 0
+    let outD = 0
+    for (const e of visibleEdges) {
+      if (e.source === selectedId) outD++
+      if (e.target === selectedId) inD++
+    }
+    return { total: inD + outD, inD, outD }
+  }, [selectedId, visibleEdges])
+
+  // Per-legend-bucket counts ("Government (3)" style): bucket = the fill
+  // colour the current overlay assigns, so the counts always agree with what
+  // the map actually shows.
+  const legendCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const n of visibleNodes) {
+      const c = nodeFillFor(n, overlay)
+      m.set(c, (m.get(c) ?? 0) + 1)
+    }
+    return m
+  }, [visibleNodes, overlay])
 
   // Fetch the clicked node's FULL inventory detail so the panel shows
   // rich, node-specific facts (vendor / model / serial / OS / mgmt IP /
@@ -382,24 +426,6 @@ export function AttestivNetworkTopology() {
               />
               {t('Orphans', 'Orphans')}
             </label>
-            <select
-              value={overlay}
-              onChange={(e) => setOverlay(e.target.value as Overlay)}
-              style={{
-                fontSize: 11,
-                padding: '4px 6px',
-                border: '0.5px solid var(--color-border-secondary)',
-                borderRadius: 'var(--border-radius-md)',
-                background: 'var(--color-background-primary)',
-                fontFamily: 'inherit',
-              }}
-            >
-              <option value="criticality">{t('Color by: Criticality', 'Color by: Criticality')}</option>
-              <option value="health">{t('Color by: Health', 'Color by: Health')}</option>
-              <option value="backup">{t('Color by: Backup state', 'Color by: Backup state')}</option>
-              <option value="compliance">{t('Color by: Intune compliance', 'Color by: Intune compliance')}</option>
-              <option value="mfa">{t('Color by: MFA registered', 'Color by: MFA registered')}</option>
-            </select>
           </div>
         }
       />
@@ -418,9 +444,42 @@ export function AttestivNetworkTopology() {
             {error}
           </div>
         ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 280px' : '1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 230px', gap: 12, alignItems: 'start' }}>
           <Card>
-            <CardTitle>{t('Topology', 'Topology')}</CardTitle>
+            <CardTitle
+              right={
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--color-text-tertiary)', marginRight: 6 }}>
+                    {t('{nodes} nodes · {edges} edges', '{nodes} nodes · {edges} edges', {
+                      nodes: visibleNodes.length,
+                      edges: visibleEdges.length,
+                    })}
+                  </span>
+                  <span title={t('Zoom out', 'Zoom out')}>
+                    <GhostButton onClick={() => setZoom((z) => Math.max(0.35, z / 1.25))}>
+                      <i className="ti ti-minus" aria-hidden="true" />
+                    </GhostButton>
+                  </span>
+                  <span title={t('Zoom in', 'Zoom in')}>
+                    <GhostButton onClick={() => setZoom((z) => Math.min(2.5, z * 1.25))}>
+                      <i className="ti ti-plus" aria-hidden="true" />
+                    </GhostButton>
+                  </span>
+                  <span title={t('Fit to view', 'Fit to view')}>
+                    <GhostButton
+                      onClick={() => {
+                        const el = scrollRef.current
+                        if (el) setZoom(Math.max(0.35, Math.min(1, (el.clientWidth - 16) / layout.width)))
+                      }}
+                    >
+                      <i className="ti ti-maximize" aria-hidden="true" />
+                    </GhostButton>
+                  </span>
+                </div>
+              }
+            >
+              {t('Topology', 'Topology')}
+            </CardTitle>
             {loading ? (
               <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', padding: '40px 0', textAlign: 'center' }}>
                 {t('Loading…', 'Loading…')}
@@ -433,52 +492,106 @@ export function AttestivNetworkTopology() {
                 )}
               </div>
             ) : (
-              <TopologySVG
-                layout={layout}
-                edges={visibleEdges}
-                overlay={overlay}
-                selectedId={selectedId}
-                hoveredId={hoveredId}
-                onSelect={(id) => {
-                  setSelectedId(id === selectedId ? null : id)
-                  // In the app-filtered view, clicking an application node
-                  // also toggles its member VMs in/out of the map.
-                  if (appFilter && id.startsWith('app:')) {
-                    setExpandedApps((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(id)) next.delete(id)
-                      else next.add(id)
-                      return next
-                    })
-                  }
-                }}
-                onHover={setHoveredId}
-                onClear={() => setSelectedId(null)}
-                degreeByNode={degreeByNode}
-                expandableApps={appFilter !== ''}
-                expandedApps={expandedApps}
-              />
+              <div ref={scrollRef} style={{ overflow: 'auto', maxHeight: 640, position: 'relative' }}>
+                <TopologySVG
+                  layout={layout}
+                  edges={visibleEdges}
+                  overlay={overlay}
+                  selectedId={selectedId}
+                  hoveredId={hoveredId}
+                  onSelect={(id) => {
+                    setSelectedId(id === selectedId ? null : id)
+                    // In the app-filtered view, clicking an application node
+                    // also toggles its member VMs in/out of the map.
+                    if (appFilter && id.startsWith('app:')) {
+                      setExpandedApps((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(id)) next.delete(id)
+                        else next.add(id)
+                        return next
+                      })
+                    }
+                  }}
+                  onHover={setHoveredId}
+                  onClear={() => setSelectedId(null)}
+                  degreeByNode={degreeByNode}
+                  expandableApps={appFilter !== ''}
+                  expandedApps={expandedApps}
+                  highlightedIds={highlightedIds}
+                  zoom={zoom}
+                />
+                {/* Floating detail card anchored next to the clicked node,
+                    VisibleNetworkLabs-style. Scrolls with the canvas. */}
+                {selected && selectedPopoverPos ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: selectedPopoverPos.left,
+                      top: selectedPopoverPos.top,
+                      width: 280,
+                      zIndex: 5,
+                      boxShadow: '0 6px 24px rgba(10, 37, 74, 0.18)',
+                      borderRadius: 'var(--border-radius-md)',
+                      maxHeight: 420,
+                      overflowY: 'auto',
+                      background: 'var(--color-background-primary)',
+                    }}
+                  >
+                    <NodeDetailPanel
+                      node={selected}
+                      detail={nodeDetail}
+                      detailLoading={nodeDetailLoading}
+                      connections={selectedConnections}
+                      scores={selectedScores}
+                      highlighted={highlightedIds.has(selected.id)}
+                      onToggleHighlight={() => {
+                        setHighlightedIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(selected.id)) next.delete(selected.id)
+                          else next.add(selected.id)
+                          return next
+                        })
+                      }}
+                      onClose={() => setSelectedId(null)}
+                      onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)}
+                      onFocus={() => {
+                        setFocusAssetId(selected.id)
+                        setAppFilter('')
+                      }}
+                      onSelectNeighbor={(id) => setSelectedId(id)}
+                      onHoverNeighbor={setHoveredId}
+                      isFocused={focusAssetId === selected.id}
+                      t={t}
+                    />
+                  </div>
+                ) : null}
+              </div>
             )}
-            <Legend overlay={overlay} t={t} />
           </Card>
-          {selected ? (
-            <NodeDetailPanel
-              node={selected}
-              detail={nodeDetail}
-              detailLoading={nodeDetailLoading}
-              connections={selectedConnections}
-              onClose={() => setSelectedId(null)}
-              onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)}
-              onFocus={() => {
-                setFocusAssetId(selected.id)
-                setAppFilter('')
+          <Card>
+            <CardTitle>{t('Legend', 'Legend')}</CardTitle>
+            <select
+              value={overlay}
+              onChange={(e) => setOverlay(e.target.value as Overlay)}
+              style={{
+                fontSize: 11,
+                padding: '4px 6px',
+                width: '100%',
+                marginBottom: 8,
+                border: '0.5px solid var(--color-border-secondary)',
+                borderRadius: 'var(--border-radius-md)',
+                background: 'var(--color-background-primary)',
+                fontFamily: 'inherit',
               }}
-              onSelectNeighbor={(id) => setSelectedId(id)}
-              onHoverNeighbor={setHoveredId}
-              isFocused={focusAssetId === selected.id}
-              t={t}
-            />
-          ) : null}
+            >
+              <option value="criticality">{t('Color by: Criticality', 'Color by: Criticality')}</option>
+              <option value="health">{t('Color by: Health', 'Color by: Health')}</option>
+              <option value="backup">{t('Color by: Backup state', 'Color by: Backup state')}</option>
+              <option value="compliance">{t('Color by: Intune compliance', 'Color by: Intune compliance')}</option>
+              <option value="mfa">{t('Color by: MFA registered', 'Color by: MFA registered')}</option>
+            </select>
+            <Legend overlay={overlay} counts={legendCounts} t={t} />
+          </Card>
         </div>
       </div>
     </>
@@ -507,13 +620,13 @@ function EdgeToggle({
   )
 }
 
-// Shared between layout math and the card renderer so the header zone the
-// layout reserves is exactly the zone the card draws.
-const CONTAINER_HEADER_H = 34
+// Bottom strip each container reserves for its name tag (the label sits on
+// the lower border, VisibleNetworkLabs-style).
+const CONTAINER_LABEL_H = 26
 
 // containerStyle keys each container kind to an accent colour + Tabler icon:
 // physical sites navy/map-pin; the virtual groups get their own identity so
-// the card header instantly says what lives inside.
+// the label tag instantly says what lives inside.
 function containerStyle(key: string): { accent: string; icon: string } {
   if (key === '~apps') return { accent: 'var(--color-status-green-mid)', icon: 'ti-apps' }
   if (key === '~usernet') return { accent: 'var(--color-status-violet-mid)', icon: 'ti-users' }
@@ -522,21 +635,30 @@ function containerStyle(key: string): { accent: string; icon: string } {
   return { accent: 'var(--color-status-blue-deep)', icon: 'ti-map-pin' }
 }
 
-// layoutNodes places each container's nodes in a GRID inside a bounded,
-// labelled box. Real sites come first (alphabetical); nodes with no site are
-// NOT dumped into one "(no site)" bucket — they're split into meaningful
-// virtual containers (Applications, User networks, Unassigned, Unresolved
-// MACs) so every box has a real display name. Containers flow left-to-right,
-// wrap when they'd overflow the canvas, and each row is centred so the
-// distribution reads balanced rather than ragged.
+// Small deterministic hash — drives the per-node jitter and per-container
+// spiral rotation so clusters look organic without any randomness.
+function hash32(s: string): number {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
+  return h
+}
+
+// layoutNodes places each container's nodes as an ORGANIC CLUSTER (golden-
+// angle sunflower spiral + deterministic jitter — no randomness, same data →
+// same map) inside a minimal outlined box, VisibleNetworkLabs-style. Real
+// sites come first; nodes with no site are split into meaningful virtual
+// containers (Applications, User networks, Unassigned, Unresolved MACs) so
+// every box has a real display name. Boxes then pack freely in 2D.
 function layoutNodes(
   nodes: TopologyNode[],
   labels: { applications: string; userNetworks: string; unassigned: string; unresolvedMacs: string },
 ) {
-  const CELL_W = 116
-  const CELL_H = 84
+  // Mean spacing between cluster points; keeps room for the node circle
+  // (r up to 26) plus its label chip below.
+  const SPACING = 58
+  const CLUSTER_PAD = 34
   const SITE_PAD = 18
-  const HEADER_H = CONTAINER_HEADER_H
+  const LABEL_H = CONTAINER_LABEL_H
   const SITE_GAP = 32
   const CANVAS_MAX_W = 1480
   const typeOrder = ['firewall', 'firewall_manager', 'network_device', 'host', 'cluster', 'server', 'vm', 'storage_array', 'storage_volume', 'backup_appliance', 'computer', 'unknown']
@@ -567,27 +689,29 @@ function layoutNodes(
     return a[1].name.localeCompare(b[1].name)
   })
 
-  // Pass 1 — measure every box.
-  type Box = { key: string; name: string; virtual: boolean; members: TopologyNode[]; cols: number; w: number; h: number }
+  // Pass 1 — measure every box from its organic cluster extent.
+  type Box = { key: string; name: string; virtual: boolean; members: TopologyNode[]; clusterR: number; w: number; h: number }
   const boxes: Box[] = groups.map(([key, g]) => {
+    // Type-sorted so spiral neighbourhoods group similar assets: the spiral
+    // is filled in order, so firewalls/switches sit together near the core,
+    // VMs fan outward, etc.
     g.members.sort((a, b) => {
       const ai = typeOrder.indexOf(a.asset_type || 'unknown')
       const bi = typeOrder.indexOf(b.asset_type || 'unknown')
       return (ai === -1 ? typeOrder.length : ai) - (bi === -1 ? typeOrder.length : bi)
     })
     const n = g.members.length
-    // Roughly-square grid, capped so a huge site doesn't sprawl wider
-    // than the canvas before wrapping.
-    const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(n * 1.3))))
-    const rows = Math.ceil(n / cols)
+    // Sunflower disc radius holding n points at ~SPACING apart, capped so a
+    // huge site can't outgrow the canvas.
+    const clusterR = Math.min(Math.max(SPACING * Math.sqrt(n / Math.PI) * 1.75, SPACING), (CANVAS_MAX_W - SITE_GAP) / 2 - CLUSTER_PAD)
     return {
       key,
       name: g.name,
       virtual: g.virtual,
       members: g.members,
-      cols,
-      w: cols * CELL_W + SITE_PAD * 2,
-      h: HEADER_H + rows * CELL_H + SITE_PAD,
+      clusterR,
+      w: 2 * (clusterR + CLUSTER_PAD),
+      h: 2 * (clusterR + CLUSTER_PAD) + LABEL_H,
     }
   })
 
@@ -649,13 +773,22 @@ function layoutNodes(
     const bx = SITE_PAD + spot.x
     const by = SITE_PAD + spot.y
     containers.push({ siteID: b.key, siteName: b.name, virtual: b.virtual, count: b.members.length, x: bx, y: by, w: b.w, h: b.h })
+    // Golden-angle sunflower: point i lands at radius R·sqrt((i+0.5)/n),
+    // angle i·137.5° (+ a per-container rotation so two sites never mirror
+    // each other), plus a small deterministic per-node jitter — an even,
+    // organic scatter that always renders identically for the same data.
+    const GOLDEN = Math.PI * (3 - Math.sqrt(5))
+    const cx = bx + b.w / 2
+    const cy = by + (b.h - LABEL_H) / 2
+    const n = b.members.length
+    const rot = (hash32(b.key) % 360) * (Math.PI / 180)
     b.members.forEach((node, i) => {
-      const col = i % b.cols
-      const r = Math.floor(i / b.cols)
-      positions.set(node.id, {
-        x: bx + SITE_PAD + col * CELL_W + CELL_W / 2,
-        y: by + HEADER_H + SITE_PAD + r * CELL_H + 22,
-      })
+      const rr = n === 1 ? 0 : b.clusterR * Math.sqrt((i + 0.5) / n)
+      const th = i * GOLDEN + rot
+      const jh = hash32(node.id)
+      const jx = ((jh % 17) - 8) * 1.1
+      const jy = (((jh >> 5) % 17) - 8) * 1.1
+      positions.set(node.id, { x: cx + Math.cos(th) * rr + jx, y: cy + Math.sin(th) * rr + jy })
       nodeById.set(node.id, node)
     })
     usedW = Math.max(usedW, bx + b.w)
@@ -683,6 +816,8 @@ function TopologySVG({
   degreeByNode,
   expandableApps,
   expandedApps,
+  highlightedIds,
+  zoom,
 }: {
   layout: ReturnType<typeof layoutNodes>
   edges: TopologyEdge[]
@@ -697,6 +832,11 @@ function TopologySVG({
   // small +/− badge on them so the affordance is discoverable.
   expandableApps: boolean
   expandedApps: Set<string>
+  // Nodes the operator pinned via the detail card's Highlight toggle: they
+  // keep a warm glow + full opacity even while other nodes are faded.
+  highlightedIds: Set<string>
+  // Canvas zoom factor — the SVG is drawn at width×zoom, viewBox constant.
+  zoom: number
 }) {
   const { positions, nodeById, containers, width, height } = layout
 
@@ -736,8 +876,7 @@ function TopologySVG({
   const emphasising = neighbourIds !== null
 
   return (
-    <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600 }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+    <svg width={width * zoom} height={height * zoom} viewBox={`0 0 ${width} ${height}`}>
         {/* Background catcher: a click on empty canvas clears the selection. */}
         <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={onClear} />
         <defs>
@@ -753,96 +892,63 @@ function TopologySVG({
           >
             <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
           </marker>
-          {/* Soft card elevation for the site containers. */}
-          <filter id="nt-card-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="1.5" stdDeviation="3" floodColor="#0a254a" floodOpacity="0.12" />
-          </filter>
-          {/* Faint blueprint dot grid for the container body. */}
-          <pattern id="nt-dots" width="22" height="22" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1" fill="var(--color-border-secondary)" />
-          </pattern>
+          {/* Warm glow behind the selected / highlighted node. */}
+          <radialGradient id="nt-glow">
+            <stop offset="0%" stopColor="#F2A33C" stopOpacity="0.9" />
+            <stop offset="55%" stopColor="#F2A33C" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#F2A33C" stopOpacity="0" />
+          </radialGradient>
         </defs>
-        {/* Site containers as CARDS: soft elevation, an accent-coded top
-            strip + icon chip per container type, a member-count pill, a
-            hairline-separated header, and a faint dot grid in the body.
-            Physical sites draw solid; virtual groups (Applications, User
-            networks, …) draw dashed — location vs logical grouping. */}
+        {/* Group outlines, VisibleNetworkLabs-style: a quiet rounded border
+            around each organic cluster with the name TAG sitting on the
+            bottom edge. Physical sites draw solid; virtual groups
+            (Applications, User networks, …) dashed. */}
         {containers.map((c) => {
           const cs = containerStyle(c.siteID)
+          const label = `${c.siteName}`
           const countText = String(c.count)
-          const pillW = countText.length * 6 + 14
+          const tagW = label.length * 6.6 + countText.length * 5.5 + 34
+          const tagH = 22
+          const tagX = c.x + 14
+          const tagY = c.y + c.h - CONTAINER_LABEL_H / 2 - tagH / 2
           return (
             <g key={c.siteID}>
               <rect
                 x={c.x}
                 y={c.y}
                 width={c.w}
-                height={c.h}
-                rx={14}
+                height={c.h - CONTAINER_LABEL_H / 2}
+                rx={12}
+                fill="none"
+                stroke="var(--color-border-secondary)"
+                strokeWidth={1.25}
+                strokeDasharray={c.virtual ? '7 5' : undefined}
+                opacity={0.9}
+              />
+              {/* Name tag straddling the bottom border. */}
+              <rect
+                x={tagX}
+                y={tagY}
+                width={tagW}
+                height={tagH}
+                rx={5}
                 fill="var(--color-background-primary)"
-                stroke="var(--color-border-tertiary)"
-                strokeWidth={1}
-                strokeDasharray={c.virtual ? '6 4' : undefined}
-                filter="url(#nt-card-shadow)"
+                stroke="var(--color-border-secondary)"
+                strokeWidth={0.75}
               />
-              {/* Body texture: barely-there dot grid, inset below the header. */}
-              <rect
-                x={c.x + 8}
-                y={c.y + CONTAINER_HEADER_H}
-                width={c.w - 16}
-                height={Math.max(c.h - CONTAINER_HEADER_H - 8, 0)}
-                rx={8}
-                fill="url(#nt-dots)"
-                opacity={0.5}
-              />
-              {/* Accent strip along the top edge — the card's colour key. */}
-              <rect x={c.x + 16} y={c.y + 1.25} width={Math.min(44, c.w - 32)} height={3} rx={1.5} fill={cs.accent} />
-              {/* Header: icon chip + name, count pill right, hairline below. */}
-              <rect
-                x={c.x + 12}
-                y={c.y + 8}
-                width={19}
-                height={19}
-                rx={6}
-                fill={`color-mix(in srgb, ${cs.accent} 14%, var(--color-background-primary))`}
-              />
-              <foreignObject x={c.x + 12} y={c.y + 8} width={19} height={19} style={{ pointerEvents: 'none' }}>
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: cs.accent, fontSize: 12, lineHeight: 1 }}>
-                  <i className={`ti ${cs.icon}`} aria-hidden="true" />
-                </div>
-              </foreignObject>
-              <text x={c.x + 38} y={c.y + 21.5} fontSize={11.5} fontWeight={700} fill="var(--color-text-primary)">
-                {c.siteName}
+              <circle cx={tagX + 12} cy={tagY + tagH / 2} r={3.5} fill={cs.accent} />
+              <text x={tagX + 21} y={tagY + tagH / 2 + 3.5} fontSize={11.5} fontWeight={700} fill="var(--color-text-primary)">
+                {label}
               </text>
-              <rect
-                x={c.x + c.w - 12 - pillW}
-                y={c.y + 10}
-                width={pillW}
-                height={15}
-                rx={7.5}
-                fill={`color-mix(in srgb, ${cs.accent} 10%, var(--color-background-primary))`}
-                stroke={`color-mix(in srgb, ${cs.accent} 30%, var(--color-background-primary))`}
-                strokeWidth={0.5}
-              />
               <text
-                x={c.x + c.w - 12 - pillW / 2}
-                y={c.y + 20.5}
-                textAnchor="middle"
-                fontSize={9}
-                fontWeight={600}
+                x={tagX + 21 + label.length * 6.6 + 5}
+                y={tagY + tagH / 2 + 3.5}
+                fontSize={10}
                 fontFamily="var(--font-mono)"
-                fill={cs.accent}
+                fill="var(--color-text-tertiary)"
               >
                 {countText}
               </text>
-              <line
-                x1={c.x + 10}
-                y1={c.y + CONTAINER_HEADER_H - 3}
-                x2={c.x + c.w - 10}
-                y2={c.y + CONTAINER_HEADER_H - 3}
-                stroke="var(--color-border-tertiary)"
-                strokeWidth={0.75}
-              />
             </g>
           )
         })}
@@ -968,8 +1074,10 @@ function TopologySVG({
           if (!node) return null
           const fill = nodeFillFor(node, overlay)
           const isSelected = selectedId === id
+          const isHighlighted = highlightedIds.has(id)
           const isNeighbour = neighbourIds ? neighbourIds.has(id) : false
-          const dim = emphasising && !isNeighbour
+          // Highlighted nodes never fade — the pin survives other selections.
+          const dim = emphasising && !isNeighbour && !isHighlighted
           // The active (selected/hovered) node gets the strong ring; its
           // neighbours a lighter accent ring; everyone else the quiet border.
           const stroke = isSelected
@@ -994,6 +1102,10 @@ function TopologySVG({
               onMouseLeave={() => onHover(null)}
               style={{ cursor: 'pointer', opacity: dim ? 0.22 : 1, transition: 'opacity 120ms ease' }}
             >
+              {/* Warm glow behind the clicked / pinned node. */}
+              {isSelected || isHighlighted ? (
+                <circle r={radius + 16} fill="url(#nt-glow)" pointerEvents="none" />
+              ) : null}
               <circle
                 r={radius}
                 fill={fill}
@@ -1041,8 +1153,7 @@ function TopologySVG({
             </g>
           )
         })}
-      </svg>
-    </div>
+    </svg>
   )
 }
 
@@ -1101,7 +1212,15 @@ function nodeFillFor(node: TopologyNode, overlay: Overlay): string {
   return 'var(--color-background-tertiary)'
 }
 
-function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: string) => string }) {
+function Legend({
+  overlay,
+  counts,
+  t,
+}: {
+  overlay: Overlay
+  counts: Map<string, number>
+  t: (key: string, fallback?: string) => string
+}) {
   const entries: Array<{ color: string; label: string }> = []
   switch (overlay) {
     case 'criticality':
@@ -1142,9 +1261,9 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
       break
   }
   return (
-    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', padding: '8px 0', fontSize: 11, color: 'var(--color-text-secondary)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '2px 0', fontSize: 11.5, color: 'var(--color-text-secondary)' }}>
       {entries.map((entry) => (
-        <span key={entry.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <span key={entry.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
           <span
             style={{
               width: 12,
@@ -1153,9 +1272,13 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
               background: entry.color,
               border: '0.5px solid var(--color-border-secondary)',
               display: 'inline-block',
+              flexShrink: 0,
             }}
           />
-          {entry.label}
+          <span style={{ flex: 1 }}>{entry.label}</span>
+          <span style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+            {counts.get(entry.color) ?? 0}
+          </span>
         </span>
       ))}
     </div>
@@ -1167,6 +1290,9 @@ function NodeDetailPanel({
   detail,
   detailLoading,
   connections,
+  scores,
+  highlighted,
+  onToggleHighlight,
   onClose,
   onOpen,
   onFocus,
@@ -1179,6 +1305,9 @@ function NodeDetailPanel({
   detail: Record<string, unknown> | null
   detailLoading: boolean
   connections: Array<{ kind: string; id: string; label: string; iface?: string }>
+  scores: { total: number; inD: number; outD: number } | null
+  highlighted: boolean
+  onToggleHighlight: () => void
   onClose: () => void
   onOpen: () => void
   onFocus: () => void
@@ -1219,9 +1348,17 @@ function NodeDetailPanel({
       <CardTitle right={<GhostButton onClick={onClose}><i className="ti ti-x" aria-hidden="true" /></GhostButton>}>
         {node.label}
       </CardTitle>
-      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
         {node.id}
       </div>
+      {/* Pin the warm glow on this node — it survives other selections so
+          several nodes can be marked and compared. */}
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 8, cursor: 'pointer' }}>
+        <input type="checkbox" checked={highlighted} onChange={onToggleHighlight} />
+        <span style={{ color: highlighted ? 'var(--color-status-amber-text)' : 'var(--color-text-secondary)' }}>
+          {t('Highlight', 'Highlight')}
+        </span>
+      </label>
       {description ? (
         <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 8 }}>{description}</div>
       ) : null}
@@ -1266,6 +1403,16 @@ function NodeDetailPanel({
       ) : null}
       {detailLoading ? (
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6 }}>{t('Loading details…', 'Loading details…')}</div>
+      ) : null}
+      {scores ? (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>
+            {t('Network scores', 'Network scores')}
+          </div>
+          <Row label={t('Total degree', 'Total degree')} value={String(scores.total)} />
+          <Row label={t('In-degree', 'In-degree')} value={String(scores.inD)} />
+          <Row label={t('Out-degree', 'Out-degree')} value={String(scores.outD)} />
+        </div>
       ) : null}
       {connections.length > 0 ? (
         <div style={{ marginTop: 10 }}>
