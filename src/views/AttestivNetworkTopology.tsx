@@ -645,9 +645,7 @@ function TopologySVG({
           const a = positions.get(edge.source)
           const b = positions.get(edge.target)
           if (!a || !b) return null
-          // device_link / backbone default. (--color-status-blue-mid is
-          // not defined in the current theme — renders invisible — so the
-          // backbone uses the defined blue-deep token.)
+          // device_link / backbone default.
           let stroke = 'var(--color-status-blue-deep)'
           let strokeWidth = 2
           let dash = '0'
@@ -679,9 +677,6 @@ function TopologySVG({
             case 'app_dependency':
               // App → the app it depends on. Prominent so the
               // application dependency backbone reads above the plumbing.
-              // NOTE: blue-deep (not blue-mid) — --color-status-blue-mid is
-              // NOT a defined token, so it renders as an invalid colour
-              // (black fill / no stroke). blue-deep is the defined blue.
               stroke = 'var(--color-status-blue-deep)'
               strokeWidth = 2.5
               dash = '6 3'
@@ -839,10 +834,7 @@ function nodeFillFor(node: TopologyNode, overlay: Overlay): string {
       case 'medium':
       case 'tier_3':
       case 'tier_4':
-        // NB: --color-status-blue-mid is NOT a defined theme token (renders
-        // as an invalid colour). violet-mid IS defined and reads distinctly
-        // between amber (high) and green (low).
-        return 'var(--color-status-violet-mid)'
+        return 'var(--color-status-blue-mid)'
       case 'low':
         return 'var(--color-status-green-mid)'
       case 'tier_5':
@@ -891,7 +883,7 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
       entries.push(
         { color: 'var(--color-status-red-mid)', label: 'critical / tier_0 / tier_1' },
         { color: 'var(--color-status-amber-mid)', label: 'high / tier_2' },
-        { color: 'var(--color-status-violet-mid)', label: 'medium / tier_3 / tier_4' },
+        { color: 'var(--color-status-blue-mid)', label: 'medium / tier_3 / tier_4' },
         { color: 'var(--color-status-green-mid)', label: 'low' },
         { color: 'var(--color-background-tertiary)', label: 'tier_5 / unspecified' },
       )
