@@ -91,6 +91,9 @@ export function AttestivNetworkTopology() {
   const [focusAssetId, setFocusAssetId] = useState<string | null>(null)
   const [hopRadius] = useState<number>(2)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // In the app-filtered view, clicking an application node expands it to
+  // reveal its member VMs (clicking again collapses). Reset on filter change.
+  const [expandedApps, setExpandedApps] = useState<Set<string>>(new Set())
   // Hover mirrors selection's emphasis but transiently — moving the pointer
   // over a node previews its relationships without committing a selection.
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -156,6 +159,13 @@ export function AttestivNetworkTopology() {
         }
         frontier = next
       }
+      // Expanded applications reveal their member VMs: clicking an app node
+      // in this view toggles its app_membership components in and out.
+      for (const e of data.edges) {
+        if (e.kind !== 'app_membership') continue
+        if (expandedApps.has(e.source) && keep.has(e.source)) keep.add(e.target)
+        else if (expandedApps.has(e.target) && keep.has(e.target)) keep.add(e.source)
+      }
       return keep
     }
     if (!focusAssetId) return null
@@ -177,7 +187,7 @@ export function AttestivNetworkTopology() {
       for (const n of neighbors) queue.push({ id: n, depth: depth + 1 })
     }
     return keep
-  }, [data, appFilter, focusAssetId, hopRadius])
+  }, [data, appFilter, focusAssetId, hopRadius, expandedApps])
 
   // Filter edges by toggle (host_port hidden by default; auditor view
   // is backbone first).
@@ -197,14 +207,16 @@ export function AttestivNetworkTopology() {
         case 'backup_coverage':
           return showBackup
         case 'app_membership':
-          return showAppMembership
+          // Always visible in the app-filtered view — expanded members must
+          // arrive with their cable to the app, whatever the toggle says.
+          return showAppMembership || appFilter !== ''
         case 'network_port':
           return showNetworkPort
         default:
           return true
       }
     })
-  }, [data, focusedIDs, showHostPorts, showHypervisor, showStorage, showBackup, showAppMembership, showNetworkPort])
+  }, [data, focusedIDs, appFilter, showHostPorts, showHypervisor, showStorage, showBackup, showAppMembership, showNetworkPort])
 
   // The set of node IDs actually wired up.
   const referenced = useMemo(() => {
@@ -335,6 +347,7 @@ export function AttestivNetworkTopology() {
               onChange={(e) => {
                 setAppFilter(e.target.value)
                 setFocusAssetId(null)
+                setExpandedApps(new Set())
               }}
               style={{
                 fontSize: 11,
@@ -426,10 +439,24 @@ export function AttestivNetworkTopology() {
                 overlay={overlay}
                 selectedId={selectedId}
                 hoveredId={hoveredId}
-                onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
+                onSelect={(id) => {
+                  setSelectedId(id === selectedId ? null : id)
+                  // In the app-filtered view, clicking an application node
+                  // also toggles its member VMs in/out of the map.
+                  if (appFilter && id.startsWith('app:')) {
+                    setExpandedApps((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(id)) next.delete(id)
+                      else next.add(id)
+                      return next
+                    })
+                  }
+                }}
                 onHover={setHoveredId}
                 onClear={() => setSelectedId(null)}
                 degreeByNode={degreeByNode}
+                expandableApps={appFilter !== ''}
+                expandedApps={expandedApps}
               />
             )}
             <Legend overlay={overlay} t={t} />
@@ -654,6 +681,8 @@ function TopologySVG({
   onHover,
   onClear,
   degreeByNode,
+  expandableApps,
+  expandedApps,
 }: {
   layout: ReturnType<typeof layoutNodes>
   edges: TopologyEdge[]
@@ -664,6 +693,10 @@ function TopologySVG({
   onHover: (id: string | null) => void
   onClear: () => void
   degreeByNode: Map<string, number>
+  // App-filtered view: app nodes toggle their member VMs on click; render a
+  // small +/− badge on them so the affordance is discoverable.
+  expandableApps: boolean
+  expandedApps: Set<string>
 }) {
   const { positions, nodeById, containers, width, height } = layout
 
@@ -971,6 +1004,21 @@ function TopologySVG({
                 <text x={0} y={4} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--color-text-primary)">
                   {degree}
                 </text>
+              ) : null}
+              {/* App-filtered view: +/− badge signalling "click to expand /
+                  collapse this application's member VMs". */}
+              {expandableApps && id.startsWith('app:') ? (
+                <g transform={`translate(${radius - 3},${-radius + 3})`}>
+                  <circle
+                    r={7}
+                    fill="var(--color-background-primary)"
+                    stroke="var(--color-status-green-mid)"
+                    strokeWidth={1.25}
+                  />
+                  <text x={0} y={3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--color-status-green-mid)">
+                    {expandedApps.has(id) ? '−' : '+'}
+                  </text>
+                </g>
               ) : null}
               {/* Hide labels of dimmed nodes so the focus neighbourhood reads
                   cleanly; always show the active + neighbour labels. */}
