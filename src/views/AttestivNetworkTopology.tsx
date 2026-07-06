@@ -134,12 +134,31 @@ export function AttestivNetworkTopology() {
   }, [data])
 
   // The kept-node ID set based on the focus controls. Empty filter
-  // = all nodes visible. App filter = app + its 1-hop component VMs
-  // + 2-hop joins (host, storage, backup). Asset focus = N hops
-  // around the chosen asset.
+  // = all nodes visible. App filter = a pure APPLICATION view: the selected
+  // app + the applications it depends on, followed transitively along
+  // app_dependency edges — no VMs / hosts / storage noise. Asset focus =
+  // N hops around the chosen asset.
   const focusedIDs = useMemo(() => {
     if (!data) return null
-    if (!appFilter && !focusAssetId) return null
+    if (appFilter) {
+      const keep = new Set<string>([appFilter])
+      // Follow app_dependency edges outward (source depends on target) from
+      // the selected app until the dependency chain is exhausted.
+      let frontier = new Set<string>([appFilter])
+      while (frontier.size > 0) {
+        const next = new Set<string>()
+        for (const e of data.edges) {
+          if (e.kind !== 'app_dependency') continue
+          if (frontier.has(e.source) && !keep.has(e.target)) {
+            keep.add(e.target)
+            next.add(e.target)
+          }
+        }
+        frontier = next
+      }
+      return keep
+    }
+    if (!focusAssetId) return null
     const keep = new Set<string>()
     const adjacency = new Map<string, string[]>()
     for (const e of data.edges) {
@@ -148,8 +167,7 @@ export function AttestivNetworkTopology() {
       if (!adjacency.has(e.target)) adjacency.set(e.target, [])
       adjacency.get(e.target)!.push(e.source)
     }
-    const seed = appFilter ? [appFilter] : focusAssetId ? [focusAssetId] : []
-    const queue: Array<{ id: string; depth: number }> = seed.map((id) => ({ id, depth: 0 }))
+    const queue: Array<{ id: string; depth: number }> = [{ id: focusAssetId, depth: 0 }]
     while (queue.length > 0) {
       const { id, depth } = queue.shift()!
       if (keep.has(id)) continue
@@ -201,7 +219,11 @@ export function AttestivNetworkTopology() {
   const visibleNodes = useMemo(() => {
     if (!data) return []
     return data.nodes.filter((n) => {
-      if (focusedIDs && !focusedIDs.has(n.id)) return false
+      if (focusedIDs) {
+        // Focused view: exactly the kept set — a focused node renders even
+        // with no visible edges (an app with no dependencies still shows).
+        return focusedIDs.has(n.id)
+      }
       if (!showOrphans && !referenced.has(n.id)) return false
       return true
     })
@@ -542,55 +564,83 @@ function layoutNodes(
     }
   })
 
-  // Pass 2 — assign boxes to rows (wrap on overflow)…
-  const rows: Box[][] = []
-  let current: Box[] = []
-  let currentW = 0
-  for (const b of boxes) {
-    const nextW = currentW + (current.length > 0 ? SITE_GAP : 0) + b.w
-    if (current.length > 0 && SITE_PAD + nextW > CANVAS_MAX_W) {
-      rows.push(current)
-      current = [b]
-      currentW = b.w
-    } else {
-      current.push(b)
-      currentW = nextW
+  // Pass 2 — free 2D packing (bottom-left skyline heuristic): containers
+  // are placed wherever they fit best, filling the canvas horizontally AND
+  // vertically — a small container tucks in beside a tall one instead of
+  // forcing a new ragged row. Deterministic: boxes are packed tallest-first
+  // (stable tiebreaks), and each goes to the lowest, then leftmost, gap.
+  const packOrder = [...boxes].sort((a, b) => b.h - a.h || b.w - a.w || a.key.localeCompare(b.key))
+  let skyline: Array<{ x: number; w: number; y: number }> = [{ x: 0, w: CANVAS_MAX_W, y: 0 }]
+  const findSpot = (bw: number): { x: number; y: number } => {
+    let best: { x: number; y: number } | null = null
+    for (let i = 0; i < skyline.length; i++) {
+      const x = skyline[i].x
+      if (x + bw > CANVAS_MAX_W) continue
+      // The landing height is the max skyline height across the span.
+      let y = 0
+      let span = 0
+      for (let j = i; j < skyline.length && span < bw; j++) {
+        y = Math.max(y, skyline[j].y)
+        span += skyline[j].w
+      }
+      if (!best || y < best.y || (y === best.y && x < best.x)) best = { x, y }
     }
+    // CANVAS_MAX_W always fits the widest box (grid cols are capped), but
+    // fall back to stacking below everything rather than crashing.
+    return best ?? { x: 0, y: Math.max(...skyline.map((s) => s.y)) }
   }
-  if (current.length > 0) rows.push(current)
-  const rowWidth = (row: Box[]) => row.reduce((s, b) => s + b.w, 0) + SITE_GAP * (row.length - 1)
-  const innerW = Math.max(...rows.map(rowWidth), 600 - SITE_PAD * 2)
+  const settle = (x: number, bw: number, top: number) => {
+    const out: Array<{ x: number; w: number; y: number }> = []
+    for (const s of skyline) {
+      if (s.x + s.w <= x || s.x >= x + bw) {
+        out.push(s)
+        continue
+      }
+      if (s.x < x) out.push({ x: s.x, w: x - s.x, y: s.y })
+      if (s.x + s.w > x + bw) out.push({ x: x + bw, w: s.x + s.w - (x + bw), y: s.y })
+    }
+    out.push({ x, w: bw, y: top })
+    out.sort((a, b) => a.x - b.x)
+    // Merge adjacent segments at the same height to keep the skyline small.
+    skyline = out.reduce<Array<{ x: number; w: number; y: number }>>((acc, s) => {
+      const last = acc[acc.length - 1]
+      if (last && last.y === s.y && last.x + last.w === s.x) last.w += s.w
+      else acc.push({ ...s })
+      return acc
+    }, [])
+  }
 
-  // Pass 3 — place: each row centred within the canvas.
   const positions = new Map<string, { x: number; y: number }>()
   const nodeById = new Map<string, TopologyNode>()
   const containers: Array<{ siteID: string; siteName: string; virtual: boolean; count: number; x: number; y: number; w: number; h: number }> = []
-  let cursorY = SITE_PAD
-  for (const row of rows) {
-    let cursorX = SITE_PAD + (innerW - rowWidth(row)) / 2
-    const maxH = Math.max(...row.map((b) => b.h))
-    for (const b of row) {
-      containers.push({ siteID: b.key, siteName: b.name, virtual: b.virtual, count: b.members.length, x: cursorX, y: cursorY, w: b.w, h: b.h })
-      b.members.forEach((node, i) => {
-        const col = i % b.cols
-        const r = Math.floor(i / b.cols)
-        positions.set(node.id, {
-          x: cursorX + SITE_PAD + col * CELL_W + CELL_W / 2,
-          y: cursorY + HEADER_H + SITE_PAD + r * CELL_H + 22,
-        })
-        nodeById.set(node.id, node)
+  let usedW = 0
+  let usedH = 0
+  for (const b of packOrder) {
+    // Pack with the gap baked in so neighbouring cards keep their spacing.
+    const spot = findSpot(b.w + SITE_GAP)
+    settle(spot.x, b.w + SITE_GAP, spot.y + b.h + SITE_GAP)
+    const bx = SITE_PAD + spot.x
+    const by = SITE_PAD + spot.y
+    containers.push({ siteID: b.key, siteName: b.name, virtual: b.virtual, count: b.members.length, x: bx, y: by, w: b.w, h: b.h })
+    b.members.forEach((node, i) => {
+      const col = i % b.cols
+      const r = Math.floor(i / b.cols)
+      positions.set(node.id, {
+        x: bx + SITE_PAD + col * CELL_W + CELL_W / 2,
+        y: by + HEADER_H + SITE_PAD + r * CELL_H + 22,
       })
-      cursorX += b.w + SITE_GAP
-    }
-    cursorY += maxH + SITE_GAP
+      nodeById.set(node.id, node)
+    })
+    usedW = Math.max(usedW, bx + b.w)
+    usedH = Math.max(usedH, by + b.h)
   }
 
   return {
     positions,
     nodeById,
     containers,
-    width: innerW + SITE_PAD * 2,
-    height: Math.max(cursorY - SITE_GAP + SITE_PAD, 400),
+    width: Math.max(usedW + SITE_PAD, 600),
+    height: Math.max(usedH + SITE_PAD, 400),
   }
 }
 
