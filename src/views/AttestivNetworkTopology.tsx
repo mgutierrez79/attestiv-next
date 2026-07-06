@@ -91,6 +91,9 @@ export function AttestivNetworkTopology() {
   const [focusAssetId, setFocusAssetId] = useState<string | null>(null)
   const [hopRadius] = useState<number>(2)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Hover mirrors selection's emphasis but transiently — moving the pointer
+  // over a node previews its relationships without committing a selection.
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -222,6 +225,32 @@ export function AttestivNetworkTopology() {
     () => (selectedId ? visibleNodes.find((n) => n.id === selectedId) ?? null : null),
     [selectedId, visibleNodes],
   )
+
+  // Label lookup spanning visible + synthetic nodes, so a neighbour row can
+  // show a friendly name (not the raw id) even for app/usernet endpoints.
+  const nodeLabelById = useMemo(() => {
+    const m = new Map<string, string>()
+    if (data) for (const n of data.nodes) m.set(n.id, n.label)
+    return m
+  }, [data])
+
+  // The selected node's direct connections, deduped by (neighbour, kind) and
+  // carrying the interface where the edge has one. Drives the panel's
+  // "Connections" navigator — the relation between this node and its peers.
+  const selectedConnections = useMemo(() => {
+    if (!selectedId) return []
+    const seen = new Set<string>()
+    const out: Array<{ kind: string; id: string; label: string; iface?: string }> = []
+    for (const e of visibleEdges) {
+      const other = e.source === selectedId ? e.target : e.target === selectedId ? e.source : null
+      if (!other) continue
+      const key = `${e.kind}|${other}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push({ kind: e.kind, id: other, label: nodeLabelById.get(other) ?? other, iface: e.source_interface || e.target_interface })
+    }
+    return out
+  }, [selectedId, visibleEdges, nodeLabelById])
 
   // Fetch the clicked node's FULL inventory detail so the panel shows
   // rich, node-specific facts (vendor / model / serial / OS / mgmt IP /
@@ -365,7 +394,10 @@ export function AttestivNetworkTopology() {
                 edges={visibleEdges}
                 overlay={overlay}
                 selectedId={selectedId}
+                hoveredId={hoveredId}
                 onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
+                onHover={setHoveredId}
+                onClear={() => setSelectedId(null)}
                 degreeByNode={degreeByNode}
               />
             )}
@@ -376,12 +408,15 @@ export function AttestivNetworkTopology() {
               node={selected}
               detail={nodeDetail}
               detailLoading={nodeDetailLoading}
+              connections={selectedConnections}
               onClose={() => setSelectedId(null)}
               onOpen={() => router.push(`/inventory/${encodeURIComponent(selected.id)}`)}
               onFocus={() => {
                 setFocusAssetId(selected.id)
                 setAppFilter('')
               }}
+              onSelectNeighbor={(id) => setSelectedId(id)}
+              onHoverNeighbor={setHoveredId}
               isFocused={focusAssetId === selected.id}
               t={t}
             />
@@ -502,14 +537,20 @@ function TopologySVG({
   edges,
   overlay,
   selectedId,
+  hoveredId,
   onSelect,
+  onHover,
+  onClear,
   degreeByNode,
 }: {
   layout: ReturnType<typeof layoutNodes>
   edges: TopologyEdge[]
   overlay: Overlay
   selectedId: string | null
+  hoveredId: string | null
   onSelect: (id: string) => void
+  onHover: (id: string | null) => void
+  onClear: () => void
   degreeByNode: Map<string, number>
 }) {
   const { positions, nodeById, containers, width, height } = layout
@@ -529,9 +570,31 @@ function TopologySVG({
     return out
   }, [edges])
 
+  // Emphasis: hover previews, selection commits. When a node is active we
+  // light up it + its direct neighbours + the edges between them, and fade
+  // everything else — so the relationships around the focus read at a glance
+  // instead of drowning in the full mesh.
+  const activeId = hoveredId ?? selectedId
+  const { neighbourIds, incidentEdgeIds } = useMemo(() => {
+    if (!activeId) return { neighbourIds: null as Set<string> | null, incidentEdgeIds: null as Set<string> | null }
+    const nb = new Set<string>([activeId])
+    const ie = new Set<string>()
+    for (const e of edges) {
+      if (e.source === activeId || e.target === activeId) {
+        ie.add(e.id)
+        nb.add(e.source)
+        nb.add(e.target)
+      }
+    }
+    return { neighbourIds: nb, incidentEdgeIds: ie }
+  }, [activeId, edges])
+  const emphasising = neighbourIds !== null
+
   return (
     <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 600 }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        {/* Background catcher: a click on empty canvas clears the selection. */}
+        <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={onClear} />
         <defs>
           {/* Directional arrowhead for app→dependency edges. */}
           <marker
@@ -650,18 +713,23 @@ function TopologySVG({
             edge.kind === 'network_port' && (edge.source_interface || edge.vlan)
               ? `${edge.source_interface || ''}${edge.vlan ? ' v' + edge.vlan : ''}`
               : ''
+          // Fade edges not touching the active node; strengthen the ones that
+          // do so the focus node's links stand out from the mesh.
+          const incident = incidentEdgeIds ? incidentEdgeIds.has(edge.id) : false
+          const edgeOpacity = emphasising ? (incident ? 0.95 : 0.06) : 0.7
+          const edgeWidth = emphasising && incident ? strokeWidth + 0.8 : strokeWidth
           return (
             <g key={edge.id}>
               <path
                 d={d}
                 fill="none"
                 stroke={stroke}
-                strokeWidth={strokeWidth}
+                strokeWidth={edgeWidth}
                 strokeDasharray={dash === '0' ? undefined : dash}
-                opacity={0.7}
+                opacity={edgeOpacity}
                 markerEnd={edge.kind === 'app_dependency' ? 'url(#nt-app-dep-arrow)' : undefined}
               />
-              {label ? (
+              {label && !(emphasising && !incident) ? (
                 <>
                   <rect
                     x={lx - label.length * 2.6 - 2}
@@ -694,7 +762,16 @@ function TopologySVG({
           const node = nodeById.get(id)
           if (!node) return null
           const fill = nodeFillFor(node, overlay)
-          const stroke = selectedId === id ? 'var(--color-status-blue-deep)' : 'var(--color-border-secondary)'
+          const isSelected = selectedId === id
+          const isNeighbour = neighbourIds ? neighbourIds.has(id) : false
+          const dim = emphasising && !isNeighbour
+          // The active (selected/hovered) node gets the strong ring; its
+          // neighbours a lighter accent ring; everyone else the quiet border.
+          const stroke = isSelected
+            ? 'var(--color-status-blue-deep)'
+            : emphasising && isNeighbour
+              ? 'var(--color-status-blue-deep)'
+              : 'var(--color-border-secondary)'
           // Node radius grows with connection degree so hubs (host with
           // 50 VMs, storage array with 200 volumes) read as big circles.
           const degree = degreeByNode.get(id) ?? 0
@@ -704,27 +781,43 @@ function TopologySVG({
             <g
               key={id}
               transform={`translate(${pos.x},${pos.y})`}
-              onClick={() => onSelect(id)}
-              style={{ cursor: 'pointer' }}
+              onClick={(ev) => {
+                ev.stopPropagation()
+                onSelect(id)
+              }}
+              onMouseEnter={() => onHover(id)}
+              onMouseLeave={() => onHover(null)}
+              style={{ cursor: 'pointer', opacity: dim ? 0.22 : 1, transition: 'opacity 120ms ease' }}
             >
-              <circle r={radius} fill={fill} stroke={stroke} strokeWidth={selectedId === id ? 3 : 1} />
+              <circle
+                r={radius}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={isSelected ? 3 : emphasising && isNeighbour ? 2 : 1}
+              />
               {degree > 4 ? (
                 <text x={0} y={4} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--color-text-primary)">
                   {degree}
                 </text>
               ) : null}
-              <rect
-                x={-(short.length * 3.05) - 3}
-                y={radius + 2}
-                width={short.length * 6.1 + 6}
-                height={13}
-                rx={3}
-                fill="var(--color-background-primary)"
-                opacity={0.82}
-              />
-              <text x={0} y={radius + 12} textAnchor="middle" fontSize={9.5} fill="var(--color-text-primary)">
-                {short}
-              </text>
+              {/* Hide labels of dimmed nodes so the focus neighbourhood reads
+                  cleanly; always show the active + neighbour labels. */}
+              {!dim ? (
+                <>
+                  <rect
+                    x={-(short.length * 3.05) - 3}
+                    y={radius + 2}
+                    width={short.length * 6.1 + 6}
+                    height={13}
+                    rx={3}
+                    fill="var(--color-background-primary)"
+                    opacity={0.82}
+                  />
+                  <text x={0} y={radius + 12} textAnchor="middle" fontSize={9.5} fill="var(--color-text-primary)">
+                    {short}
+                  </text>
+                </>
+              ) : null}
             </g>
           )
         })}
@@ -746,7 +839,10 @@ function nodeFillFor(node: TopologyNode, overlay: Overlay): string {
       case 'medium':
       case 'tier_3':
       case 'tier_4':
-        return 'var(--color-status-blue-mid)'
+        // NB: --color-status-blue-mid is NOT a defined theme token (renders
+        // as an invalid colour). violet-mid IS defined and reads distinctly
+        // between amber (high) and green (low).
+        return 'var(--color-status-violet-mid)'
       case 'low':
         return 'var(--color-status-green-mid)'
       case 'tier_5':
@@ -795,7 +891,7 @@ function Legend({ overlay, t }: { overlay: Overlay; t: (key: string, fallback?: 
       entries.push(
         { color: 'var(--color-status-red-mid)', label: 'critical / tier_0 / tier_1' },
         { color: 'var(--color-status-amber-mid)', label: 'high / tier_2' },
-        { color: 'var(--color-status-blue-mid)', label: 'medium / tier_3 / tier_4' },
+        { color: 'var(--color-status-violet-mid)', label: 'medium / tier_3 / tier_4' },
         { color: 'var(--color-status-green-mid)', label: 'low' },
         { color: 'var(--color-background-tertiary)', label: 'tier_5 / unspecified' },
       )
@@ -853,18 +949,24 @@ function NodeDetailPanel({
   node,
   detail,
   detailLoading,
+  connections,
   onClose,
   onOpen,
   onFocus,
+  onSelectNeighbor,
+  onHoverNeighbor,
   isFocused,
   t,
 }: {
   node: TopologyNode
   detail: Record<string, unknown> | null
   detailLoading: boolean
+  connections: Array<{ kind: string; id: string; label: string; iface?: string }>
   onClose: () => void
   onOpen: () => void
   onFocus: () => void
+  onSelectNeighbor: (id: string) => void
+  onHoverNeighbor: (id: string | null) => void
   isFocused: boolean
   t: (key: string, fallback?: string) => string
 }) {
@@ -948,6 +1050,56 @@ function NodeDetailPanel({
       {detailLoading ? (
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 6 }}>{t('Loading details…', 'Loading details…')}</div>
       ) : null}
+      {connections.length > 0 ? (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+            {t('Connections', 'Connections')} ({connections.length})
+          </div>
+          {groupConnections(connections).map(([kind, items]) => (
+            <div key={kind} style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                <span style={{ display: 'inline-block', width: 9, height: 3, borderRadius: 1, background: edgeKindColor(kind) }} />
+                <span style={{ fontSize: 10, color: 'var(--color-text-secondary)', fontWeight: 600 }}>{edgeKindLabel(kind, t)}</span>
+              </div>
+              {items.map((c) => (
+                <button
+                  key={`${kind}|${c.id}`}
+                  type="button"
+                  onClick={() => onSelectNeighbor(c.id)}
+                  onMouseEnter={() => onHoverNeighbor(c.id)}
+                  onMouseLeave={() => onHoverNeighbor(null)}
+                  title={c.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 6,
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: 'var(--border-radius-sm)',
+                    padding: '3px 4px',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                  onFocus={() => onHoverNeighbor(c.id)}
+                  onBlur={() => onHoverNeighbor(null)}
+                >
+                  <span style={{ fontSize: 11, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.label}
+                  </span>
+                  {c.iface ? (
+                    <span style={{ fontSize: 9.5, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{c.iface}</span>
+                  ) : (
+                    <i className="ti ti-chevron-right" aria-hidden="true" style={{ color: 'var(--color-text-tertiary)', fontSize: 12, flexShrink: 0 }} />
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 6 }}>
         <GhostButton onClick={onFocus}>
           <i className={isFocused ? 'ti ti-zoom-out' : 'ti ti-zoom-in'} aria-hidden="true" />
@@ -959,6 +1111,74 @@ function NodeDetailPanel({
       </div>
     </Card>
   )
+}
+
+// groupConnections buckets a node's neighbours by edge kind, preserving a
+// stable, meaningful order (backbone first, plumbing after) so the panel's
+// Connections list reads top-down from most to least structural.
+function groupConnections(
+  connections: Array<{ kind: string; id: string; label: string; iface?: string }>,
+): Array<[string, Array<{ kind: string; id: string; label: string; iface?: string }>]> {
+  const order = [
+    'device_link',
+    'network_port',
+    'app_dependency',
+    'app_membership',
+    'hypervisor_host',
+    'storage_attachment',
+    'backup_coverage',
+    'host_port',
+  ]
+  const by = new Map<string, Array<{ kind: string; id: string; label: string; iface?: string }>>()
+  for (const c of connections) {
+    if (!by.has(c.kind)) by.set(c.kind, [])
+    by.get(c.kind)!.push(c)
+  }
+  return Array.from(by.entries()).sort((a, b) => {
+    const ai = order.indexOf(a[0])
+    const bi = order.indexOf(b[0])
+    return (ai === -1 ? order.length : ai) - (bi === -1 ? order.length : bi)
+  })
+}
+
+// Human labels + swatch colours for edge kinds, matching the graph strokes so
+// the Connections list keys back to the wires the operator sees.
+function edgeKindLabel(kind: string, t: (key: string, fallback?: string) => string): string {
+  switch (kind) {
+    case 'device_link':
+      return t('Network backbone', 'Network backbone')
+    case 'network_port':
+      return t('Switch port', 'Switch port')
+    case 'app_dependency':
+      return t('App dependency', 'App dependency')
+    case 'app_membership':
+      return t('Application', 'Application')
+    case 'hypervisor_host':
+      return t('Hypervisor host', 'Hypervisor host')
+    case 'storage_attachment':
+      return t('Storage', 'Storage')
+    case 'backup_coverage':
+      return t('Backup', 'Backup')
+    case 'host_port':
+      return t('Unresolved MAC', 'Unresolved MAC')
+    default:
+      return kind
+  }
+}
+
+function edgeKindColor(kind: string): string {
+  switch (kind) {
+    case 'hypervisor_host':
+      return 'var(--color-status-amber-mid)'
+    case 'storage_attachment':
+      return 'var(--color-status-green-mid)'
+    case 'app_membership':
+      return 'var(--color-status-red-mid)'
+    case 'host_port':
+      return 'var(--color-border-tertiary)'
+    default:
+      return 'var(--color-status-blue-deep)'
+  }
 }
 
 function Row({ label, value }: { label: string; value: string }) {
