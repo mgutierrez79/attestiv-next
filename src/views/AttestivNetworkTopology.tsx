@@ -458,6 +458,21 @@ function EdgeToggle({
   )
 }
 
+// Shared between layout math and the card renderer so the header zone the
+// layout reserves is exactly the zone the card draws.
+const CONTAINER_HEADER_H = 34
+
+// containerStyle keys each container kind to an accent colour + Tabler icon:
+// physical sites navy/map-pin; the virtual groups get their own identity so
+// the card header instantly says what lives inside.
+function containerStyle(key: string): { accent: string; icon: string } {
+  if (key === '~apps') return { accent: 'var(--color-status-green-mid)', icon: 'ti-apps' }
+  if (key === '~usernet') return { accent: 'var(--color-status-violet-mid)', icon: 'ti-users' }
+  if (key === '~mac') return { accent: 'var(--color-border-secondary)', icon: 'ti-plug' }
+  if (key === '~other') return { accent: 'var(--color-status-amber-mid)', icon: 'ti-box' }
+  return { accent: 'var(--color-status-blue-deep)', icon: 'ti-map-pin' }
+}
+
 // layoutNodes places each container's nodes in a GRID inside a bounded,
 // labelled box. Real sites come first (alphabetical); nodes with no site are
 // NOT dumped into one "(no site)" bucket — they're split into meaningful
@@ -472,8 +487,8 @@ function layoutNodes(
   const CELL_W = 116
   const CELL_H = 84
   const SITE_PAD = 18
-  const HEADER_H = 30
-  const SITE_GAP = 28
+  const HEADER_H = CONTAINER_HEADER_H
+  const SITE_GAP = 32
   const CANVAS_MAX_W = 1480
   const typeOrder = ['firewall', 'firewall_manager', 'network_device', 'host', 'cluster', 'server', 'vm', 'storage_array', 'storage_volume', 'backup_appliance', 'computer', 'unknown']
 
@@ -655,36 +670,99 @@ function TopologySVG({
           >
             <path d="M0,0 L10,5 L0,10 z" fill="context-stroke" />
           </marker>
+          {/* Soft card elevation for the site containers. */}
+          <filter id="nt-card-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="3" floodColor="#0a254a" floodOpacity="0.12" />
+          </filter>
+          {/* Faint blueprint dot grid for the container body. */}
+          <pattern id="nt-dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1.5" cy="1.5" r="1" fill="var(--color-border-secondary)" />
+          </pattern>
         </defs>
-        {/* Site containers: one bounded, labelled box per site, sized
-            to its node grid, so every component reads as belonging to
-            its Site. */}
-        {containers.map((c) => (
-          <g key={c.siteID}>
-            {/* Physical sites: solid hairline + tinted wash. Virtual groups
-                (Applications, User networks, …): dashed hairline + no wash,
-                so "real location" vs "logical grouping" reads instantly. */}
-            <rect
-              x={c.x}
-              y={c.y}
-              width={c.w}
-              height={c.h}
-              rx={10}
-              fill={c.virtual ? 'none' : 'var(--color-background-secondary)'}
-              opacity={c.virtual ? 1 : 0.45}
-              stroke="var(--color-border-secondary)"
-              strokeWidth={1}
-              strokeDasharray={c.virtual ? '5 4' : undefined}
-            />
-            <text x={c.x + 12} y={c.y + 18} fontSize={11} fontWeight={700} fill="var(--color-text-secondary)">
-              {c.virtual ? '' : '⌖ '}
-              {c.siteName}
-            </text>
-            <text x={c.x + c.w - 12} y={c.y + 18} fontSize={10} textAnchor="end" fill="var(--color-text-tertiary)">
-              {c.count}
-            </text>
-          </g>
-        ))}
+        {/* Site containers as CARDS: soft elevation, an accent-coded top
+            strip + icon chip per container type, a member-count pill, a
+            hairline-separated header, and a faint dot grid in the body.
+            Physical sites draw solid; virtual groups (Applications, User
+            networks, …) draw dashed — location vs logical grouping. */}
+        {containers.map((c) => {
+          const cs = containerStyle(c.siteID)
+          const countText = String(c.count)
+          const pillW = countText.length * 6 + 14
+          return (
+            <g key={c.siteID}>
+              <rect
+                x={c.x}
+                y={c.y}
+                width={c.w}
+                height={c.h}
+                rx={14}
+                fill="var(--color-background-primary)"
+                stroke="var(--color-border-tertiary)"
+                strokeWidth={1}
+                strokeDasharray={c.virtual ? '6 4' : undefined}
+                filter="url(#nt-card-shadow)"
+              />
+              {/* Body texture: barely-there dot grid, inset below the header. */}
+              <rect
+                x={c.x + 8}
+                y={c.y + CONTAINER_HEADER_H}
+                width={c.w - 16}
+                height={Math.max(c.h - CONTAINER_HEADER_H - 8, 0)}
+                rx={8}
+                fill="url(#nt-dots)"
+                opacity={0.5}
+              />
+              {/* Accent strip along the top edge — the card's colour key. */}
+              <rect x={c.x + 16} y={c.y + 1.25} width={Math.min(44, c.w - 32)} height={3} rx={1.5} fill={cs.accent} />
+              {/* Header: icon chip + name, count pill right, hairline below. */}
+              <rect
+                x={c.x + 12}
+                y={c.y + 8}
+                width={19}
+                height={19}
+                rx={6}
+                fill={`color-mix(in srgb, ${cs.accent} 14%, var(--color-background-primary))`}
+              />
+              <foreignObject x={c.x + 12} y={c.y + 8} width={19} height={19} style={{ pointerEvents: 'none' }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: cs.accent, fontSize: 12, lineHeight: 1 }}>
+                  <i className={`ti ${cs.icon}`} aria-hidden="true" />
+                </div>
+              </foreignObject>
+              <text x={c.x + 38} y={c.y + 21.5} fontSize={11.5} fontWeight={700} fill="var(--color-text-primary)">
+                {c.siteName}
+              </text>
+              <rect
+                x={c.x + c.w - 12 - pillW}
+                y={c.y + 10}
+                width={pillW}
+                height={15}
+                rx={7.5}
+                fill={`color-mix(in srgb, ${cs.accent} 10%, var(--color-background-primary))`}
+                stroke={`color-mix(in srgb, ${cs.accent} 30%, var(--color-background-primary))`}
+                strokeWidth={0.5}
+              />
+              <text
+                x={c.x + c.w - 12 - pillW / 2}
+                y={c.y + 20.5}
+                textAnchor="middle"
+                fontSize={9}
+                fontWeight={600}
+                fontFamily="var(--font-mono)"
+                fill={cs.accent}
+              >
+                {countText}
+              </text>
+              <line
+                x1={c.x + 10}
+                y1={c.y + CONTAINER_HEADER_H - 3}
+                x2={c.x + c.w - 10}
+                y2={c.y + CONTAINER_HEADER_H - 3}
+                stroke="var(--color-border-tertiary)"
+                strokeWidth={0.75}
+              />
+            </g>
+          )
+        })}
         {/* Edges, drawn before nodes so the nodes sit on top. Each edge
             is a quadratic curve bowed along the perpendicular — single
             edges arc clear of any node on the straight path, parallel
