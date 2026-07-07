@@ -444,7 +444,10 @@ export function AttestivNetworkTopology() {
             {error}
           </div>
         ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 230px', gap: 12, alignItems: 'start' }}>
+        {/* minmax(0,1fr): without the 0 floor the SVG's intrinsic width makes
+            the grid track grow past the viewport and shoves the legend off
+            screen — the canvas must scroll INSIDE the card instead. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 230px', gap: 12, alignItems: 'start' }}>
           <Card>
             <CardTitle
               right={
