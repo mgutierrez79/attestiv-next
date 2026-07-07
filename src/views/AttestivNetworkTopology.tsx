@@ -168,10 +168,51 @@ export function AttestivNetworkTopology() {
       }
       // Expanded applications reveal their member VMs: clicking an app node
       // in this view toggles its app_membership components in and out.
+      const members = new Set<string>()
       for (const e of data.edges) {
         if (e.kind !== 'app_membership') continue
-        if (expandedApps.has(e.source) && keep.has(e.source)) keep.add(e.target)
-        else if (expandedApps.has(e.target) && keep.has(e.target)) keep.add(e.source)
+        if (expandedApps.has(e.source) && keep.has(e.source)) members.add(e.target)
+        else if (expandedApps.has(e.target) && keep.has(e.target)) members.add(e.source)
+      }
+      for (const m of members) keep.add(m)
+      // The edge-kind toggles keep working inside the filtered view: each
+      // toggled-on kind extends the view one hop from the visible member VMs
+      // (VM↔Host pulls in the hosts, VM↔Storage the arrays/volumes, Backup
+      // the backup jobs, Network ports the switches). Without this the
+      // toggles silently do nothing here — the endpoint nodes aren't kept,
+      // so their edges have nowhere to land.
+      const kindOn = (k: string): boolean => {
+        switch (k) {
+          case 'hypervisor_host':
+            return showHypervisor
+          case 'storage_attachment':
+            return showStorage
+          case 'backup_coverage':
+            return showBackup
+          case 'network_port':
+            return showNetworkPort
+          case 'host_port':
+            return showHostPorts
+          default:
+            return false
+        }
+      }
+      const pulled = new Set<string>()
+      for (const e of data.edges) {
+        if (!kindOn(e.kind)) continue
+        if (members.has(e.source) && !keep.has(e.target)) pulled.add(e.target)
+        else if (members.has(e.target) && !keep.has(e.source)) pulled.add(e.source)
+      }
+      for (const p of pulled) keep.add(p)
+      // Switch uplinks hang off the HOST (switches route through the
+      // hypervisor), so with Network ports on take one more hop along
+      // device_link from the hosts just pulled in.
+      if (showNetworkPort) {
+        for (const e of data.edges) {
+          if (e.kind !== 'device_link') continue
+          if (pulled.has(e.source) && !keep.has(e.target)) keep.add(e.target)
+          else if (pulled.has(e.target) && !keep.has(e.source)) keep.add(e.source)
+        }
       }
       return keep
     }
@@ -194,7 +235,7 @@ export function AttestivNetworkTopology() {
       for (const n of neighbors) queue.push({ id: n, depth: depth + 1 })
     }
     return keep
-  }, [data, appFilter, focusAssetId, hopRadius, expandedApps])
+  }, [data, appFilter, focusAssetId, hopRadius, expandedApps, showHypervisor, showStorage, showBackup, showNetworkPort, showHostPorts])
 
   // Filter edges by toggle (host_port hidden by default; auditor view
   // is backbone first).
