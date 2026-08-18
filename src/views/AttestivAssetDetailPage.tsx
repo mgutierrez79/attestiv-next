@@ -11,7 +11,6 @@
 // THIS specific VM — what controls is it touching, and which fail?"
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 
 import {
   Badge,
@@ -29,6 +28,7 @@ import { ipSourceTag } from '../lib/ipSource'
 import { displayableMetaString } from '../lib/displayMeta'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
+import { useBreadcrumbLeaf } from '../components/Breadcrumb'
 
 type InventoryAsset = {
   asset_id: string
@@ -150,6 +150,10 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = {
 export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   const { t } = useI18n()
   const [asset, setAsset] = useState<InventoryAsset | null>(null)
+  // The shell's breadcrumb can only see the opaque id in the URL; hand
+  // it the asset's name so the trail reads Inventory › All assets ›
+  // dc1-esx-04 instead of ending on a uuid.
+  useBreadcrumbLeaf(asset?.name)
   const [parentApp, setParentApp] = useState<AppSummary | null>(null)
   const [dependents, setDependents] = useState<DependentApp[]>([])
   const [scopeResult, setScopeResult] = useState<ScopeResult | null>(null)
@@ -593,24 +597,6 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     <>
       <Topbar title={asset?.name ?? assetID} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '0 0 24px' }}>
-        <nav aria-label={t('Breadcrumb', 'Breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--color-text-tertiary)', flexWrap: 'wrap' }}>
-          <Link href="/inventory" style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}>
-            {t('Inventory', 'Inventory')}
-          </Link>
-          {asset?.asset_type ? (
-            <>
-              <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
-              <a
-                href={`/inventory?asset_type=${encodeURIComponent(String(asset.asset_type).toLowerCase())}`}
-                style={{ color: 'var(--color-status-blue-deep)', textDecoration: 'none' }}
-              >
-                {asset.asset_type}
-              </a>
-            </>
-          ) : null}
-          <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
-          <span style={{ color: 'var(--color-text-secondary)' }}>{asset?.name ?? assetID}</span>
-        </nav>
         {error && <Banner tone="error">{error}</Banner>}
 
         {loading ? (

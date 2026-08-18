@@ -216,6 +216,7 @@ textarea {
   font-size: 18px;
   border: none;
   background: transparent;
+  position: relative;
   transition: background 160ms ease, color 160ms ease;
 }
 .attestiv-rail-btn:hover {
@@ -228,6 +229,17 @@ textarea {
   box-shadow:
     0 4px 12px -4px rgba(28, 104, 199, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+.attestiv-rail-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 20px;
+  border-radius: 0 2px 2px 0;
+  background: #fff;
+  transform: translateY(-50%);
 }
 .attestiv-rail-spacer {
   flex: 1;
@@ -270,11 +282,29 @@ textarea {
   border-bottom: 1px solid var(--color-border-tertiary);
   flex-shrink: 0;
 }
-.attestiv-sidebar-title {
-  font-size: 13px;
+/* The wordmark steps back to a caption so the line below it — the
+ * section you are actually in — can carry the weight. */
+.attestiv-sidebar-brand {
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--color-brand-blue);
+}
+.attestiv-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--color-text-primary);
+}
+.attestiv-sidebar-title i {
+  font-size: 16px;
+  color: var(--color-brand-blue);
+  flex-shrink: 0;
 }
 .attestiv-sidebar-sub {
   font-size: 11px;
@@ -373,11 +403,66 @@ textarea {
   flex-direction: column;
   overflow: hidden;
 }
+/* BREADCRUMB — the "you are here" strip above the page title. Sized
+ * as chrome, not content: it should be readable at a glance and
+ * invisible the rest of the time. */
+.attestiv-breadcrumb {
+  flex-shrink: 0;
+  padding: 10px var(--space-6) 0;
+  background: var(--color-background-primary);
+}
+.attestiv-breadcrumb-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.attestiv-breadcrumb-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.attestiv-breadcrumb-icon {
+  font-size: 13px;
+  color: var(--color-brand-blue);
+}
+.attestiv-breadcrumb-sep {
+  font-size: 12px;
+  color: var(--color-border-secondary);
+}
+.attestiv-breadcrumb-link {
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin: -1px -3px;
+  transition: color 140ms ease, background 140ms ease;
+}
+.attestiv-breadcrumb-link:hover {
+  color: var(--color-brand-blue);
+  background: rgba(20, 30, 60, 0.05);
+}
+/* The last node is the page you are on: same size, but the only one
+ * in full-strength ink, so the eye lands on it first. */
+.attestiv-breadcrumb-current {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .attestiv-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-2) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--color-border-tertiary);
   background: var(--color-background-primary);
   flex-shrink: 0;
