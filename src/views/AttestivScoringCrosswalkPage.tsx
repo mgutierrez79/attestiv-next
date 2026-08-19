@@ -23,6 +23,7 @@ import {
   GhostButton,
   Skeleton,
   Topbar,
+  tint,
 } from '../components/AttestivUi'
 import { apiFetch, apiJson } from '../lib/api'
 
@@ -274,7 +275,7 @@ function HeadlineCard({
             width: 32,
             height: 32,
             borderRadius: 8,
-            background: 'var(--color-brand-blue)1A',
+            background: tint('var(--color-brand-blue)', 10),
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

@@ -108,7 +108,6 @@ export function AttestivDRRunsPage() {
               borderRadius: 'var(--border-radius-md)',
               background: 'var(--color-background-primary)',
               fontFamily: 'inherit',
-              outline: 'none',
             }}
           >
             <option value="">{t('All schedules', 'All schedules')}</option>

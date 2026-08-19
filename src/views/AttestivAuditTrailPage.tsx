@@ -182,7 +182,6 @@ export function AttestivAuditTrailPage() {
               border: '0.5px solid var(--color-border-secondary)',
               borderRadius: 'var(--border-radius-md)',
               background: 'var(--color-background-primary)',
-              outline: 'none',
               minWidth: 240,
               fontFamily: 'inherit',
             }}

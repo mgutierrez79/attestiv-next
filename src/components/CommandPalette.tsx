@@ -307,7 +307,6 @@ export function CommandPalette({
             style={{
               flex: 1,
               border: 'none',
-              outline: 'none',
               background: 'transparent',
               fontSize: 15,
               color: 'var(--color-text-primary)',

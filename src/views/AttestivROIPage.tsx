@@ -32,6 +32,7 @@ import {
   Skeleton,
   TextInput,
   Topbar,
+  tint,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 
@@ -466,7 +467,7 @@ function KPI({ label, value, sub, tone, icon }: { label: string; value: string; 
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: tint(color, 10), display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
           <i className={`ti ${icon}`} aria-hidden="true" />
         </div>
         <div>

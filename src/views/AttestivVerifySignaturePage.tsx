@@ -99,7 +99,6 @@ export function AttestivVerifySignaturePage() {
                 color: 'var(--color-text-primary)',
                 fontSize: 12,
                 fontFamily: 'var(--font-mono)',
-                outline: 'none',
                 resize: 'vertical',
                 boxSizing: 'border-box',
               }}

@@ -103,6 +103,27 @@ describe('resolveNavLocation', () => {
     expect(at.trail[at.trail.length - 1].href).toBeUndefined()
   })
 
+  it('never links a breadcrumb ancestor that has no page behind it', () => {
+    // /scoring/frameworks, /scoring/frameworks/{fid} and .../controls are
+    // structural parents of the control-detail route — no page.tsx exists
+    // for any of them, so a link would 404 (found in the 2026-08 UX audit).
+    const at = resolveNavLocation('/scoring/frameworks/iso27001/controls/ISO27001-A5.9')
+    expect(at.trail.map((n) => n.label)).toEqual([
+      'Frameworks',
+      'Framework score',
+      'iso27001',
+      'Controls',
+      'ISO27001-A5.9',
+    ])
+    expect(at.trail[0].href).toBe('/frameworks')
+    expect(at.trail[1].href).toBeUndefined()
+    expect(at.trail[2].href).toBeUndefined()
+    expect(at.trail[3].href).toBeUndefined()
+    const trend = resolveNavLocation('/scoring/trend/soc2')
+    expect(trend.trail.map((n) => n.label)).toEqual(['Frameworks', 'Score trend', 'soc2'])
+    expect(trend.trail[1].href).toBeUndefined()
+  })
+
   it('ignores a trailing slash', () => {
     expect(resolveNavLocation('/connectors/health/').item?.label).toBe('Health')
   })

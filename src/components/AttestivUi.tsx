@@ -37,7 +37,16 @@ const badgePalette: Record<Tone, { bg: string; deep: string; mid: string }> = {
   red:   { bg: 'var(--color-status-red-bg)',   deep: 'var(--color-status-red-deep)',   mid: 'var(--color-status-red-mid)' },
   blue:  { bg: 'var(--color-status-blue-bg)',  deep: 'var(--color-status-blue-deep)',  mid: 'var(--color-status-blue-mid)' },
   navy:  { bg: 'var(--color-brand-navy)',      deep: 'var(--color-brand-blue-pale)',   mid: 'var(--color-brand-blue)' },
-  gray:  { bg: 'var(--color-background-tertiary)', deep: '#444441',                    mid: '#9c9b95' },
+  gray:  { bg: 'var(--color-background-tertiary)', deep: 'var(--color-text-secondary)', mid: 'var(--color-text-tertiary)' },
+}
+
+// tint() derives a translucent version of ANY color value — including a
+// var(--token) reference — for hairline outlines and icon-tile grounds.
+// The previous idiom (`${color}33`, i.e. appending a hex-alpha byte)
+// silently produces invalid CSS when the color is a var() and the whole
+// declaration is dropped, so badges shipped without their 1px outline.
+export function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`
 }
 
 export function Badge({
@@ -61,7 +70,7 @@ export function Badge({
     whiteSpace: 'nowrap',
     background: colors.bg,
     color: colors.deep,
-    border: `1px solid ${colors.mid}33`, // 33 = 20% alpha — visible only on close inspection
+    border: `1px solid ${tint(colors.mid, 20)}`, // 20% alpha — visible only on close inspection
   }
   return (
     <span style={baseBadge} title={title}>
@@ -109,7 +118,7 @@ export function ScoreBadge({
     whiteSpace: 'nowrap',
     background: colors.bg,
     color: colors.deep,
-    border: `1px solid ${colors.mid}40`,
+    border: `1px solid ${tint(colors.mid, 25)}`,
   }
   return (
     <span style={style}>
@@ -802,6 +811,14 @@ export function SignatureBox({
   const {
     t
   } = useI18n();
+  // "Copied" flashes for ~1.6s after a successful clipboard write so the
+  // auditor knows the (visually truncated) value actually left the page.
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const handle = window.setTimeout(() => setCopied(false), 1600)
+    return () => window.clearTimeout(handle)
+  }, [copied])
 
   return (
     <div
@@ -817,6 +834,7 @@ export function SignatureBox({
         gap: 8,
         overflow: 'hidden',
       }}
+      title={value}
     >
       {label ? (
         <span
@@ -844,24 +862,31 @@ export function SignatureBox({
       >
         {value}
       </span>
+      {copied ? (
+        <span role="status" style={{ fontSize: 10, color: 'var(--color-status-green-deep)', flexShrink: 0 }}>
+          {t('Copied', 'Copied')}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={() => {
           if (typeof navigator !== 'undefined' && navigator.clipboard) {
-            void navigator.clipboard.writeText(value)
+            void navigator.clipboard.writeText(value).then(() => setCopied(true)).catch(() => undefined)
           }
         }}
+        className="attestiv-focusable"
         style={{
           background: 'transparent',
           border: 'none',
           cursor: 'pointer',
-          color: 'var(--color-text-tertiary)',
+          color: copied ? 'var(--color-status-green-mid)' : 'var(--color-text-tertiary)',
           padding: 2,
+          borderRadius: 4,
           flexShrink: 0,
         }}
         aria-label={t('Copy', 'Copy')}
       >
-        <i className="ti ti-copy" aria-hidden="true" style={{ fontSize: 14 }} />
+        <i className={`ti ${copied ? 'ti-check' : 'ti-copy'}`} aria-hidden="true" style={{ fontSize: 14 }} />
       </button>
     </div>
   );
@@ -1133,18 +1158,20 @@ const inputBase: CSSProperties = {
   color: 'var(--color-text-primary)',
   fontSize: 13,
   fontFamily: 'inherit',
-  outline: 'none',
   boxSizing: 'border-box',
 }
 
+// Inputs carry the `attestiv-input` class so globals.css can paint the
+// shared focus ring on :focus-visible (inline styles can't express
+// pseudo-classes). Never set outline:none here without that rule.
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
-  const { style, ...rest } = props
-  return <input {...rest} style={{ ...inputBase, ...style }} />
+  const { style, className, ...rest } = props
+  return <input {...rest} className={['attestiv-input', className].filter(Boolean).join(' ')} style={{ ...inputBase, ...style }} />
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  const { style, ...rest } = props
-  return <select {...rest} style={{ ...inputBase, ...style }} />
+  const { style, className, ...rest } = props
+  return <select {...rest} className={['attestiv-input', className].filter(Boolean).join(' ')} style={{ ...inputBase, ...style }} />
 }
 
 // Skeleton renders a shimmering placeholder block while async data
@@ -1313,7 +1340,7 @@ export function Banner({
           onClick={onRetry}
           style={{
             background: 'transparent',
-            border: `1px solid ${entry.fg}40`,
+            border: `1px solid ${tint(entry.fg, 25)}`,
             borderRadius: 5,
             color: entry.fg,
             cursor: 'pointer',
@@ -1781,6 +1808,17 @@ export function SortableTable<T extends Record<string, unknown>>({
                     ...(col.thProps?.style ?? {}),
                   }}
                   onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  tabIndex={col.sortable ? 0 : undefined}
+                  onKeyDown={
+                    col.sortable
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            handleSort(col.key)
+                          }
+                        }
+                      : undefined
+                  }
                   aria-sort={
                     sortKey === col.key
                       ? sortDir === 'asc'
@@ -1816,6 +1854,17 @@ export function SortableTable<T extends Record<string, unknown>>({
               <tr
                 key={rowKey(row, current * pageSize + i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onRowClick(row)
+                        }
+                      }
+                    : undefined
+                }
                 style={{ cursor: onRowClick ? 'pointer' : 'default' }}
                 className={onRowClick ? 'attestiv-table-row-hover' : undefined}
               >

@@ -23,6 +23,7 @@ import {
   PrimaryButton,
   Skeleton,
   Topbar,
+  tint,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 
@@ -377,7 +378,7 @@ function Headline({ label, value, icon }: { label: string; value: number | strin
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-brand-blue)1A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-brand-blue)' }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: tint('var(--color-brand-blue)', 10), display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-brand-blue)' }}>
           <i className={`ti ${icon}`} aria-hidden="true" />
         </div>
         <div>

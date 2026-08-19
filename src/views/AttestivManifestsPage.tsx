@@ -11,18 +11,23 @@
 // the auditor doesn't have to know about the run/manifest split.
 
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 
 import {
   Badge,
+  Banner,
   Card,
   CardTitle,
+  EmptyState,
   GhostButton,
   PrimaryButton,
   SignatureBox,
+  Skeleton,
   Topbar,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { isDemoMode } from '../lib/demoMode'
+import { formatTimestamp } from '../lib/time'
 
 import { useI18n } from '../lib/i18n';
 
@@ -34,7 +39,45 @@ type ManifestRow = {
   manifest_path?: string
   signature?: string
   evidence_count?: number
+  finding_count?: number
   frameworks?: string[]
+}
+
+// ManifestDoc is the shape of GET /v1/runs/{run_id}/manifest — the
+// signed manifest itself plus the server's own verification verdict.
+// Everything an auditor needs to carry to an offline verifier lives
+// here: the Ed25519 signature, the key id, and the integrity anchors
+// (hashes of the evidence log, inputs, outputs, analytics) the
+// signature covers.
+type ManifestDoc = {
+  run_id: string
+  manifest: {
+    run_id?: string
+    timestamp?: string
+    kid?: string
+    signature?: string
+    language?: string
+    run_contract_version?: string
+    integrity?: Record<string, unknown>
+    integrity_anchors?: Record<string, string>
+    artifact_hashes?: Record<string, string>
+    inputs?: { hash?: string; sources?: unknown[] }
+    [key: string]: unknown
+  }
+  signature_status?: { enabled?: boolean; present?: boolean; valid?: boolean; expected?: string | null }
+}
+
+function downloadJSON(filename: string, payload: unknown) {
+  if (typeof window === 'undefined') return
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 const DEMO: ManifestRow[] = [
@@ -97,6 +140,7 @@ export function AttestivManifestsPage() {
           manifest_path: item?.path ?? undefined,
           signature: item?.summary?.signature ?? undefined,
           evidence_count: item?.summary?.evidence_count ?? undefined,
+          finding_count: typeof item?.summary?.finding_count === 'number' ? item.summary.finding_count : undefined,
           frameworks: Array.isArray(item?.summary?.frameworks) ? item.summary.frameworks : undefined,
         }))
         if (!cancelled) {
@@ -141,14 +185,20 @@ export function AttestivManifestsPage() {
       <Topbar
         title={t('Signed manifests', 'Signed manifests')}
         left={usingDemo ? <Badge tone="amber">{t('Demo data — no signed runs yet', 'Demo data — no signed runs yet')}</Badge> : null}
-        right={<span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{rows.length} manifests</span>}
+        right={<span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{t('{n} manifests', '{n} manifests', { n: rows.length })}</span>}
       />
       <div className="attestiv-content">
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 12 }}>
           <Card>
             <CardTitle>{t('Recent runs', 'Recent runs')}</CardTitle>
             {loading ? (
-              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('Loading…', 'Loading…')}</div>
+              <Skeleton lines={4} height={30} />
+            ) : rows.length === 0 ? (
+              <EmptyState
+                icon="ti-file-certificate"
+                title="No signed runs yet"
+                description="A manifest is written and Ed25519-signed every time a report run completes (the report scheduler, or Frameworks › Generate report). Until then there is nothing to verify here."
+              />
             ) : (
               <div>
                 {rows.map((row) => (
@@ -184,7 +234,11 @@ export function AttestivManifestsPage() {
                     </div>
                     <Badge tone={riskTone(row.overall_risk)}>{row.overall_risk ?? 'unknown'}</Badge>
                     <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', textAlign: 'right' }}>
-                      {row.evidence_count ?? '—'} evidence
+                      {typeof row.finding_count === 'number'
+                        ? t('{n} findings', '{n} findings', { n: row.finding_count })
+                        : typeof row.evidence_count === 'number'
+                          ? t('{n} evidence', '{n} evidence', { n: row.evidence_count })
+                          : '—'}
                     </span>
                   </button>
                 ))}
@@ -196,7 +250,7 @@ export function AttestivManifestsPage() {
             <Card>
               <CardTitle>{t('Manifest detail', 'Manifest detail')}</CardTitle>
               {selected ? (
-                <ManifestDetail row={selected} />
+                <ManifestDetail row={selected} demo={usingDemo} />
               ) : (
                 <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{t('Select a manifest.', 'Select a manifest.')}</div>
               )}
@@ -208,30 +262,162 @@ export function AttestivManifestsPage() {
   );
 }
 
-function ManifestDetail({ row }: { row: ManifestRow }) {
+function ManifestDetail({ row, demo }: { row: ManifestRow; demo: boolean }) {
   const {
     t
   } = useI18n();
+  const [doc, setDoc] = useState<ManifestDoc | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
+  const [docLoading, setDocLoading] = useState(false)
+
+  // Pull the real signed manifest for the selected run. /v1/runs only
+  // carries the run summary; the signature, kid and integrity anchors
+  // live in the manifest document — which is exactly what the auditor
+  // needs to see and carry away.
+  useEffect(() => {
+    if (demo || !row.run_id) {
+      setDoc(null)
+      return
+    }
+    let cancelled = false
+    setDocLoading(true)
+    setDocError(null)
+    apiFetch(`/runs/${encodeURIComponent(row.run_id)}/manifest`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            response.status === 404
+              ? t('Manifest file not found on this node (run {id}).', 'Manifest file not found on this node (run {id}).', { id: row.run_id })
+              : t('Manifest request failed ({status}).', 'Manifest request failed ({status}).', { status: response.status }),
+          )
+        }
+        return (await response.json()) as ManifestDoc
+      })
+      .then((body) => {
+        if (!cancelled) setDoc(body)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setDocError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setDocLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [row.run_id, demo, t])
+
+  const manifest = doc?.manifest
+  const integrity = (manifest?.integrity ?? {}) as Record<string, unknown>
+  const kid = String(manifest?.kid ?? integrity.kid ?? '') || undefined
+  const signature = String(manifest?.signature ?? integrity.signature ?? row.signature ?? '') || undefined
+  const algorithm = signature ? (kid ? 'Ed25519' : 'HMAC-SHA256 (legacy)') : undefined
+  const status = doc?.signature_status
+  const anchors: Array<[string, string]> = Object.entries(manifest?.integrity_anchors ?? {})
+    .filter(([, v]) => typeof v === 'string' && v)
+    .map(([k, v]) => [k, String(v)])
+  const artifacts: Array<[string, string]> = Object.entries(manifest?.artifact_hashes ?? {}).map(([k, v]) => [k, String(v)])
+  const sectionLabel: CSSProperties = {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--color-text-tertiary)',
+    fontWeight: 600,
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
       <KV label={t('Run', 'Run')} value={row.run_id} mono />
-      <KV label={t('Signed at', 'Signed at')} value={formatTimestamp(row.timestamp)} mono />
+      <KV label={t('Signed at', 'Signed at')} value={formatTimestamp(manifest?.timestamp ?? row.timestamp)} mono />
       {row.risk_score !== undefined ? <KV label={t('Risk score', 'Risk score')} value={String(row.risk_score)} /> : null}
+      {typeof row.finding_count === 'number' ? <KV label={t('Findings', 'Findings')} value={String(row.finding_count)} /> : null}
       {row.evidence_count !== undefined ? <KV label={t('Evidence count', 'Evidence count')} value={String(row.evidence_count)} /> : null}
       {row.frameworks ? <KV label={t('Frameworks', 'Frameworks')} value={row.frameworks.join(', ')} /> : null}
-      {row.signature ? <SignatureBox label={t('Signature', 'Signature')} value={row.signature} /> : null}
-      {row.manifest_path ? <SignatureBox label={t('Path', 'Path')} value={row.manifest_path} mono={false} /> : null}
-      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-        <PrimaryButton onClick={() => undefined}>
+      {manifest?.run_contract_version ? <KV label={t('Run contract', 'Run contract')} value={`v${manifest.run_contract_version}`} mono /> : null}
+
+      {docLoading ? <Skeleton lines={3} height={28} /> : null}
+      {docError ? <Banner tone="warning">{docError}</Banner> : null}
+
+      {signature || kid ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={sectionLabel}>{t('Signature', 'Signature')}</span>
+            {status ? (
+              status.valid ? (
+                <Badge tone="green" icon="ti-shield-check">{t('verified on server', 'verified on server')}</Badge>
+              ) : status.present ? (
+                <Badge tone="red" icon="ti-shield-x">{t('signature does not verify', 'signature does not verify')}</Badge>
+              ) : (
+                <Badge tone="amber" icon="ti-shield-off">{t('unsigned', 'unsigned')}</Badge>
+              )
+            ) : null}
+            {algorithm ? <Badge tone="gray">{algorithm}</Badge> : null}
+          </div>
+          {kid ? <SignatureBox label={t('Key id', 'Key id')} value={kid} /> : null}
+          {signature ? <SignatureBox label={t('Signature', 'Signature')} value={signature} /> : null}
+        </div>
+      ) : !docLoading && !demo ? (
+        <Banner tone="warning" title={t('No signature on this manifest', 'No signature on this manifest')}>
+          {t(
+            'The run completed but its manifest carries no Ed25519 signature. Check the signing key configuration under Settings › API keys before relying on this run.',
+            'The run completed but its manifest carries no Ed25519 signature. Check the signing key configuration under Settings › API keys before relying on this run.',
+          )}
+        </Banner>
+      ) : null}
+
+      {anchors.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <span style={sectionLabel}>
+            {t('Integrity anchors (SHA-256, covered by the signature)', 'Integrity anchors (SHA-256, covered by the signature)')}
+          </span>
+          {anchors.map(([name, hash]) => (
+            <SignatureBox key={name} label={name} value={hash} />
+          ))}
+        </div>
+      ) : null}
+
+      {artifacts.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          <span style={sectionLabel}>{t('Artifact hashes', 'Artifact hashes')}</span>
+          {artifacts.map(([name, hash]) => (
+            <SignatureBox key={name} label={name} value={hash} />
+          ))}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+        <PrimaryButton
+          disabled={demo || !doc}
+          onClick={() => {
+            if (doc) downloadJSON(`${row.run_id}.manifest.json`, doc.manifest)
+          }}
+        >
           <i className="ti ti-file-download" aria-hidden="true" />
           {t('Download manifest', 'Download manifest')}
         </PrimaryButton>
-        <GhostButton onClick={() => undefined}>
+        <GhostButton
+          disabled={demo}
+          onClick={() => {
+            // /v1/public/keys returns the full ring (active + retired) keyed
+            // by kid — exactly what an offline verifier wants, since a packet
+            // signed before a rotation must still verify after it.
+            void apiFetch('/public/keys')
+              .then(async (r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+              .then((keys) => downloadJSON('attestiv-public-keys.json', keys))
+              .catch(() => setDocError(t('Public key download failed.', 'Public key download failed.')))
+          }}
+        >
           <i className="ti ti-key" aria-hidden="true" />
           {t('Public key', 'Public key')}
         </GhostButton>
       </div>
+      <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
+        {t(
+          'Verify offline: download both files, then run attestiv-verify against the manifest with the public key — no network and no Attestiv service involved. /v1/public/keys is also served unauthenticated for auditors without console access.',
+          'Verify offline: download both files, then run attestiv-verify against the manifest with the public key — no network and no Attestiv service involved. /v1/public/keys is also served unauthenticated for auditors without console access.',
+        )}
+      </p>
+      {row.manifest_path ? <KV label={t('Server path', 'Server path')} value={row.manifest_path} mono /> : null}
     </div>
   );
 }
@@ -269,11 +455,4 @@ function riskTone(risk?: string): 'green' | 'amber' | 'red' | 'gray' {
     default:
       return 'gray'
   }
-}
-
-function formatTimestamp(value: string): string {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z')
 }

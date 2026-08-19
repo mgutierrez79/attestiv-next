@@ -124,6 +124,44 @@
     0 6px 18px -10px rgba(4, 44, 83, 0.20),
     0 2px 4px rgba(4, 44, 83, 0.06);
   --ring-focus: 0 0 0 2px rgba(28, 104, 199, 0.18);
+
+  /* ---------------------------------------------------------------
+   * Legacy aliases — DO NOT use in new code.
+   *
+   * An audit (2026-08-19) found 60+ component sites referencing token
+   * names that were never defined here (mostly from an earlier naming
+   * scheme: --color-surface-*, --color-border, --color-status-*-light,
+   * --color-accent …). An undefined var() without a fallback drops the
+   * whole declaration, so those sites rendered with no background / no
+   * border / no tint; the ones WITH a fallback painted off-palette
+   * Tailwind-slate hexes. Aliasing them here makes every one of those
+   * sites resolve to the real palette in one place. New code must use
+   * the canonical names above; migrate call sites opportunistically and
+   * delete an alias once its last reference is gone. */
+  --color-surface-primary: var(--color-background-primary);
+  --color-surface-secondary: var(--color-background-secondary);
+  --color-surface-muted: var(--color-background-secondary);
+  --color-surface-sunken: var(--color-background-tertiary);
+  --color-border: var(--color-border-secondary);
+  --color-border-subtle: var(--color-border-tertiary);
+  --color-border-soft: var(--color-border-tertiary);
+  --color-border-quaternary: var(--color-border-tertiary);
+  --color-accent: var(--color-brand-blue);
+  --color-brand-primary: var(--color-brand-blue);
+  --color-on-brand: #ffffff;
+  --color-bg-accent: var(--color-status-blue-bg);
+  --color-text-danger: var(--color-status-red-mid);
+  --color-text-success: var(--color-status-green-mid);
+  --color-text-warn: var(--color-status-amber-text);
+  --color-text-link: var(--color-brand-blue);
+  --color-status-red-light: var(--color-status-red-bg);
+  --color-status-red-soft: var(--color-status-red-bg);
+  --color-status-red-text: var(--color-status-red-deep);
+  --color-status-green-light: var(--color-status-green-bg);
+  --color-status-amber-light: var(--color-status-amber-bg);
+  --code-text-tertiary: var(--color-text-tertiary);
+  --font-family-base: var(--font-sans);
+  --font-family-mono: var(--font-mono);
 }
 
 html,
@@ -605,6 +643,37 @@ textarea {
   outline: none;
   border-color: var(--color-brand-blue);
   box-shadow: var(--ring-focus);
+}
+
+
+/* Shared keyboard focus treatment. Kit inputs (TextInput/Select) and
+ * any control that opts into `attestiv-input`/`attestiv-focusable`
+ * paint the same ring on :focus-visible — mouse focus stays quiet,
+ * keyboard focus is always visible. The ring token is the single
+ * source so every field focuses identically. */
+/* Every native control gets the brand ring on keyboard focus, replacing
+ * the UA default so the console focuses the same way everywhere. Views
+ * must not set outline:none inline — it overrides this and leaves
+ * keyboard users blind (12 such sites were removed in the 2026-08 audit). */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-brand-blue-mid);
+  outline-offset: 1px;
+}
+.attestiv-input:focus-visible,
+.attestiv-focusable:focus-visible,
+.attestiv-table-row-hover:focus-visible,
+th[tabindex]:focus-visible {
+  outline: none;
+  border-color: var(--color-brand-blue);
+  box-shadow: var(--ring-focus);
+}
+.attestiv-table-row-hover:focus-visible td {
+  background: var(--color-background-secondary);
 }
 
 /* SortableTable row hover */

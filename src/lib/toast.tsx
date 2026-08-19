@@ -21,6 +21,7 @@ import {
   useState,
 } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { tint } from '../components/AttestivUi'
 
 type ToastTone = 'success' | 'error' | 'info' | 'warning'
 
@@ -84,7 +85,7 @@ function ToastItem({
     padding: '11px 14px',
     background: p.bg,
     color: p.fg,
-    border: `1px solid ${p.border}50`,
+    border: `1px solid ${tint(p.border, 30)}`,
     borderRadius: 8,
     boxShadow: '0 4px 16px rgba(0,0,0,0.13)',
     fontSize: 13,
