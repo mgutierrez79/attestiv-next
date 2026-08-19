@@ -35,6 +35,7 @@ import { isDemoMode } from '../lib/demoMode'
 import { deriveFrameworksHero } from '../lib/frameworksHero'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type ControlArea = {
   name: string
@@ -194,6 +195,7 @@ export function AttestivFrameworksPage() {
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
 
   const { run: runTask, isRunning } = useBackgroundTasks()
   const [frameworks, setFrameworks] = useState<FrameworkPosture[]>([])
@@ -538,7 +540,7 @@ export function AttestivFrameworksPage() {
             <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
               {overallTotals.passing}/{overallTotals.total} {t('frameworks ≥95%', 'frameworks ≥95%')}
             </span>
-            <PrimaryButton onClick={reevaluate} disabled={reevalPhase !== 'idle' || isRunning('framework-reevaluate')}>
+            {canWrite ? <PrimaryButton onClick={reevaluate} disabled={reevalPhase !== 'idle' || isRunning('framework-reevaluate')}>
               {reevalPhase === 'refreshing' ? (
                 <>
                   <i className="ti ti-loader-2" aria-hidden="true" style={{ animation: 'attestiv-spin 1s linear infinite' }} />
@@ -560,7 +562,7 @@ export function AttestivFrameworksPage() {
                   {t('Re-evaluate now', 'Re-evaluate now')}
                 </>
               )}
-            </PrimaryButton>
+            </PrimaryButton> : null}
           </div>
         }
       />
@@ -704,6 +706,7 @@ export function AttestivFrameworksPage() {
                 generating={generating === framework.id}
                 elapsed={generating === framework.id ? elapsed : 0}
                 onGenerate={() => generateReport(framework)}
+                canWrite={canWrite}
                 onCancel={() => void cancelGenerate()}
                 demoMode={usingDemo}
               />
@@ -807,6 +810,7 @@ function FrameworkCard({
   generating,
   elapsed,
   onGenerate,
+  canWrite = true,
   onCancel,
   demoMode = false,
 }: {
@@ -815,6 +819,7 @@ function FrameworkCard({
   generating: boolean
   elapsed: number
   onGenerate: () => void
+  canWrite?: boolean
   onCancel: () => void
   demoMode?: boolean
 }) {
@@ -952,7 +957,7 @@ function FrameworkCard({
             </GhostButton>
           ) : null}
           <span title={demoMode ? t('Not available on demo data — run Re-evaluate first', 'Not available on demo data — run Re-evaluate first') : undefined}>
-          <PrimaryButton
+          {canWrite ? <PrimaryButton
             onClick={onGenerate}
             disabled={generating || demoMode}
           >
@@ -967,7 +972,7 @@ function FrameworkCard({
                 {demoMode ? t('Demo — no report', 'Demo — no report') : t('Generate report', 'Generate report')}
               </>
             )}
-          </PrimaryButton>
+          </PrimaryButton> : null}
           </span>
         </div>
       </div>

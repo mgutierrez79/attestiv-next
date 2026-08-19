@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type Risk = {
   risk_id: string
@@ -132,6 +133,7 @@ export function AttestivRiskDetailPage() {
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
 
   const router = useRouter()
   const params = useParams<{ id: string | string[] }>()
@@ -423,9 +425,13 @@ export function AttestivRiskDetailPage() {
             />
           </FormRow>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 8 }}>
-            <PrimaryButton onClick={save} disabled={busy}>
-              {busy ? 'Saving…' : 'Save changes'}
-            </PrimaryButton>
+            {canWrite ? (
+              <PrimaryButton onClick={save} disabled={busy}>
+                {busy ? t('Saving…', 'Saving…') : t('Save changes', 'Save changes')}
+              </PrimaryButton>
+            ) : (
+              <Badge tone="gray">{t('read-only', 'read-only')}</Badge>
+            )}
           </div>
         </Card>
 

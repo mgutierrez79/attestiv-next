@@ -45,6 +45,7 @@ import {
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { GuidedTourProvider } from './GuidedTour'
 import { BackgroundTasksProvider } from './BackgroundTasks'
+import { FreshnessBanner } from './FreshnessBanner'
 import { Breadcrumb, BreadcrumbLeafProvider } from './Breadcrumb'
 import { CommandPalette } from './CommandPalette'
 
@@ -420,6 +421,7 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="attestiv-main">
+        <FreshnessBanner />
         <Breadcrumb trail={location.trail} />
         {children}
       </main>

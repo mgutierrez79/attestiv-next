@@ -32,6 +32,7 @@ import {
   Topbar,
 } from '../components/AttestivUi'
 import { ApiError, apiJson } from '../lib/api'
+import { formatAge, formatTimestamp, relativeTime as relativeTimeIntl } from '../lib/time'
 import { deriveControlsPassing, deriveOverallPosture, deriveTopFramework, frameworkPosturePercent, scoreToPercent } from '../lib/dashboardHero'
 import { ConnectorLogo, connectorBrandHex } from '../components/ConnectorLogo'
 import { CountUp } from '../components/CountUp'
@@ -84,14 +85,13 @@ const FRAMEWORK_LABELS: Record<string, string> = {
   'pci-dss': 'PCI-DSS v4',
 }
 
-function relativeTime(iso?: string | null): string {
-  if (!iso) return 'never'
-  const ms = Date.now() - new Date(iso).getTime()
-  if (!Number.isFinite(ms)) return 'never'
-  if (ms < 60_000) return `${Math.max(1, Math.floor(ms / 1000))}s ago`
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`
-  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`
-  return `${Math.floor(ms / 86_400_000)}d ago`
+// Relative time is a HINT on this page, never the only rendering: every
+// relative readout carries the absolute timestamp in its title (hover)
+// via formatAge/formatTimestamp from lib/time, and `now` ticks so "2m
+// ago" doesn't freeze at render time.
+function relativeTime(iso?: string | null, now?: number): string {
+  const rel = relativeTimeIntl(iso, now)
+  return rel || 'never'
 }
 
 function tone(percent: number): 'green' | 'amber' | 'red' {
@@ -466,6 +466,11 @@ export function AttestivDashboardOverview() {
   const router = useRouter()
 
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(tick)
+  }, [])
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [coverage, setCoverage] = useState<CoverageTrend | null>(null)
   const [grc, setGRC] = useState<GRCMetrics>(EMPTY_GRC)
@@ -550,15 +555,28 @@ export function AttestivDashboardOverview() {
     // when the connector has since recovered.
     const lastStatus = ((connector as any).last_status ?? '').toLowerCase()
     const currentlyErroring = lastStatus === 'error' || lastStatus === 'failed'
-    const status: 'OK' | 'Warn' | 'Down' = currentlyErroring || isStale ? 'Warn' : 'OK'
-    const bar = status === 'OK' ? 92 : 45
+    // Three honest states: an erroring connector is Down (red), a quiet
+    // one is Warn (amber), a fresh one OK. Collapsing error into Warn —
+    // as this row used to — let a registry full of ERROR read as amber.
+    const status: 'OK' | 'Warn' | 'Down' = currentlyErroring ? 'Down' : isStale ? 'Warn' : 'OK'
+    // The bar is the connector's real lifetime success rate when the
+    // backend reports one; it is never a decorative constant.
+    const successRate = (connector as any).success_rate
+    const bar = typeof successRate === 'number'
+      ? Math.round(Math.max(0, Math.min(1, successRate)) * 100)
+      : status === 'OK' ? 100 : 0
     const barColor = status === 'OK'
       ? 'var(--color-status-green-mid)'
-      : 'var(--color-status-amber-mid)'
+      : status === 'Warn'
+        ? 'var(--color-status-amber-mid)'
+        : 'var(--color-status-red-mid)'
     const controlsSupported = connectorCoverage[connector.name] ?? 0
-    const baseSubtitle = connector.delivery_mode === 'stream'
-      ? `Streaming · last: ${relativeTime(lastSeen)}`
-      : `Polling · last: ${relativeTime(lastSeen)}`
+    const lastSuccessRel = relativeTime(connector.last_success, now)
+    const lastRunRel = relativeTime(connector.last_run, now)
+    const mode = connector.delivery_mode === 'stream' ? t('Streaming', 'Streaming') : t('Polling', 'Polling')
+    const baseSubtitle = currentlyErroring && connector.last_run
+      ? `${mode} · ${t('failed', 'failed')} ${lastRunRel} · ${t('last success', 'last success')} ${connector.last_success ? lastSuccessRel : t('never', 'never')}`
+      : `${mode} · ${t('last', 'last')}: ${relativeTime(lastSeen, now)}`
     // When stale/erroring and we know how many controls this feeds,
     // surface the impact inline so the operator knows why they should act.
     const subtitle = (status === 'Warn' && controlsSupported > 0)
@@ -574,7 +592,13 @@ export function AttestivDashboardOverview() {
         sub={subtitle}
         bar={bar}
         barColor={barColor}
-        badge={<Badge tone={status === 'OK' ? 'green' : 'amber'}>{status}</Badge>}
+        badge={
+          <span title={lastSeen ? formatAge(lastSeen, now) : undefined}>
+            <Badge tone={status === 'OK' ? 'green' : status === 'Warn' ? 'amber' : 'red'} icon={status === 'Down' ? 'ti-plug-connected-x' : undefined}>
+              {status === 'Down' ? t('Error', 'Error') : status}
+            </Badge>
+          </span>
+        }
       />
     )
   }
@@ -635,9 +659,24 @@ export function AttestivDashboardOverview() {
         : t('No scoring run yet', 'No scoring run yet'),
   }
   const metricActiveConnectors = connectors.length || '—'
-  const metricConnectorWarning =
-    (summary?.connector_health?.warn ?? 0) + (summary?.connector_health?.error ?? 0)
-  const lastEvidence = relativeTime(summary?.generated_at)
+  // Count trouble from the connector rows themselves (the same data the
+  // Source health list renders) rather than summary.connector_health,
+  // which is computed elsewhere and was reporting "all healthy" beside
+  // twelve red rows.
+  const metricConnectorWarning = connectors.filter((c) => {
+    const ls = ((c as any).last_status ?? '').toLowerCase()
+    if (ls === 'error' || ls === 'failed') return true
+    const seen = c.last_success || c.last_run
+    if (!seen) return true
+    const interval = (c.poll_interval_seconds || (c.delivery_mode === 'stream' ? 60 : 21600)) * 2 * 1000
+    return now - new Date(seen).getTime() > interval
+  }).length
+  // "Last scored" — summary.generated_at is when the scoring run
+  // produced these numbers, NOT when evidence was collected (that is
+  // per-connector, in Source health). Label it for what it is.
+  const lastScoredRel = relativeTime(summary?.generated_at, now)
+  const lastScoredAbs = summary?.generated_at ? formatTimestamp(summary.generated_at) : ''
+  const lastEvidence = lastScoredRel
   // Honest hero (matches /frameworks page): headline = POSTURE, the
   // auditor-honest passing-rate against the FULL regulation denominator
   // (passing / regulation_total). Layered bar decomposes it into:
@@ -676,13 +715,21 @@ export function AttestivDashboardOverview() {
     <>
       <Topbar
         title={t('Overview', 'Overview')}
-        left={<Badge tone="green"><Pulse /> {t('Live', 'Live')}</Badge>}
+        left={
+          metricConnectorWarning > 0 ? (
+            <Badge tone="amber" icon="ti-alert-triangle">
+              {t('{n} sources need attention', '{n} sources need attention', { n: metricConnectorWarning })}
+            </Badge>
+          ) : (
+            <Badge tone="green"><Pulse /> {t('Live', 'Live')}</Badge>
+          )
+        }
         right={
           <>
-            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-              {t('Last evidence:', 'Last evidence:')} {lastEvidence}
+            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }} title={lastScoredAbs}>
+              {t('Last scored:', 'Last scored:')} {lastEvidence}
             </span>
-            <GhostButton>
+            <GhostButton onClick={() => router.push('/audit/reports')}>
               <i className="ti ti-download" aria-hidden="true" style={{ fontSize: 13 }} /> {t('Export', 'Export')}
             </GhostButton>
           </>
@@ -825,9 +872,12 @@ export function AttestivDashboardOverview() {
               <strong>{overall.scoredAvg > 0 ? `${overall.scoredAvg}%` : overall.value}</strong>{' '}
               <span style={{ color: 'var(--color-text-tertiary)' }}>{t('unweighted across frameworks', 'unweighted across frameworks')}</span>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-              {t('Last evidence', 'Last evidence')} {lastEvidence} · {connectors.length}{' '}
+            <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }} title={lastScoredAbs}>
+              {t('Last scored', 'Last scored')} {lastEvidence} · {connectors.length}{' '}
               {t('sources connected', 'sources connected')}
+              {metricConnectorWarning > 0
+                ? ` · ${t('{n} need attention', '{n} need attention', { n: metricConnectorWarning })}`
+                : ''}
             </div>
           </div>
           <div
@@ -853,7 +903,7 @@ export function AttestivDashboardOverview() {
             <StatPill
               label={t('Evidence collected', 'Evidence collected')}
               value={summary?.finding_count != null ? <CountUp value={summary.finding_count} /> : metricEvidenceCollected}
-              sub={summary?.generated_at ? `${t('as of', 'as of')} ${relativeTime(summary.generated_at)}` : undefined}
+              sub={summary?.generated_at ? `${t('as of', 'as of')} ${relativeTime(summary.generated_at, now)}` : undefined}
             />
             <StatPill
               label={t('Open risks', 'Open risks')}
@@ -876,7 +926,7 @@ export function AttestivDashboardOverview() {
           <MetricCard
             label={t('Active connectors', 'Active connectors')}
             value={typeof metricActiveConnectors === 'number' ? <CountUp value={metricActiveConnectors} /> : metricActiveConnectors}
-            sub={metricConnectorWarning ? `${metricConnectorWarning} ${t('warning', 'warning')}` : t('all healthy', 'all healthy')}
+            sub={metricConnectorWarning ? t('{n} need attention', '{n} need attention', { n: metricConnectorWarning }) : t('all healthy', 'all healthy')}
           />
           <MetricCard
             label={t('Active exceptions', 'Active exceptions')}
@@ -907,7 +957,7 @@ export function AttestivDashboardOverview() {
           <Card style={{ marginBottom: 20 }}>
             <CardTitle
               right={
-                <GhostButton onClick={() => router.push('/scoring/frameworks')}>
+                <GhostButton onClick={() => router.push('/dashboard/issues?tab=controls')}>
                   {t('View all gaps', 'View all gaps')} <i className="ti ti-chevron-right" aria-hidden="true" style={{ fontSize: 12 }} />
                 </GhostButton>
               }
@@ -1021,7 +1071,7 @@ export function AttestivDashboardOverview() {
                   dotColor="var(--color-status-green-mid)"
                   name={human.title}
                   desc={entry.subject ? `${human.desc}${human.desc ? ' · ' : ''}by ${entry.subject}` : human.desc}
-                  time={relativeTime(entry.timestamp)}
+                  time={relativeTime(entry.timestamp, now)}
                 />
               )
             })

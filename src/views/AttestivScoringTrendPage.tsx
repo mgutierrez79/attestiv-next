@@ -7,7 +7,7 @@
 // for one widget would be a bigger dependency hit than the math.
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 
 import {
   Badge,
@@ -40,6 +40,7 @@ export function AttestivScoringTrendPage() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const params = useParams<{ frameworkId?: string | string[] }>()
   const frameworkID = Array.isArray(params?.frameworkId)
@@ -161,7 +162,7 @@ export function AttestivScoringTrendPage() {
         </Card>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-          <GhostButton onClick={() => undefined}>
+          <GhostButton onClick={() => router.push('/frameworks')}>
             <i className="ti ti-arrow-left" aria-hidden="true" />
             {t('Back to scoring', 'Back to scoring')}
           </GhostButton>

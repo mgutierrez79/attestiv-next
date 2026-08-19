@@ -463,7 +463,6 @@ function TourLauncher({
               fontSize: 12.5,
               border: '1px solid var(--color-border, #ddd)',
               borderRadius: 6,
-              outline: 'none',
             }}
           />
           <button type="submit" disabled={asking || !query.trim()} style={primaryBtn}>

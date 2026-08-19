@@ -7,6 +7,7 @@
 // audit who approved what and how it was used.
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import {
   Badge,
@@ -22,6 +23,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type Approval = {
   id: string
@@ -54,6 +56,8 @@ export function AttestivDRApprovalsPage() {
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
+  const router = useRouter()
 
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [schedules, setSchedules] = useState<Record<string, Schedule>>({})
@@ -137,7 +141,7 @@ export function AttestivDRApprovalsPage() {
       <Topbar
         title={t('DR approvals', 'DR approvals')}
         right={
-          <GhostButton onClick={() => undefined}>
+          <GhostButton onClick={() => router.push('/dr')}>
             <i className="ti ti-list" aria-hidden="true" />
             {t('DR schedules', 'DR schedules')}
           </GhostButton>
@@ -172,6 +176,7 @@ export function AttestivDRApprovalsPage() {
                   busy={working === approval.id}
                   onGrant={() => grant(approval.id)}
                   onDeny={() => deny(approval.id)}
+                  canWrite={canWrite}
                 />
               ))}
             </div>
@@ -251,12 +256,14 @@ function PendingRow({
   busy,
   onGrant,
   onDeny,
+  canWrite = true,
 }: {
   approval: Approval
   scheduleName: string
   busy: boolean
   onGrant: () => void
   onDeny: () => void
+  canWrite?: boolean
 }) {
   const {
     t
@@ -279,16 +286,20 @@ function PendingRow({
           {t('requested by', 'requested by')} {approval.requested_by ?? '—'}· {formatTimestamp(approval.requested_at ?? '')}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <GhostButton onClick={onDeny} disabled={busy}>
-          <i className="ti ti-x" aria-hidden="true" />
-          {t('Deny', 'Deny')}
-        </GhostButton>
-        <PrimaryButton onClick={onGrant} disabled={busy}>
-          <i className="ti ti-check" aria-hidden="true" />
-          {t('Grant', 'Grant')}
-        </PrimaryButton>
-      </div>
+      {canWrite ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <GhostButton onClick={onDeny} disabled={busy}>
+            <i className="ti ti-x" aria-hidden="true" />
+            {t('Deny', 'Deny')}
+          </GhostButton>
+          <PrimaryButton onClick={onGrant} disabled={busy}>
+            <i className="ti ti-check" aria-hidden="true" />
+            {t('Grant', 'Grant')}
+          </PrimaryButton>
+        </div>
+      ) : (
+        <Badge tone="gray">{t('read-only', 'read-only')}</Badge>
+      )}
     </div>
   );
 }

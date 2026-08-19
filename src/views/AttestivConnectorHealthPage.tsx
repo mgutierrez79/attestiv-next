@@ -10,6 +10,7 @@
 // credentials, or escalate.
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import {
   Badge,
@@ -107,6 +108,7 @@ export function AttestivConnectorHealthPage() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const [items, setItems] = useState<ConnectorHealth[]>([])
   const [loading, setLoading] = useState(true)
@@ -219,7 +221,7 @@ export function AttestivConnectorHealthPage() {
         title={t('Connector health', 'Connector health')}
         left={usingDemo ? <Badge tone="amber">{t('Demo data — no live connectors', 'Demo data — no live connectors')}</Badge> : null}
         right={
-          <GhostButton onClick={() => undefined}>
+          <GhostButton onClick={() => router.push('/connectors')}>
             <i className="ti ti-list" aria-hidden="true" />
             {t('Connector registry', 'Connector registry')}
           </GhostButton>

@@ -1346,7 +1346,6 @@ function NetworkMap({ data }: { data: { nodes: MapNode[]; edges: MapEdge[]; site
           placeholder="Find device…"
           style={{
             border: 0,
-            outline: 'none',
             background: 'transparent',
             fontSize: 12,
             color: '#14130f',

@@ -11,6 +11,7 @@
 // say "go" when the server says "no".
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import {
   Badge,
@@ -67,6 +68,7 @@ export function AttestivDRSchedulesPage() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [approvals, setApprovals] = useState<Approval[]>([])
@@ -144,7 +146,7 @@ export function AttestivDRSchedulesPage() {
       <Topbar
         title={t('DR test schedules', 'DR test schedules')}
         right={
-          <GhostButton onClick={() => undefined}>
+          <GhostButton onClick={() => router.push('/dr/runs')}>
             <i className="ti ti-history" aria-hidden="true" />
             {t('Test history', 'Test history')}
           </GhostButton>

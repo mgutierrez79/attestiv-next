@@ -471,6 +471,20 @@ const ROUTE_LABELS: Record<string, string> = {
 // not surface as their own breadcrumb node.
 const NON_PAGE_PREFIXES = new Set(['/scoring', '/network', '/management'])
 
+// Paths that DO surface as a breadcrumb node (they name a level of the
+// hierarchy the reader understands) but have no page of their own —
+// linking them would 404. They render as plain text. '/scoring/trend'
+// and '/scoring/frameworks' only exist as parents of {frameworkId} /
+// {controlId} routes; the '.../controls' segment likewise.
+const NON_LINK_PATHS = new Set(['/scoring/frameworks', '/scoring/trend'])
+function isLinkablePath(path: string): boolean {
+  if (NON_LINK_PATHS.has(path)) return false
+  // /scoring/frameworks/{fid} and /scoring/frameworks/{fid}/controls
+  // are structural — no page behind either.
+  if (/^\/scoring\/frameworks\/[^/]+(\/controls)?$/.test(path)) return false
+  return true
+}
+
 export type TrailNode = {
   /** English seed label, and the i18n lookup key unless `literal`. */
   label: string
@@ -578,7 +592,9 @@ export function resolveNavLocation(pathname: string, search = ''): NavLocation {
     walked = `${walked}/${segment}`
     if (NON_PAGE_PREFIXES.has(walked)) continue
     const known = ROUTE_LABELS[walked]
-    trail.push({ ...(known ? { label: known } : labelForSegment(segment)), href: walked })
+    const node: TrailNode = known ? { label: known } : labelForSegment(segment)
+    if (isLinkablePath(walked)) node.href = walked
+    trail.push(node)
   }
 
   // The page you are on is not a link to itself.

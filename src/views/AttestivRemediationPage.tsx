@@ -27,6 +27,7 @@ import {
   PrimaryButton,
   Skeleton,
   Topbar,
+  tint,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 
@@ -492,7 +493,7 @@ function TaskRow({
         ...(highlight
           ? {
               borderLeft: '2px solid var(--color-brand-blue)',
-              background: 'var(--color-brand-blue)14',
+              background: tint('var(--color-brand-blue)', 8),
               borderRadius: 'var(--border-radius-md)',
             }
           : null),

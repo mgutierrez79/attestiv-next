@@ -7,6 +7,7 @@
 // keyboard-friendly form.
 
 import { type FormEvent, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 
 
@@ -107,6 +108,7 @@ export function AttestivEvidenceSearchPage() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const [query, setQuery] = useState('')
   const [framework, setFramework] = useState('')
@@ -175,7 +177,7 @@ export function AttestivEvidenceSearchPage() {
       <Topbar
         title={t('Search evidence', 'Search evidence')}
         right={
-          <GhostButton onClick={() => undefined}>
+          <GhostButton onClick={() => router.push('/evidence')}>
             <i className="ti ti-list" aria-hidden="true" />
             {t('Live stream', 'Live stream')}
           </GhostButton>
@@ -201,7 +203,6 @@ export function AttestivEvidenceSearchPage() {
                     border: '0.5px solid var(--color-border-secondary)',
                     borderRadius: 'var(--border-radius-md)',
                     background: 'var(--color-background-primary)',
-                    outline: 'none',
                     fontFamily: 'inherit',
                     boxSizing: 'border-box',
                   }}
@@ -222,7 +223,6 @@ export function AttestivEvidenceSearchPage() {
                     border: '0.5px solid var(--color-border-secondary)',
                     borderRadius: 'var(--border-radius-md)',
                     background: 'var(--color-background-primary)',
-                    outline: 'none',
                     fontFamily: 'inherit',
                     boxSizing: 'border-box',
                   }}

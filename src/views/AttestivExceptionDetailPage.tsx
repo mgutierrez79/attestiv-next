@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type Exception = {
   id: string
@@ -67,6 +68,7 @@ export function AttestivExceptionDetailPage() {
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
 
   const router = useRouter()
   const params = useParams<{ id: string | string[] }>()
@@ -272,7 +274,7 @@ export function AttestivExceptionDetailPage() {
           ) : null}
         </Card>
 
-        {status === 'active' ? (
+        {status === 'active' && canWrite ? (
           <Card style={{ marginTop: 12 }}>
             <CardTitle>{t('Resolve manually', 'Resolve manually')}</CardTitle>
             <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 0 }}>

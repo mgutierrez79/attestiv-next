@@ -17,6 +17,7 @@
 // evidence-log page (now retired).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ApiError, apiJson } from '../lib/api'
 import { Badge, Banner, Card, CardTitle, EmptyState, GhostButton, HeroBand, PaginatedList, PrimaryButton, Pulse, Skeleton, StatPill, Topbar } from '../components/AttestivUi'
 import { deriveEvidenceHero, evidenceHasSignature, isDLQEntry } from '../lib/evidenceHero'
@@ -100,6 +101,7 @@ export function AttestivEvidenceStream() {
   const {
     t
   } = useI18n();
+  const router = useRouter()
 
   const [items, setItems] = useState<EvidenceLogEntry[]>([])
   const [total, setTotal] = useState(0)
@@ -136,7 +138,9 @@ export function AttestivEvidenceStream() {
     loadPublicKeys()
       .then((keys) => {
         if (cancelled) return
-        if (keys.length) setPublicKeyUrl(`/v1/public/keys/${keys[0].kid}`)
+        // There is no per-kid route; /v1/public/keys serves the whole ring.
+        // Show the kid beside it so the auditor knows which entry to pick.
+        if (keys.length) setPublicKeyUrl(`/v1/public/keys (kid ${keys[0].kid})`)
       })
       .catch(() => {
         // Verify still works lazily; this is just a UX warm-up.
@@ -208,7 +212,7 @@ export function AttestivEvidenceStream() {
       <Topbar
         title={t('Evidence stream', 'Evidence stream')}
         left={<Badge tone="green"><Pulse /> {t('Live', 'Live')}</Badge>}
-        right={<GhostButton><i className="ti ti-filter" aria-hidden="true" style={{ fontSize: 13 }} /> {t('Filter', 'Filter')}</GhostButton>}
+        right={<GhostButton onClick={() => router.push('/evidence/search')}><i className="ti ti-search" aria-hidden="true" style={{ fontSize: 13 }} /> {t('Search', 'Search')}</GhostButton>}
       />
       <div className="attestiv-content">
         {error ? <Banner tone="error">{t('Failed to load evidence:', 'Failed to load evidence:')} {error.message}</Banner> : null}
@@ -320,7 +324,7 @@ export function AttestivEvidenceStream() {
             </PrimaryButton>
           </div>
           <SigBox>
-            {t('Public key:', 'Public key:')} {publicKeyUrl || '/v1/public/keys/...'}
+            {t('Public key:', 'Public key:')} {publicKeyUrl || '/v1/public/keys'}
             <br />
             {t('Algorithm: Ed25519', 'Algorithm: Ed25519')}
             <br />

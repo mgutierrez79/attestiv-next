@@ -1,25 +1,35 @@
 'use client';
-// Phase 4.7: data-freshness banner.
+// Data-freshness strip for the console shell.
 //
-// Compliance teams need to know whether the dashboard is showing
-// current evidence or stale data. This banner reports two things:
-//   - When the most recent piece of evidence arrived ("3 minutes ago").
-//   - Which connector has the oldest stale collection ("Veeam, 4h").
+// In an air-gapped deployment stale data is the default failure mode and
+// the most dangerous one — it looks identical to good data. This strip
+// sits above every console page and says, loudly and only when true,
+// that some of what is on screen was NOT collected recently:
+//   - how many connectors are stale (older than 2× their poll interval,
+//     or streaming with no event in 2× the backstop) or currently
+//     erroring,
+//   - which one is worst and when it last succeeded — absolute first,
+//     relative as the hint — and a link to the health page.
+// When every connector is fresh it renders nothing: a permanent green
+// line is noise, and noise is what trains people to ignore the amber one.
 //
-// "Stale" = older than 2× the connector's declared poll interval.
-// Streaming connectors with no recent event are treated as stale
-// after 2× their backstop poll interval (default 60s).
+// Reads /connectors (same payload the dashboard uses) once a minute.
+// Styled with the design tokens only — the earlier version of this file
+// used Tailwind dark-theme utilities (emerald-900/20, text-emerald-100)
+// that were never reachable on the light palette, and was mounted nowhere.
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { apiJson } from '../lib/api'
-
-import { useI18n } from '../lib/i18n';
+import { formatAge, formatTimestamp } from '../lib/time'
+import { useI18n } from '../lib/i18n'
 
 type ConnectorStatus = {
   name: string
   label?: string
   last_run?: string | null
   last_success?: string | null
+  last_status?: string | null
   poll_interval_seconds?: number
   delivery_mode?: string
 }
@@ -28,11 +38,8 @@ type ConnectorsResponse = { connectors: ConnectorStatus[] }
 
 const FALLBACK_INTERVAL_SECONDS = 24 * 3600
 
-function lastSeenMs(connector: ConnectorStatus): number | null {
-  const candidate = connector.last_success || connector.last_run
-  if (!candidate) return null
-  const ms = new Date(candidate).getTime()
-  return Number.isFinite(ms) ? ms : null
+function lastSeenIso(connector: ConnectorStatus): string | null {
+  return connector.last_success || connector.last_run || null
 }
 
 function staleAfterMs(connector: ConnectorStatus): number {
@@ -42,25 +49,9 @@ function staleAfterMs(connector: ConnectorStatus): number {
   return interval * 2 * 1000
 }
 
-function humanDuration(ms: number): string {
-  if (ms < 0) return 'just now'
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 export function FreshnessBanner() {
-  const {
-    t
-  } = useI18n();
-
+  const { t } = useI18n()
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([])
-  const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -70,9 +61,8 @@ export function FreshnessBanner() {
         const response = await apiJson<ConnectorsResponse>('/connectors')
         if (!cancelled) setConnectors(response.connectors || [])
       } catch {
-        // Swallow: the dashboard surfaces other connectivity errors.
-      } finally {
-        if (!cancelled) setLoading(false)
+        // Swallow: pages surface their own connectivity errors; this
+        // strip must never add a second error banner on top of them.
       }
     }
     void load()
@@ -87,66 +77,73 @@ export function FreshnessBanner() {
 
   const summary = useMemo(() => {
     if (!connectors.length) return null
-    let mostRecentMs: number | null = null
-    let stalest: { connector: ConnectorStatus; ageMs: number } | null = null
-    let staleCount = 0
+    let erroring = 0
+    let stale = 0
+    let worst: { connector: ConnectorStatus; ageMs: number } | null = null
     for (const connector of connectors) {
-      const seen = lastSeenMs(connector)
-      if (seen !== null) {
-        if (mostRecentMs === null || seen > mostRecentMs) mostRecentMs = seen
-        const age = now - seen
-        if (age > staleAfterMs(connector)) {
-          staleCount += 1
-          if (!stalest || age > stalest.ageMs) {
-            stalest = { connector, ageMs: age }
-          }
-        }
-      } else {
-        // Connector with no successful collection ever — counts as stale.
-        staleCount += 1
-        const ageMs = Number.MAX_SAFE_INTEGER
-        if (!stalest || ageMs > stalest.ageMs) {
-          stalest = { connector, ageMs }
-        }
+      const status = (connector.last_status ?? '').toLowerCase()
+      const isErroring = status === 'error' || status === 'failed'
+      const seen = lastSeenIso(connector)
+      const seenMs = seen ? new Date(seen).getTime() : NaN
+      const ageMs = Number.isFinite(seenMs) ? now - seenMs : Number.MAX_SAFE_INTEGER
+      const isStale = ageMs > staleAfterMs(connector)
+      if (isErroring) erroring += 1
+      else if (isStale) stale += 1
+      if ((isErroring || isStale) && (!worst || ageMs > worst.ageMs)) {
+        worst = { connector, ageMs }
       }
     }
-    return { mostRecentMs, stalest, staleCount }
+    return { erroring, stale, worst }
   }, [connectors, now])
 
-  if (loading || !summary) return null
+  if (!summary || (summary.erroring === 0 && summary.stale === 0)) return null
 
-  const { mostRecentMs, stalest, staleCount } = summary
-  const lastEvidence = mostRecentMs ? humanDuration(now - mostRecentMs) : 'never'
-  const tone = staleCount > 0 ? 'amber' : 'emerald'
-  const palette =
-    tone === 'emerald'
-      ? 'border-emerald-700/50 bg-emerald-900/20 text-emerald-100'
-      : 'border-amber-700/50 bg-amber-900/20 text-amber-100'
+  const { erroring, stale, worst } = summary
+  const worstSeen = worst ? lastSeenIso(worst.connector) : null
+  const worstLabel = worst ? worst.connector.label || worst.connector.name : ''
+  const total = erroring + stale
 
   return (
-    <div className={`rounded-lg border px-4 py-2 text-sm ${palette}`}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span>
-          {t('Last evidence:', 'Last evidence:')} <span className="font-semibold">{lastEvidence}</span>
+    <div
+      role="status"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '4px 12px',
+        padding: '6px 24px',
+        fontSize: 11.5,
+        lineHeight: 1.4,
+        background: 'var(--color-status-amber-bg)',
+        color: 'var(--color-status-amber-text)',
+        borderBottom: '0.5px solid var(--color-border-tertiary)',
+        flexShrink: 0,
+      }}
+    >
+      <i className="ti ti-clock-exclamation" aria-hidden="true" style={{ fontSize: 14 }} />
+      <strong style={{ fontWeight: 600 }}>
+        {t('{n} of {total} sources not fresh', '{n} of {total} sources not fresh', { n: total, total: connectors.length })}
+      </strong>
+      <span>
+        {erroring > 0 ? t('{n} erroring', '{n} erroring', { n: erroring }) : null}
+        {erroring > 0 && stale > 0 ? ' · ' : null}
+        {stale > 0 ? t('{n} stale', '{n} stale', { n: stale }) : null}
+      </span>
+      {worst ? (
+        <span title={worstSeen ? formatTimestamp(worstSeen) : undefined}>
+          {t('Oldest:', 'Oldest:')} {worstLabel}
+          {' — '}
+          {worstSeen
+            ? t('last success {when}', 'last success {when}', { when: formatAge(worstSeen, now) })
+            : t('never collected', 'never collected')}
         </span>
-        {stalest ? (
-          <span>
-            {t('Stalest connector:', 'Stalest connector:')}{' '}
-            <span className="font-semibold">{stalest.connector.label || stalest.connector.name}</span>
-            {' · '}
-            {stalest.ageMs === Number.MAX_SAFE_INTEGER
-              ? 'never reported'
-              : humanDuration(stalest.ageMs)}
-          </span>
-        ) : (
-          <span>{t('All connectors fresh.', 'All connectors fresh.')}</span>
-        )}
-        {staleCount > 0 ? (
-          <span className="ml-auto text-xs">
-            {staleCount} {t('stale connector', 'stale connector')}{staleCount === 1 ? '' : 's'}
-          </span>
-        ) : null}
-      </div>
+      ) : null}
+      <Link
+        href="/connectors/health"
+        style={{ marginLeft: 'auto', color: 'inherit', fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: 2 }}
+      >
+        {t('Connector health', 'Connector health')} →
+      </Link>
     </div>
-  );
+  )
 }

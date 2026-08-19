@@ -222,7 +222,6 @@ export function AttestivFrameworkControlsPage() {
                 borderRadius: 'var(--border-radius-md)',
                 background: 'var(--color-background-primary)',
                 fontFamily: 'inherit',
-                outline: 'none',
               }}
             >
               <option value="">{t('All frameworks', 'All frameworks')}</option>
@@ -242,7 +241,6 @@ export function AttestivFrameworkControlsPage() {
                 border: '0.5px solid var(--color-border-secondary)',
                 borderRadius: 'var(--border-radius-md)',
                 background: 'var(--color-background-primary)',
-                outline: 'none',
                 minWidth: 220,
                 fontFamily: 'inherit',
               }}

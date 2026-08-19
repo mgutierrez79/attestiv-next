@@ -7,6 +7,7 @@
 // screenshot it for the risk committee.
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   Badge,
   Banner,
@@ -14,6 +15,7 @@ import {
   CardTitle,
   Skeleton,
   Topbar,
+  tint,
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 
@@ -226,7 +228,15 @@ export function AttestivExecutiveSummaryPage() {
                                 <Badge tone={severityTone(g.severity)}>{(g.severity || '—').toUpperCase()}</Badge>
                               </td>
                               <td style={{ padding: '6px 8px' }}>
-                                <code style={{ fontSize: 11 }}>{g.control_id}</code>
+                                {/* Every control named here drills to its evidence detail — a
+                                    board reader who asks "show me" should be one click away. */}
+                                <Link
+                                  href={`/scoring/frameworks/${encodeURIComponent(fw.framework_id)}/controls/${encodeURIComponent(g.control_id)}`}
+                                  style={{ color: 'var(--color-brand-blue)', textDecoration: 'none' }}
+                                  title={t('View scored control detail', 'View scored control detail')}
+                                >
+                                  <code style={{ fontSize: 11, color: 'inherit' }}>{g.control_id}</code>
+                                </Link>
                                 {g.control_name ? <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{g.control_name}</div> : null}
                               </td>
                               <td style={{ padding: '6px 8px' }}><Badge tone={kpiTone(g.status)}>{g.status}</Badge></td>
@@ -282,7 +292,7 @@ function KPI({ label, value, sub, tone, icon }: { label: string; value: string; 
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}1A`, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: tint(color, 10), display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
           <i className={`ti ${icon}`} aria-hidden="true" />
         </div>
         <div>

@@ -28,6 +28,7 @@ import {
 } from '../components/AttestivUi'
 import { apiFetch } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { useRoles } from '../lib/roles'
 
 type CitationRow = {
   framework_id: string
@@ -63,6 +64,7 @@ function statusTone(status: string): 'green' | 'amber' | 'red' | 'gray' {
 
 export function AttestivCitationsPage() {
   const { t } = useI18n()
+  const { canWrite } = useRoles()
   const [data, setData] = useState<ReviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -210,12 +212,12 @@ export function AttestivCitationsPage() {
                       ) : null}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {row.citation_status !== 'verified' ? (
+                      {canWrite && row.citation_status !== 'verified' ? (
                         <PrimaryButton onClick={() => review(row, 'verified')} disabled={busy === key}>
                           {t('Verify', 'Verify')}
                         </PrimaryButton>
                       ) : null}
-                      {row.citation_status !== 'rejected' ? (
+                      {canWrite && row.citation_status !== 'rejected' ? (
                         <GhostButton onClick={() => review(row, 'rejected')} disabled={busy === key}>
                           {t('Reject', 'Reject')}
                         </GhostButton>

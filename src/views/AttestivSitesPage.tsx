@@ -22,6 +22,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n';
+import { useRoles } from '../lib/roles'
 
 type SiteSummary = {
   site_id: string
@@ -49,6 +50,7 @@ export function AttestivSitesPage() {
   const {
     t
   } = useI18n();
+  const { canWrite } = useRoles()
 
   const router = useRouter()
   const [sites, setSites] = useState<SiteSummary[]>([])
@@ -161,10 +163,12 @@ export function AttestivSitesPage() {
         right={
           <>
             <FilterBar value={filter} onChange={setFilter} regions={regions} types={types} />
-            <PrimaryButton onClick={() => router.push('/sites/new')}>
-              <i className="ti ti-plus" aria-hidden="true" />
-              {t('Add site', 'Add site')}
-            </PrimaryButton>
+            {canWrite ? (
+              <PrimaryButton onClick={() => router.push('/sites/new')}>
+                <i className="ti ti-plus" aria-hidden="true" />
+                {t('Add site', 'Add site')}
+              </PrimaryButton>
+            ) : null}
           </>
         }
       />
@@ -268,7 +272,7 @@ export function AttestivSitesPage() {
                         )}
                       </td>
                       <td style={{ padding: '10px 0 10px 10px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: 4 }}>
+                        {canWrite ? <div style={{ display: 'inline-flex', gap: 4 }}>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -312,7 +316,7 @@ export function AttestivSitesPage() {
                           >
                             <i className="ti ti-trash" aria-hidden="true" /> {t('Delete', 'Delete')}
                           </button>
-                        </div>
+                        </div> : null}
                       </td>
                     </tr>
                   );
