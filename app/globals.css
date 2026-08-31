@@ -250,6 +250,7 @@ textarea {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  text-decoration: none;
   color: rgba(255, 255, 255, 0.62);
   font-size: 18px;
   border: none;
@@ -367,6 +368,7 @@ textarea {
   padding: 7px 10px;
   margin: 1px 0;
   cursor: pointer;
+  text-decoration: none;
   font-size: 13px;
   color: var(--color-text-secondary);
   border: none;

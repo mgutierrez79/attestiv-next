@@ -480,17 +480,16 @@ export function AttestivDashboardOverview() {
   // connector name → controls_supported count from the coverage attestation
   const [connectorCoverage, setConnectorCoverage] = useState<Record<string, number>>({})
 
+  // Live-health tier: cheap reads that genuinely change minute to
+  // minute (connector status, summary rollup, audit tail, GRC counts).
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        const [connectorsResponse, summaryResponse, auditResponse, coverageResponse, gapsResponse, connCoverageResponse] = await Promise.allSettled([
+        const [connectorsResponse, summaryResponse, auditResponse] = await Promise.allSettled([
           apiJson<ConnectorsResponse>('/connectors'),
           apiJson<DashboardSummary>('/dashboard/summary'),
           apiJson<AuditLogResponse>('/audit/log?limit=4'),
-          apiJson<CoverageTrend>('/scoring/coverage-trend?weeks=12'),
-          apiJson<PrioritizedGapsResponse>('/scoring/prioritized-gaps?limit=5&min_severity=high'),
-          apiJson<{ connectors?: Array<{ name: string; controls_supported: number }> }>('/connectors/coverage'),
         ])
         if (cancelled) return
         if (connectorsResponse.status === 'fulfilled') {
@@ -499,21 +498,8 @@ export function AttestivDashboardOverview() {
         if (summaryResponse.status === 'fulfilled') {
           setSummary(summaryResponse.value)
         }
-        if (coverageResponse.status === 'fulfilled') {
-          setCoverage(coverageResponse.value)
-        }
         if (auditResponse.status === 'fulfilled') {
           setAuditEntries(auditResponse.value.items || [])
-        }
-        if (gapsResponse.status === 'fulfilled') {
-          setGaps(gapsResponse.value.gaps ?? [])
-        }
-        if (connCoverageResponse.status === 'fulfilled') {
-          const map: Record<string, number> = {}
-          for (const c of connCoverageResponse.value.connectors ?? []) {
-            map[c.name] = c.controls_supported
-          }
-          setConnectorCoverage(map)
         }
         // Surface only critical-path errors. A summary failure is
         // tolerable (the page degrades gracefully); a connectors
@@ -535,6 +521,44 @@ export function AttestivDashboardOverview() {
     }
     void load()
     const handle = window.setInterval(load, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(handle)
+    }
+  }, [])
+
+  // Scoring tier: coverage-trend replays 13 point-in-time snapshots of
+  // framework_result history per request (weekly-granularity data),
+  // prioritized-gaps only moves when scoring re-evaluates, and
+  // /connectors/coverage is a near-static capability attestation.
+  // Re-fetching these every 30s was the dominant Postgres load on the
+  // pilot (per-tab, forever). 10 minutes keeps them honest without the
+  // grind.
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const [coverageResponse, gapsResponse, connCoverageResponse] = await Promise.allSettled([
+        apiJson<CoverageTrend>('/scoring/coverage-trend?weeks=12'),
+        apiJson<PrioritizedGapsResponse>('/scoring/prioritized-gaps?limit=5&min_severity=high'),
+        apiJson<{ connectors?: Array<{ name: string; controls_supported: number }> }>('/connectors/coverage'),
+      ])
+      if (cancelled) return
+      if (coverageResponse.status === 'fulfilled') {
+        setCoverage(coverageResponse.value)
+      }
+      if (gapsResponse.status === 'fulfilled') {
+        setGaps(gapsResponse.value.gaps ?? [])
+      }
+      if (connCoverageResponse.status === 'fulfilled') {
+        const map: Record<string, number> = {}
+        for (const c of connCoverageResponse.value.connectors ?? []) {
+          map[c.name] = c.controls_supported
+        }
+        setConnectorCoverage(map)
+      }
+    }
+    void load()
+    const handle = window.setInterval(load, 600_000)
     return () => {
       cancelled = true
       window.clearInterval(handle)

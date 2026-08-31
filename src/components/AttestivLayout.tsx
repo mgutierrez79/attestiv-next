@@ -24,6 +24,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { apiFetch, apiJson } from '../lib/api'
 import { useI18n } from '../lib/i18n'
@@ -272,18 +273,17 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
     const active = item.key === activeSection
     const label = railLabel(item.key, item.label)
     return (
-      <button
+      <Link
         key={item.key}
-        type="button"
+        href={sections[item.key].items[0].to}
         title={label}
         aria-label={label}
         aria-current={active ? 'page' : undefined}
         data-tour-id={`nav-${item.key}`}
-        onClick={() => router.push(sections[item.key].items[0].to)}
         className={`attestiv-rail-btn${active ? ' active' : ''}`}
       >
         <i className={`ti ${item.icon}`} aria-hidden="true" />
-      </button>
+      </Link>
     )
   }
 
@@ -294,10 +294,9 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
     const active = item === location.item
     const showBadge = item.badge && issuesCount > 0
     return (
-      <button
+      <Link
         key={item.to}
-        type="button"
-        onClick={() => router.push(item.to)}
+        href={item.to}
         aria-current={active ? 'page' : undefined}
         className={`attestiv-nav-item${active ? ' active' : ''}`}
       >
@@ -311,7 +310,7 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
             {issuesCount}
           </span>
         ) : null}
-      </button>
+      </Link>
     )
   }
 
