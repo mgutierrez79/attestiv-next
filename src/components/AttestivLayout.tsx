@@ -25,7 +25,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { apiFetch, apiJson } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { loadSettings, saveSettings } from '../lib/settings'
@@ -132,7 +132,6 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
     t
   } = useI18n();
 
-  const router = useRouter()
   const pathname = usePathname() || '/'
   // The query string is half of "where am I": /inventory?asset_type=vm
   // and /inventory are different sidebar entries, and pathname alone
@@ -264,7 +263,11 @@ export function AttestivLayout({ children }: { children: ReactNode }) {
     clearSessionMarker()
     clearCachedRoles()
     saveSettings({ ...loadSettings(), apiKey: '', localToken: '' })
-    router.push('/login')
+    // Hard navigation, not router.push: the client router cache still
+    // holds console payloads fetched while authenticated (nav prefetch
+    // included), and a soft navigation would leave them replayable
+    // after logout. A full load resets the router cache.
+    window.location.assign('/login')
   }
 
   const railLabel = useRailLabel()

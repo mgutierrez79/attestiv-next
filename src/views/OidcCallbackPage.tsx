@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 import { Banner, Card } from '../components/AttestivUi'
 import { oidcHandleCallback } from '../lib/auth'
@@ -15,7 +14,6 @@ export function OidcCallbackPage() {
 
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
 
   useEffect(() => {
     let cancelled = false
@@ -38,8 +36,12 @@ export function OidcCallbackPage() {
   }, [])
 
   useEffect(() => {
-    if (done) router.replace('/dashboard')
-  }, [done, router])
+    // Full document load, not router.replace: the client router may
+    // have cached the pre-login "console route → /login" proxy
+    // redirect, and the new session cookie does not invalidate that
+    // cache — a soft navigation would bounce back to the login page.
+    if (done) window.location.replace('/dashboard')
+  }, [done])
 
   if (done) return null
 

@@ -10,7 +10,6 @@
 
 import type { FormEvent, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 import { Card, FormField, PrimaryButton, TextInput } from '../components/AttestivUi'
 import { loadSettings, saveSettings } from '../lib/settings'
@@ -21,7 +20,6 @@ import { useI18n } from '../lib/i18n'
 
 export function AttestivLoginPage() {
   const { t } = useI18n()
-  const router = useRouter()
 
   const [config, setConfig] = useState<AuthConfig | null>(null)
   const [configError, setConfigError] = useState<string | null>(null)
@@ -67,6 +65,17 @@ export function AttestivLoginPage() {
     return '/dashboard'
   }
 
+  // Post-login navigation must be a full document load, NOT router.push.
+  // When this page was reached via the edge-proxy redirect on a soft
+  // navigation, the client router has CACHED "target → /login" — and a
+  // Set-Cookie does not invalidate that cache, so a soft push replays
+  // the redirect and shows the login page a second time. A hard
+  // navigation resets the router cache and re-runs the proxy with the
+  // fresh session cookie.
+  function hardRedirect() {
+    window.location.assign(redirectTarget())
+  }
+
   async function onLocalSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
@@ -92,7 +101,7 @@ export function AttestivLoginPage() {
       persist('local')
       setSessionMarker()
       setInfo(t('Signed in. Redirecting…', 'Signed in. Redirecting…'))
-      router.push(redirectTarget())
+      hardRedirect()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Local login failed')
     } finally {
@@ -126,7 +135,7 @@ export function AttestivLoginPage() {
     persist('apiKey', apiKey.trim())
     setSessionMarker()
     setInfo(t('Saved. Redirecting…', 'Saved. Redirecting…'))
-    router.push(redirectTarget())
+    hardRedirect()
   }
 
   const idp = config?.idp_name || 'SSO'
