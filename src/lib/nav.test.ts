@@ -39,6 +39,16 @@ describe('resolveNavLocation', () => {
     expect(at.trail.map((n) => n.label)).toEqual(['Inventory', 'All assets'])
   })
 
+  // Settings ▸ Integrations is where the other Attestiv modules
+  // (CVE-scan, Cartographer) are configured. It was added below Trust
+  // store, so pin the highlight rather than trusting item order.
+  it('lights the Integrations entry under Settings', () => {
+    expect(sectionFromPath('/settings/integrations')).toBe('settings')
+    const at = resolveNavLocation('/settings/integrations')
+    expect(at.item?.label).toBe('Integrations')
+    expect(at.trail.map((n) => n.label)).toEqual(['Settings', 'Integrations'])
+  })
+
   // Regression: usePathname() drops the query, so every filter
   // deep-link left "All assets" lit instead of the entry the user
   // clicked.

@@ -332,6 +332,7 @@ export const sections: Record<SectionKey, Section> = {
       { to: '/settings/keys',        label: 'API keys',       icon: 'ti-key' },
       { to: '/settings/frameworks',  label: 'Frameworks',     icon: 'ti-layout-list' },
       { to: '/settings/trust-store', label: 'Trust store',    icon: 'ti-certificate' },
+      { to: '/settings/integrations', label: 'Integrations',  icon: 'ti-apps' },
       { to: '/settings/connectors',  label: 'Connector poll', icon: 'ti-refresh' },
       { to: '/settings/scoring',     label: 'Scoring poll',     icon: 'ti-gauge' },
       { to: '/settings/retention',     label: 'Retention policy', icon: 'ti-clock-hour-4' },
