@@ -107,6 +107,42 @@ type IssuedClientCert = {
   private_key_pem: string
 }
 
+// One issued TLS SERVER cert for another Attestiv module (Cartographer
+// gateway, CVE-scan console, ...). Metadata only — GET/DELETE
+// /v1/settings/mtls/server-certs. "Retired" is bookkeeping: nothing
+// serves a CRL, so the module keeps serving the cert until replaced.
+type ServerCertRecord = {
+  fingerprint_sha256: string
+  label: string
+  common_name: string
+  sans: string[]
+  issued_at: string
+  expires_at: string
+  issued_by?: string
+  retired: boolean
+  retired_at?: string
+}
+
+// The one-time issue response for a server cert — leaf, private key AND
+// the CA cert (the module needs it as the issuing-CA bundle).
+type IssuedServerCert = {
+  fingerprint_sha256: string
+  label: string
+  common_name: string
+  sans: string[]
+  expires_at: string
+  certificate_pem: string
+  private_key_pem: string
+  ca_certificate_pem: string
+}
+
+const SERVER_CERT_VALIDITY_OPTIONS: { value: string; days: number }[] = [
+  { value: '90', days: 90 },
+  { value: '365', days: 365 },
+  { value: '730', days: 730 },
+  { value: '1095', days: 1095 },
+]
+
 // A staged custom cert awaiting apply (GET/POST/DELETE
 // /v1/settings/tls-certificates/staged). Metadata only — keys are
 // staged server-side, never returned.
@@ -141,6 +177,11 @@ export function AttestivTrustStorePage() {
   const [clientCerts, setClientCerts] = useState<ClientCertRecord[] | null>(null)
   const [clientCertLabel, setClientCertLabel] = useState('')
   const [issuedCert, setIssuedCert] = useState<IssuedClientCert | null>(null)
+  const [serverCerts, setServerCerts] = useState<ServerCertRecord[] | null>(null)
+  const [serverCertLabel, setServerCertLabel] = useState('')
+  const [serverCertSans, setServerCertSans] = useState('')
+  const [serverCertValidity, setServerCertValidity] = useState('365')
+  const [issuedServerCert, setIssuedServerCert] = useState<IssuedServerCert | null>(null)
   const [stagedCerts, setStagedCerts] = useState<StagedTLSCert[] | null>(null)
   const [stageRole, setStageRole] = useState('api_server')
   const [stageCertPem, setStageCertPem] = useState('')
@@ -201,6 +242,17 @@ export function AttestivTrustStorePage() {
     }
   }, [])
 
+  const refreshServerCerts = useCallback(async () => {
+    try {
+      const response = await apiFetch('/settings/mtls/server-certs')
+      if (!response.ok) return
+      const body = await response.json()
+      setServerCerts(Array.isArray(body?.server_certs) ? body.server_certs : [])
+    } catch {
+      setServerCerts([])
+    }
+  }, [])
+
   const refreshStaged = useCallback(async () => {
     try {
       const response = await apiFetch('/settings/tls-certificates/staged')
@@ -216,8 +268,9 @@ export function AttestivTrustStorePage() {
     void refresh()
     void refreshPlatformCerts()
     void refreshClientCerts()
+    void refreshServerCerts()
     void refreshStaged()
-  }, [refresh, refreshPlatformCerts, refreshClientCerts, refreshStaged])
+  }, [refresh, refreshPlatformCerts, refreshClientCerts, refreshServerCerts, refreshStaged])
 
   async function stageCustomCert() {
     if (!stageCertPem.trim() || !stageKeyPem.trim()) {
@@ -316,6 +369,76 @@ export function AttestivTrustStorePage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  // Server certs for the other Attestiv modules. Same one-time-key flow
+  // as client certs; the SANs are what make it a usable HTTPS cert.
+  function parseSansInput(raw: string): string[] {
+    return raw
+      .split(/[\s,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  async function issueServerCert() {
+    const sans = parseSansInput(serverCertSans)
+    if (!serverCertLabel.trim() || sans.length === 0) {
+      setError(t('A label and at least one DNS name or IP address are required to issue a server certificate.', 'A label and at least one DNS name or IP address are required to issue a server certificate.'))
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setInfo(null)
+    setIssuedServerCert(null)
+    try {
+      const response = await apiFetch('/settings/mtls/server-certs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: serverCertLabel.trim(), sans, validity_days: Number(serverCertValidity) }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(extractMessage(body, response))
+      setIssuedServerCert(body as IssuedServerCert)
+      setServerCertLabel('')
+      setServerCertSans('')
+      setInfo(t('Server certificate issued. Download the key now — it is shown only once.', 'Server certificate issued. Download the key now — it is shown only once.'))
+      await refreshServerCerts()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to issue server certificate')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function retireServerCert(fingerprint: string, label: string) {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(
+        t('Retire server certificate "{label}"? This only removes it from the active list — the module keeps serving it until you install a replacement.', 'Retire server certificate "{label}"? This only removes it from the active list — the module keeps serving it until you install a replacement.').replace('{label}', label),
+      )
+      if (!ok) return
+    }
+    setBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const response = await apiFetch(`/settings/mtls/server-certs/${encodeURIComponent(fingerprint)}`, { method: 'DELETE' })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(extractMessage(body, response))
+      }
+      setInfo(t('Server certificate retired.', 'Server certificate retired.'))
+      await refreshServerCerts()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to retire server certificate')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function serverCertStatus(cert: ServerCertRecord): { tone: 'navy' | 'gray' | 'amber'; label: string } {
+    if (cert.retired) return { tone: 'gray', label: t('Retired', 'Retired') }
+    if (cert.expires_at && new Date(cert.expires_at).getTime() < Date.now()) return { tone: 'amber', label: t('Expired (certificate)', 'Expired') }
+    return { tone: 'navy', label: t('Active', 'Active') }
   }
 
   function downloadText(filename: string, content: string) {
@@ -677,6 +800,155 @@ export function AttestivTrustStorePage() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle>{t('Server certificates (Attestiv modules)', 'Server certificates (Attestiv modules)')}</CardTitle>
+          <p style={{ marginBottom: 12 }}>
+            {t(
+              'Issue HTTPS server certificates signed by the same internal CA for the other Attestiv modules (Cartographer gateway, CVE-scan console) so users only have to trust one CA. The certificate carries serverAuth only and cannot be used as an API client identity. The private key is shown once and never stored; there is no revocation — re-issue and reinstall to rotate.',
+              'Issue HTTPS server certificates signed by the same internal CA for the other Attestiv modules (Cartographer gateway, CVE-scan console) so users only have to trust one CA. The certificate carries serverAuth only and cannot be used as an API client identity. The private key is shown once and never stored; there is no revocation — re-issue and reinstall to rotate.',
+            )}
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+            <label style={{ flex: '1 1 220px' }}>
+              <div className="attestiv-label">{t('Label (module / service name)', 'Label (module / service name)')}</div>
+              <input
+                type="text"
+                value={serverCertLabel}
+                onChange={(e) => setServerCertLabel(e.target.value)}
+                placeholder={t('e.g. cartographer-gateway', 'e.g. cartographer-gateway')}
+                className="attestiv-input"
+              />
+            </label>
+            <label style={{ flex: '2 1 320px' }}>
+              <div className="attestiv-label">{t('DNS names and IP addresses (SANs, comma-separated)', 'DNS names and IP addresses (SANs, comma-separated)')}</div>
+              <input
+                type="text"
+                value={serverCertSans}
+                onChange={(e) => setServerCertSans(e.target.value)}
+                placeholder={t('e.g. carto.pilot.local, 10.100.21.206', 'e.g. carto.pilot.local, 10.100.21.206')}
+                className="attestiv-input"
+              />
+            </label>
+            <label style={{ flex: '0 1 140px' }}>
+              <div className="attestiv-label">{t('Validity', 'Validity')}</div>
+              <select value={serverCertValidity} onChange={(e) => setServerCertValidity(e.target.value)} className="attestiv-input">
+                {SERVER_CERT_VALIDITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.days === 90
+                      ? t('90 days', '90 days')
+                      : o.days === 365
+                        ? t('1 year', '1 year')
+                        : o.days === 730
+                          ? t('2 years', '2 years')
+                          : t('3 years', '3 years')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <PrimaryButton
+              onClick={() => void issueServerCert()}
+              disabled={busy || !serverCertLabel.trim() || parseSansInput(serverCertSans).length === 0}
+            >
+              <i className="ti ti-certificate" aria-hidden="true" /> {t('Issue server certificate', 'Issue server certificate')}
+            </PrimaryButton>
+          </div>
+
+          {issuedServerCert ? (
+            <div style={{ border: '2px solid var(--color-accent, #2563eb)', borderRadius: 8, padding: 16, marginBottom: 16, background: 'rgba(37,99,235,0.04)' }}>
+              <Banner tone="warning">
+                {t('Save these now — the private key is shown only once and cannot be retrieved again.', 'Save these now — the private key is shown only once and cannot be retrieved again.')}
+              </Banner>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+                <GhostButton onClick={() => downloadText(`${issuedServerCert!.label || 'server'}.crt`, issuedServerCert!.certificate_pem)}>
+                  <i className="ti ti-download" aria-hidden="true" /> {t('Download certificate', 'Download certificate')}
+                </GhostButton>
+                <GhostButton onClick={() => downloadText(`${issuedServerCert!.label || 'server'}.key`, issuedServerCert!.private_key_pem)}>
+                  <i className="ti ti-download" aria-hidden="true" /> {t('Download private key', 'Download private key')}
+                </GhostButton>
+                <GhostButton onClick={() => downloadText('attestiv-ca.crt', issuedServerCert!.ca_certificate_pem)}>
+                  <i className="ti ti-download" aria-hidden="true" /> {t('Download CA certificate', 'Download CA certificate')}
+                </GhostButton>
+                <GhostButton
+                  onClick={() =>
+                    downloadText(
+                      `${issuedServerCert!.label || 'server'}-fullchain.pem`,
+                      `${issuedServerCert!.certificate_pem.trimEnd()}\n${issuedServerCert!.ca_certificate_pem.trimEnd()}\n`,
+                    )
+                  }
+                >
+                  <i className="ti ti-download" aria-hidden="true" /> {t('Download full chain', 'Download full chain')}
+                </GhostButton>
+                <GhostButton onClick={() => setIssuedServerCert(null)}>
+                  <i className="ti ti-x" aria-hidden="true" /> {t('Done', 'Done')}
+                </GhostButton>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 8px' }}>
+                {t(
+                  'Install the certificate and private key on the module — Cartographer: Settings → Web certificate (upload the CA certificate as the issuing CA bundle); CVE-scan: replace the gateway cert.pem and key.pem. Clients must trust the CA certificate.',
+                  'Install the certificate and private key on the module — Cartographer: Settings → Web certificate (upload the CA certificate as the issuing CA bundle); CVE-scan: replace the gateway cert.pem and key.pem. Clients must trust the CA certificate.',
+                )}
+              </p>
+              <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', fontFamily: 'monospace' }}>
+                {t('Fingerprint', 'Fingerprint')}: {issuedServerCert.fingerprint_sha256}
+              </div>
+            </div>
+          ) : null}
+
+          {serverCerts === null ? (
+            <p>{t('Loading…', 'Loading…')}</p>
+          ) : serverCerts.length === 0 ? (
+            <EmptyState
+              icon="ti-certificate"
+              title={t('No server certificates issued yet.', 'No server certificates issued yet.')}
+              description={t('Issue one above for an Attestiv module that should serve HTTPS under the platform CA.', 'Issue one above for an Attestiv module that should serve HTTPS under the platform CA.')}
+            />
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left' }}>
+                  <th style={{ padding: '8px 12px' }}>{t('Label', 'Label')}</th>
+                  <th style={{ padding: '8px 12px' }}>{t('SANs', 'SANs')}</th>
+                  <th style={{ padding: '8px 12px' }}>{t('Status', 'Status')}</th>
+                  <th style={{ padding: '8px 12px' }}>{t('Expires', 'Expires')}</th>
+                  <th style={{ padding: '8px 12px' }}>{t('Fingerprint (SHA-256)', 'Fingerprint (SHA-256)')}</th>
+                  <th style={{ padding: '8px 12px' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {serverCerts.map((cert) => {
+                  const status = serverCertStatus(cert)
+                  return (
+                    <tr key={cert.fingerprint_sha256} style={{ borderTop: '1px solid var(--color-border)' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>
+                        {cert.label}
+                        <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{cert.common_name}</div>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 12, fontFamily: 'monospace' }}>
+                        {cert.sans.length ? cert.sans.join(', ') : '—'}
+                      </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <Badge tone={status.tone}>{status.label}</Badge>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: 13 }}>{cert.expires_at.slice(0, 10)}</td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: 11 }}>
+                        {cert.fingerprint_sha256.slice(0, 16)}…{cert.fingerprint_sha256.slice(-8)}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        {cert.retired ? null : (
+                          <GhostButton onClick={() => void retireServerCert(cert.fingerprint_sha256, cert.label)} disabled={busy}>
+                            <i className="ti ti-archive" aria-hidden="true" /> {t('Retire', 'Retire')}
+                          </GhostButton>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
