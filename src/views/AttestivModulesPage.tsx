@@ -37,6 +37,24 @@ type CertRecord = {
   module?: string
 }
 
+// The CVE-scan webhook as the backend reports it. `source` says who owns
+// the secret: the COMPLIANCE_CVE_WEBHOOK_SECRET environment variable (the
+// page is read-only then), this page, or nobody yet. The secret itself is
+// never in this document — only whether one is set.
+type WebhookView = {
+  enabled: boolean
+  endpoint: string
+  last_received_at: string
+  source?: 'environment' | 'console' | ''
+  secret_set?: boolean
+  secret_unreadable?: boolean
+  updated_at?: string
+  updated_by?: string
+}
+
+// Shortest secret the backend accepts from the console (16 random bytes, hex).
+const MIN_WEBHOOK_SECRET_LENGTH = 32
+
 type ModuleView = {
   id: string
   name: string
@@ -49,7 +67,7 @@ type ModuleView = {
   url_updated_at?: string
   url_updated_by?: string
   status: 'connected' | 'configured' | 'not_configured'
-  webhook?: { enabled: boolean; endpoint: string; last_received_at: string }
+  webhook?: WebhookView
   last_client_cert_seen_at?: string
   server_certs: CertRecord[]
   client_certs: CertRecord[]
@@ -112,6 +130,12 @@ export function AttestivModulesPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  // null = the "set secret" form is closed.
+  const [secretDraft, setSecretDraft] = useState<string | null>(null)
+  // A secret the backend just generated. It is returned once, so it lives
+  // only in this state until the operator dismisses it.
+  const [generatedSecret, setGeneratedSecret] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const refresh = useCallback(async () => {
     setError(null)
@@ -159,6 +183,63 @@ export function AttestivModulesPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function updateWebhook(method: 'PUT' | 'DELETE', body: Record<string, unknown> | null, success: string) {
+    setBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const response = await apiFetch('/settings/modules/cvescan/webhook', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(extractMessage(payload, response))
+      const generated = (payload as { generated_secret?: unknown }).generated_secret
+      setGeneratedSecret(typeof generated === 'string' ? generated : null)
+      setCopied(false)
+      setSecretDraft(null)
+      setInfo(success)
+      await refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update the webhook')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function generateWebhookSecret(turnOn: boolean, replacing: boolean) {
+    // A new secret breaks the running link until CVE-scan has it too.
+    if (replacing && !window.confirm(t('Generating a new secret stops CVE-scan pushes until the new secret is entered there. Continue?', 'Generating a new secret stops CVE-scan pushes until the new secret is entered there. Continue?'))) {
+      return
+    }
+    void updateWebhook('PUT', turnOn ? { enabled: true, generate_secret: true } : { generate_secret: true }, t('Webhook secret saved.', 'Webhook secret saved.'))
+  }
+
+  function saveWebhookSecret() {
+    const value = (secretDraft ?? '').trim()
+    if (value.length < MIN_WEBHOOK_SECRET_LENGTH) {
+      setError(t('The webhook secret must be at least 32 characters.', 'The webhook secret must be at least 32 characters.'))
+      return
+    }
+    void updateWebhook('PUT', { secret: value }, t('Webhook secret saved.', 'Webhook secret saved.'))
+  }
+
+  function removeWebhookSecret() {
+    if (!window.confirm(t('Removing the secret turns the webhook off. Continue?', 'Removing the secret turns the webhook off. Continue?'))) return
+    void updateWebhook('DELETE', null, t('Webhook secret removed. The webhook is off.', 'Webhook secret removed. The webhook is off.'))
+  }
+
+  function copyGeneratedSecret(value: string) {
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => undefined)
   }
 
   function openIssue(m: ModuleView, kind: 'server' | 'client') {
@@ -265,6 +346,135 @@ export function AttestivModulesPage() {
           </li>
         ))}
       </ul>
+    )
+  }
+
+  // renderWebhook is the CVE-scan webhook's switch and secret. While the
+  // environment variable owns the secret the page only reports; otherwise
+  // an administrator turns it on and off, and sets, generates or removes
+  // the secret. Non-admins get the backend's 403 as the error banner.
+  function renderWebhook(webhook: WebhookView) {
+    const managedByEnvironment = webhook.source === 'environment'
+    const usableSecret = !!webhook.secret_set && !webhook.secret_unreadable
+    const muted = { color: 'var(--color-text-tertiary)', fontSize: 12 }
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Badge tone={webhook.enabled ? 'green' : 'amber'}>{webhook.enabled ? t('enabled', 'enabled') : t('disabled', 'disabled')}</Badge>
+          {managedByEnvironment ? null : (
+            <Badge tone={usableSecret ? 'navy' : 'gray'}>{usableSecret ? t('Secret set', 'Secret set') : t('No secret', 'No secret')}</Badge>
+          )}
+        </div>
+
+        {managedByEnvironment ? (
+          <p style={{ margin: '6px 0', color: 'var(--color-text-secondary)' }}>
+            {t(
+              'Managed by COMPLIANCE_CVE_WEBHOOK_SECRET on the platform. Remove it there to manage the webhook from this page.',
+              'Managed by COMPLIANCE_CVE_WEBHOOK_SECRET on the platform. Remove it there to manage the webhook from this page.',
+            )}
+          </p>
+        ) : (
+          <>
+            {webhook.secret_unreadable ? (
+              <div style={{ margin: '8px 0' }}>
+                <Banner tone="warning">
+                  {t(
+                    "The stored secret cannot be decrypted with this platform's secret key (was secret.key replaced?). Generate or set a new secret.",
+                    "The stored secret cannot be decrypted with this platform's secret key (was secret.key replaced?). Generate or set a new secret.",
+                  )}
+                </Banner>
+              </div>
+            ) : null}
+            {webhook.updated_at ? (
+              <div style={{ ...muted, marginTop: 6 }}>
+                {t('Last changed by {user} on {date}', 'Last changed by {user} on {date}', { user: webhook.updated_by || '—', date: formatDate(webhook.updated_at) })}
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0' }}>
+              {usableSecret ? (
+                webhook.enabled ? (
+                  <GhostButton onClick={() => void updateWebhook('PUT', { enabled: false }, t('Webhook turned off.', 'Webhook turned off.'))} disabled={busy}>
+                    <i className="ti ti-player-pause" aria-hidden="true" /> {t('Turn webhook off', 'Turn webhook off')}
+                  </GhostButton>
+                ) : (
+                  <PrimaryButton onClick={() => void updateWebhook('PUT', { enabled: true }, t('Webhook turned on.', 'Webhook turned on.'))} disabled={busy}>
+                    <i className="ti ti-player-play" aria-hidden="true" /> {t('Turn webhook on', 'Turn webhook on')}
+                  </PrimaryButton>
+                )
+              ) : (
+                <PrimaryButton onClick={() => generateWebhookSecret(true, false)} disabled={busy}>
+                  <i className="ti ti-key" aria-hidden="true" /> {t('Generate secret and turn on', 'Generate secret and turn on')}
+                </PrimaryButton>
+              )}
+              {usableSecret ? (
+                <GhostButton onClick={() => generateWebhookSecret(false, true)} disabled={busy}>
+                  <i className="ti ti-refresh" aria-hidden="true" /> {t('Generate new secret', 'Generate new secret')}
+                </GhostButton>
+              ) : null}
+              <GhostButton
+                onClick={() => {
+                  setGeneratedSecret(null)
+                  setSecretDraft('')
+                }}
+                disabled={busy}
+              >
+                <i className="ti ti-pencil" aria-hidden="true" /> {t('Set secret', 'Set secret')}
+              </GhostButton>
+              {webhook.secret_set ? (
+                <GhostButton onClick={removeWebhookSecret} disabled={busy}>
+                  <i className="ti ti-trash" aria-hidden="true" /> {t('Remove secret', 'Remove secret')}
+                </GhostButton>
+              ) : null}
+            </div>
+
+            {secretDraft !== null ? (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 8 }}>
+                <label style={{ flex: '1 1 320px' }}>
+                  <div className="attestiv-label">{t('Shared secret', 'Shared secret')}</div>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={secretDraft}
+                    onChange={(e) => setSecretDraft(e.target.value)}
+                    placeholder={t('At least 32 characters', 'At least 32 characters')}
+                    className="attestiv-input"
+                  />
+                </label>
+                <PrimaryButton onClick={saveWebhookSecret} disabled={busy}>
+                  <i className="ti ti-device-floppy" aria-hidden="true" /> {t('Save secret', 'Save secret')}
+                </PrimaryButton>
+                <GhostButton onClick={() => setSecretDraft(null)} disabled={busy}>
+                  {t('Cancel', 'Cancel')}
+                </GhostButton>
+              </div>
+            ) : null}
+
+            {generatedSecret ? (
+              <div style={{ border: '2px solid var(--color-accent, #2563eb)', borderRadius: 8, padding: 12, margin: '8px 0', background: 'rgba(37,99,235,0.04)' }}>
+                <Banner tone="warning">
+                  {t(
+                    'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.',
+                    'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.',
+                  )}
+                </Banner>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                  <code style={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all', flex: '1 1 320px' }}>{generatedSecret}</code>
+                  <GhostButton onClick={() => copyGeneratedSecret(generatedSecret)}>
+                    <i className={`ti ${copied ? 'ti-check' : 'ti-copy'}`} aria-hidden="true" /> {copied ? t('Copied', 'Copied') : t('Copy', 'Copy')}
+                  </GhostButton>
+                  <GhostButton onClick={() => setGeneratedSecret(null)}>
+                    <i className="ti ti-x" aria-hidden="true" /> {t('Done', 'Done')}
+                  </GhostButton>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        <div style={muted}>
+          {t('Last scan received', 'Last scan received')}: {formatDate(webhook.last_received_at)}
+        </div>
+      </div>
     )
   }
 
@@ -425,17 +635,7 @@ export function AttestivModulesPage() {
                   {m.webhook ? (
                     <tr>
                       <th style={{ textAlign: 'left', padding: '4px 16px 4px 0', verticalAlign: 'top', whiteSpace: 'nowrap' }}>{t('Webhook', 'Webhook')}</th>
-                      <td style={{ padding: '4px 0' }}>
-                        <Badge tone={m.webhook.enabled ? 'green' : 'amber'}>{m.webhook.enabled ? t('enabled', 'enabled') : t('disabled', 'disabled')}</Badge>{' '}
-                        <span style={{ color: 'var(--color-text-secondary)' }}>
-                          {m.webhook.enabled
-                            ? t('Webhook secret is set on the platform (COMPLIANCE_CVE_WEBHOOK_SECRET).', 'Webhook secret is set on the platform (COMPLIANCE_CVE_WEBHOOK_SECRET).')
-                            : t('Webhook disabled: set COMPLIANCE_CVE_WEBHOOK_SECRET on the platform and restart the API.', 'Webhook disabled: set COMPLIANCE_CVE_WEBHOOK_SECRET on the platform and restart the API.')}
-                        </span>
-                        <div style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
-                          {t('Last scan received', 'Last scan received')}: {formatDate(m.webhook.last_received_at)}
-                        </div>
-                      </td>
+                      <td style={{ padding: '4px 0' }}>{renderWebhook(m.webhook)}</td>
                     </tr>
                   ) : null}
                   {m.id === 'cartographer' ? (
