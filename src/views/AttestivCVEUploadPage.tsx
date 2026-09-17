@@ -24,6 +24,7 @@ import {
 import { apiFetch } from '../lib/api'
 
 import { useI18n } from '../lib/i18n'
+import { safeReportLink } from '../lib/cveScanLinks'
 
 type CVEFinding = {
   cve_id: string
@@ -44,6 +45,10 @@ type CVEScan = {
   findings: CVEFinding[]
   uploaded_at: string
   uploaded_by?: string
+  // Pushed by the Attestiv CVE-scan module: its stored scan, and the
+  // address that opens that scan's report in its console.
+  source_scan_id?: string
+  report_url?: string
 }
 
 type KEVStatus = {
@@ -306,6 +311,19 @@ export function AttestivCVEUploadPage() {
                       <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
                         <code>{scan.id}</code>
                       </div>
+                      {safeReportLink(scan.report_url) ? (
+                        <div style={{ fontSize: 12, marginTop: 2 }}>
+                          <a
+                            href={safeReportLink(scan.report_url) as string}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={t('Opens the report in the CVE-scan console; sign in there if asked.', 'Opens the report in the CVE-scan console; sign in there if asked.')}
+                          >
+                            <i className="ti ti-external-link" aria-hidden="true" />{' '}
+                            {t('Open CVE scan report', 'Open CVE scan report')}
+                          </a>
+                        </div>
+                      ) : null}
                     </div>
                     <Badge tone="red">{scan.critical_count} critical</Badge>
                     <Badge tone="amber">{scan.high_count} high</Badge>
