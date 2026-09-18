@@ -241,7 +241,7 @@ const CONNECTORS: ConnectorKind[] = [
     category: 'Observability',
     endpointHint: 'https://abc12345.live.dynatrace.com',
     fields: [
-      { key: 'api_token', label: 'API token (Api-Token)', type: 'password', required: true, hint: 'Needs problems.read and metrics.read scopes.' },
+      { key: 'api_token', label: 'API token (Api-Token)', type: 'password', required: true, hint: 'Needs entities.read, problems.read and securityProblems.read scopes.' },
     ],
     pollDefault: 600,
   },
