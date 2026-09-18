@@ -178,6 +178,7 @@ export const sections: Record<SectionKey, Section> = {
       { to: '/evidence',            label: 'Live stream',       icon: 'ti-player-play' },
       { to: '/evidence/search',     label: 'Search',            icon: 'ti-search' },
       { to: '/evidence/cve-scans',  label: 'CVE scans',         icon: 'ti-bug' },
+      { to: '/evidence/vulnerabilities', label: 'Vulnerabilities', icon: 'ti-shield-search' },
       { to: '/evidence/verify',     label: 'Verify signature',  icon: 'ti-check' },
     ],
   },

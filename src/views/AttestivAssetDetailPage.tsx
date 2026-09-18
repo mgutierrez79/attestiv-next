@@ -22,9 +22,19 @@ import {
   Skeleton,
   Topbar,
 } from '../components/AttestivUi'
-import { apiFetch } from '../lib/api'
+import { apiFetch, ApiError } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { ipSourceTag } from '../lib/ipSource'
+import {
+  deriveAssetVulnCard,
+  fleetHrefForAsset,
+  isWeakMatch,
+  productLabel,
+  severityChips,
+  severityTone,
+  type AssetVulnOutcome,
+  type AssetVulnResponse,
+} from '../lib/vulnerabilities'
 import { displayableMetaString } from '../lib/displayMeta'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
@@ -187,6 +197,11 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // storage, network, firewall), grouped by category. Populated from
   // /inventory/assets/{id}/dependencies for every asset type.
   const [dependencies, setDependencies] = useState<DependencyGroup[]>([])
+  // Vulnerabilities observed against this asset (additive endpoint —
+  // older backends 404). Kept as a raw fetch outcome; the card state
+  // ("populated" / "clean" / "not scanned") is derived by the pure
+  // helper so the never-imply-clean rule is unit-testable.
+  const [vulnOutcome, setVulnOutcome] = useState<AssetVulnOutcome>({ kind: 'loading' })
 
   useEffect(() => {
     let cancelled = false
@@ -196,6 +211,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
       setHostClusterName(null)
       setHostedVMCount(null)
       setDependencies([])
+      setVulnOutcome({ kind: 'loading' })
       try {
         const response = await apiFetch(`/inventory/assets/${encodeURIComponent(assetID)}`)
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
@@ -374,6 +390,30 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             // Enrichment is additive — a failure just omits the rows.
           }
         }
+        // Vulnerabilities — additive endpoint, same pattern as the
+        // dependencies fetch below. A 404 (older backend) or any other
+        // failure lands in the catch and renders as "not scanned by any
+        // vulnerability source" — NEVER an empty state implying clean.
+        try {
+          const vulnRes = await apiFetch(
+            `/inventory/assets/${encodeURIComponent(assetID)}/vulnerabilities`,
+          )
+          const vulnBody = await vulnRes.json().catch(() => null)
+          if (!cancelled) {
+            setVulnOutcome(
+              vulnBody && typeof vulnBody === 'object'
+                ? { kind: 'loaded', body: vulnBody as AssetVulnResponse }
+                : { kind: 'error' },
+            )
+          }
+        } catch (vulnErr) {
+          if (!cancelled) {
+            setVulnOutcome({
+              kind: 'error',
+              status: vulnErr instanceof ApiError ? vulnErr.status : undefined,
+            })
+          }
+        }
         // Upstream dependencies — the infrastructure this asset rides on,
         // resolved from the cross-source topology graph. Works for every
         // asset type; an unwired asset comes back empty (card hides).
@@ -467,6 +507,8 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
     if (!scopeResult?.results) return []
     return [...scopeResult.results].sort((a, b) => a.framework_id.localeCompare(b.framework_id))
   }, [scopeResult])
+
+  const vulnCard = useMemo(() => deriveAssetVulnCard(vulnOutcome), [vulnOutcome])
 
   const guest = (asset?.metadata?.['guest'] as GuestInfo | undefined) ?? undefined
   const hardware = (asset?.metadata?.['hardware'] as HardwareInfo | undefined) ?? undefined
@@ -632,6 +674,155 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   value={(asset.external_refs ?? []).map((r) => r.source).filter(Boolean).join(', ') || '—'}
                 />
               </div>
+            </Card>
+
+            {/* Vulnerabilities — NOT gated on asset type: any asset can
+                carry CVEs. Sits above Dependencies so exposure reads
+                before topology. The "not scanned" state is mandatory
+                when no source covers the asset (or the endpoint 404s on
+                an older backend) — an empty list here must never read
+                as "clean". */}
+            <Card>
+              <CardTitle
+                right={
+                  vulnCard.state === 'populated' || vulnCard.state === 'clean' ? (
+                    <a
+                      href={fleetHrefForAsset(asset.asset_id)}
+                      style={{ fontSize: 12, fontWeight: 500 }}
+                    >
+                      {t('Fleet view', 'Fleet view')}{' '}
+                      <i className="ti ti-arrow-right" aria-hidden="true" />
+                    </a>
+                  ) : null
+                }
+              >
+                {t('Vulnerabilities', 'Vulnerabilities')}
+              </CardTitle>
+              {vulnCard.state === 'loading' ? (
+                <div style={{ marginTop: 8 }}>
+                  <Skeleton lines={2} height={24} />
+                </div>
+              ) : vulnCard.state === 'not_scanned' ? (
+                <div style={{ marginTop: 8 }}>
+                  <Badge tone="amber" icon="ti-radar-off">
+                    {t('Not scanned by any vulnerability source', 'Not scanned by any vulnerability source')}
+                  </Badge>
+                  <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+                    {t(
+                      'No vulnerability source covers this asset — the absence of findings is not evidence of a clean host.',
+                      'No vulnerability source covers this asset — the absence of findings is not evidence of a clean host.',
+                    )}
+                  </p>
+                </div>
+              ) : vulnCard.state === 'clean' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                  <Badge tone="green" icon="ti-circle-check">
+                    {t('Scanned — no open vulnerabilities', 'Scanned — no open vulnerabilities')}
+                  </Badge>
+                  {(vulnCard.summary.sources ?? []).length > 0 ? (
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                      {t('Sources', 'Sources')}: {(vulnCard.summary.sources ?? []).join(', ')}
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {severityChips(vulnCard.summary).map((chip) => (
+                      <Badge
+                        key={chip.key}
+                        tone={chip.tone}
+                        icon={chip.key === 'kev' ? 'ti-flame' : undefined}
+                      >
+                        {chip.count} {t(chip.label, chip.label)}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+                    {(vulnCard.summary.sources ?? []).length > 0 ? (
+                      <span>
+                        {t('Sources', 'Sources')}: {(vulnCard.summary.sources ?? []).join(', ')}
+                      </span>
+                    ) : null}
+                    {vulnCard.summary.oldest_open_days != null ? (
+                      <span>
+                        {t('Oldest open finding: {n} days', 'Oldest open finding: {n} days', {
+                          n: vulnCard.summary.oldest_open_days,
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 10 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', color: 'var(--color-text-tertiary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <th style={{ padding: '6px 10px 6px 0' }}>CVE</th>
+                        <th style={{ padding: '6px 10px' }}>{t('Severity', 'Severity')}</th>
+                        <th style={{ padding: '6px 10px', textAlign: 'right' }}>{t('CVSS', 'CVSS')}</th>
+                        <th style={{ padding: '6px 10px' }}>{t('Product', 'Product')}</th>
+                        <th style={{ padding: '6px 10px' }}>{t('KEV', 'KEV')}</th>
+                        <th style={{ padding: '6px 0 6px 10px', textAlign: 'right' }}>{t('Days open', 'Days open')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vulnCard.items.slice(0, 8).map((item) => (
+                        <tr key={item.cve_id + (item.product ?? '')} style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                          <td style={{ padding: '8px 10px 8px 0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <code style={{ fontSize: 11 }}>{item.cve_id}</code>
+                              {isWeakMatch(item) ? (
+                                <Badge
+                                  tone="gray"
+                                  icon="ti-zoom-question"
+                                  title={t(
+                                    'Host attribution by name-only software match',
+                                    'Host attribution by name-only software match',
+                                  )}
+                                >
+                                  {t('Weak match', 'Weak match')}
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <Badge tone={severityTone(item.severity)}>{item.severity ?? '—'}</Badge>
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.cvss != null ? item.cvss.toFixed(1) : '—'}
+                          </td>
+                          <td style={{ padding: '8px 10px' }}>{productLabel(item)}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            {item.is_kev ? (
+                              <Badge tone="red" icon="ti-flame" title={item.kev_ransomware}>
+                                {t('KEV', 'KEV')}
+                                {item.kev_due_date
+                                  ? ` · ${t('due {date}', 'due {date}', { date: item.kev_due_date })}`
+                                  : ''}
+                              </Badge>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td style={{ padding: '8px 0 8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {item.days_open ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {vulnCard.count > Math.min(vulnCard.items.length, 8) ? (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 8 }}>
+                      {t('Showing top {n} of {total}', 'Showing top {n} of {total}', {
+                        n: Math.min(vulnCard.items.length, 8),
+                        total: vulnCard.count,
+                      })}{' '}
+                      —{' '}
+                      <a href={fleetHrefForAsset(asset.asset_id)}>
+                        {t('Fleet view', 'Fleet view')}
+                      </a>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </Card>
 
             <Card>

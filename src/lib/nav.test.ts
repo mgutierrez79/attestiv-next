@@ -138,6 +138,19 @@ describe('resolveNavLocation', () => {
     expect(resolveNavLocation('/connectors/health/').item?.label).toBe('Health')
   })
 
+  // The fleet vulnerability view lives under Evidence and is deep-linked
+  // from the asset detail card with a ?q= filter — both shapes must
+  // keep the sidebar entry lit and the breadcrumb intact.
+  it('resolves the fleet vulnerabilities view, filtered or not', () => {
+    expect(sectionFromPath('/evidence/vulnerabilities')).toBe('evidence')
+    const bare = resolveNavLocation('/evidence/vulnerabilities')
+    expect(bare.item?.label).toBe('Vulnerabilities')
+    expect(bare.trail.map((n) => n.label)).toEqual(['Evidence', 'Vulnerabilities'])
+    const filtered = resolveNavLocation('/evidence/vulnerabilities', 'q=dc1-esx-04')
+    expect(filtered.item?.label).toBe('Vulnerabilities')
+    expect(filtered.sectionKey).toBe('evidence')
+  })
+
   it('gives the Management section a rail item even though it is hidden', () => {
     const at = resolveNavLocation('/management/board-pack')
     expect(at.sectionKey).toBe('management')

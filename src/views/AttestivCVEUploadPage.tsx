@@ -10,7 +10,7 @@
 //   - Paste a JSON body and POST as application/json
 //   - View previous scans + delete
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Badge,
   Banner,
@@ -21,10 +21,11 @@ import {
   Skeleton,
   Topbar,
 } from '../components/AttestivUi'
-import { apiFetch } from '../lib/api'
+import { apiFetch, ApiError } from '../lib/api'
 
 import { useI18n } from '../lib/i18n'
 import { safeReportLink } from '../lib/cveScanLinks'
+import { useRoles } from '../lib/roles'
 
 type CVEFinding = {
   cve_id: string
@@ -88,6 +89,14 @@ export function AttestivCVEUploadPage() {
   const [body, setBody] = useState(SAMPLE_CSV)
   const [submitting, setSubmitting] = useState(false)
   const [refreshingKEV, setRefreshingKEV] = useState(false)
+  // Offline KEV catalog import (admin-only): POST the raw KEV JSON file
+  // to /system/cveenrich/import — the air-gapped alternative to the
+  // network-fetching "Refresh KEV". An older backend without the
+  // endpoint 404s → the control disables itself with a hint.
+  const { isAdmin } = useRoles()
+  const [importingKEV, setImportingKEV] = useState(false)
+  const [kevImportUnsupported, setKevImportUnsupported] = useState(false)
+  const kevFileRef = useRef<HTMLInputElement>(null)
 
   async function refresh() {
     try {
@@ -125,6 +134,41 @@ export function AttestivCVEUploadPage() {
       setError(err instanceof Error ? err.message : 'KEV refresh failed')
     } finally {
       setRefreshingKEV(false)
+    }
+  }
+
+  // The file is read client-side and its raw JSON body forwarded as-is
+  // — the backend parses/validates; the browser never interprets it.
+  async function importKEVFile(file: File) {
+    setImportingKEV(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const body = await file.text()
+      const r = await apiFetch('/system/cveenrich/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+      const resp = (await r.json().catch(() => ({}))) as { imported?: boolean; kev_size?: number }
+      setSuccess(
+        t('KEV file imported: {{n}} entries.', 'KEV file imported: {{n}} entries.').replace(
+          '{{n}}',
+          String(resp.kev_size ?? 0),
+        ),
+      )
+      await refresh()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        // Older backend without /system/cveenrich/import — disable the
+        // control rather than letting retries fail the same way.
+        setKevImportUnsupported(true)
+        setError(t('KEV file import requires a newer backend.', 'KEV file import requires a newer backend.'))
+      } else {
+        setError(err instanceof Error ? err.message : 'KEV import failed')
+      }
+    } finally {
+      setImportingKEV(false)
     }
   }
 
@@ -201,10 +245,35 @@ export function AttestivCVEUploadPage() {
         {kev?.enabled ? (
           <Card style={{ marginTop: 10 }}>
             <CardTitle right={
-              <GhostButton onClick={refreshKEV} disabled={refreshingKEV}>
-                <i className="ti ti-refresh" aria-hidden="true" />
-                {refreshingKEV ? t('Refreshing…', 'Refreshing…') : t('Refresh KEV', 'Refresh KEV')}
-              </GhostButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {isAdmin ? (
+                  <>
+                    <input
+                      ref={kevFileRef}
+                      type="file"
+                      accept="application/json,.json"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        // Reset so picking the same file again re-fires onChange.
+                        e.target.value = ''
+                        if (file) void importKEVFile(file)
+                      }}
+                    />
+                    <GhostButton
+                      onClick={() => kevFileRef.current?.click()}
+                      disabled={importingKEV || kevImportUnsupported}
+                    >
+                      <i className="ti ti-file-upload" aria-hidden="true" />
+                      {importingKEV ? t('Importing…', 'Importing…') : t('Import KEV file', 'Import KEV file')}
+                    </GhostButton>
+                  </>
+                ) : null}
+                <GhostButton onClick={refreshKEV} disabled={refreshingKEV}>
+                  <i className="ti ti-refresh" aria-hidden="true" />
+                  {refreshingKEV ? t('Refreshing…', 'Refreshing…') : t('Refresh KEV', 'Refresh KEV')}
+                </GhostButton>
+              </div>
             }>
               {t('CISA KEV enrichment', 'CISA KEV enrichment')}
             </CardTitle>
