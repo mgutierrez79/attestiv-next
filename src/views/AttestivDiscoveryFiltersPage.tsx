@@ -10,7 +10,7 @@
 //
 // API shapes live in src/lib/discoveryFilters.ts.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import {
@@ -30,7 +30,9 @@ import {
   FIELDS,
   MATCH_MODES,
   blankRule,
+  connectorScopeKnown,
   firstRuleProblem,
+  ruleMatchesNothing,
   rulesEqual,
   rulesPayload,
   toDrafts,
@@ -84,14 +86,35 @@ export function AttestivDiscoveryFiltersPage() {
     setDrafts(toDrafts(body.rules))
   }, [])
 
+  // previewSaved shows what each SAVED rule matches — in the inventory and
+  // among what the connectors report — so a rule that can never match is
+  // flagged as soon as the page opens, without pressing Test.
+  const previewSaved = useCallback(async () => {
+    try {
+      setPreview(
+        await readBody<DiscoveryPreviewResponse>(
+          await apiFetch('/settings/discovery-filters/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }),
+        ),
+      )
+    } catch {
+      setPreview(null)
+    }
+  }, [])
+
   const refresh = useCallback(async () => {
     setError(null)
     try {
-      adopt(await readBody<DiscoveryFiltersResponse>(await apiFetch('/settings/discovery-filters')))
+      const body = await readBody<DiscoveryFiltersResponse>(await apiFetch('/settings/discovery-filters'))
+      adopt(body)
+      if (body.rules.length > 0) await previewSaved()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load discovery filters')
     }
-  }, [adopt])
+  }, [adopt, previewSaved])
 
   useEffect(() => {
     void refresh()
@@ -101,6 +124,7 @@ export function AttestivDiscoveryFiltersPage() {
   const maxRules = loaded?.limits.max_rules ?? 200
   const maxPattern = loaded?.limits.max_pattern_length ?? 256
   const savedEnabled = loaded?.rules.filter((r) => r.enabled).length ?? 0
+  const knownSources = loaded?.known_sources ?? []
 
   function update(key: string, patch: Partial<DraftRule>) {
     setDrafts((current) => current.map((rule) => (rule.key === key ? { ...rule, ...patch } : rule)))
@@ -140,6 +164,32 @@ export function AttestivDiscoveryFiltersPage() {
     setError(null)
     setInfo(null)
     try {
+      // A filter means "not in my inventory": saving also removes what the
+      // rules match from the inventory now, instead of leaving the rows
+      // imported before the filter in place. Check what that is first and
+      // say it before anything is saved.
+      const planned =
+        drafts.length > 0
+          ? await readBody<DiscoveryPreviewResponse>(
+              await apiFetch('/settings/discovery-filters/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rulesPayload(drafts)),
+              }),
+            )
+          : null
+      const matched = planned?.matched ?? 0
+      if (matched > 0) {
+        const question = t(
+          'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?',
+          'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?',
+          { n: matched },
+        )
+        if (!window.confirm(question)) {
+          setPreview(planned)
+          return
+        }
+      }
       const body = await readBody<DiscoveryFiltersResponse>(
         await apiFetch('/settings/discovery-filters', {
           method: 'PUT',
@@ -148,7 +198,41 @@ export function AttestivDiscoveryFiltersPage() {
         }),
       )
       adopt(body)
-      setInfo(t('Saved. The next discovery skips matching assets.', 'Saved. The next discovery skips matching assets.'))
+      // Keep the counts the rules had when saved: after the removal the
+      // inventory count is 0 for every rule that worked.
+      setPreview(planned)
+      if (matched === 0) {
+        setInfo(
+          t(
+            'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.',
+            'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.',
+          ),
+        )
+        return
+      }
+      const result = await readBody<{ deleted: number; failed: number }>(
+        await apiFetch('/settings/discovery-filters/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expected_matches: matched }),
+        }),
+      )
+      if (result.failed > 0) {
+        setError(
+          t('Removed {deleted} assets; {failed} could not be removed. Try again.', 'Removed {deleted} assets; {failed} could not be removed. Try again.', {
+            deleted: result.deleted,
+            failed: result.failed,
+          }),
+        )
+      } else {
+        setInfo(
+          t(
+            'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.',
+            'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.',
+            { n: result.deleted },
+          ),
+        )
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save discovery filters')
     } finally {
@@ -306,8 +390,22 @@ export function AttestivDiscoveryFiltersPage() {
                   {drafts.map((rule, index) => {
                     const hits = rule.id && lastRun ? lastRun.rule_hits[rule.id] ?? 0 : null
                     const previewHits = preview ? preview.rule_hits[index] : null
+                    const connectorHits = preview?.connector_rule_hits ? preview.connector_rule_hits[index] : null
+                    const scopeKnown = connectorScopeKnown(rule.source, knownSources)
+                    const warning = !scopeKnown
+                      ? t(
+                          'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
+                          'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
+                        )
+                      : ruleMatchesNothing(rule, index, preview)
+                        ? t(
+                            'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
+                            'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
+                          )
+                        : ''
                     return (
-                      <tr key={rule.key} style={{ borderTop: '1px solid var(--color-border-tertiary)', opacity: rule.enabled ? 1 : 0.6 }}>
+                      <Fragment key={rule.key}>
+                      <tr style={{ borderTop: '1px solid var(--color-border-tertiary)', opacity: rule.enabled ? 1 : 0.6 }}>
                         <td style={{ ...cell, paddingTop: 12, color: 'var(--color-text-tertiary)' }}>{index + 1}</td>
                         <td style={{ ...cell, paddingTop: 10 }}>
                           <input
@@ -323,7 +421,7 @@ export function AttestivDiscoveryFiltersPage() {
                             value={rule.pattern}
                             disabled={busy}
                             maxLength={maxPattern}
-                            placeholder={rule.match === 'glob' ? '*.lab.local' : rule.match === 'regex' ? '^tmpl-\\d+$' : 'lab'}
+                            placeholder={rule.match === 'glob' ? '*.lab.local' : rule.match === 'regex' ? '^tmpl-\\d+$' : 'picking'}
                             aria-label={t('Filter {n} pattern', 'Filter {n} pattern', { n: index + 1 })}
                             onChange={(e) => update(rule.key, { pattern: e.target.value })}
                             style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
@@ -359,16 +457,26 @@ export function AttestivDiscoveryFiltersPage() {
                             ))}
                           </Select>
                         </td>
-                        <td style={{ ...cell, minWidth: 140 }}>
-                          <TextInput
+                        <td style={{ ...cell, minWidth: 160 }}>
+                          <Select
                             value={rule.source ?? ''}
                             disabled={busy}
-                            list="discovery-filter-sources"
-                            placeholder={t('all connectors', 'all connectors')}
                             aria-label={t('Filter {n} connector', 'Filter {n} connector', { n: index + 1 })}
                             onChange={(e) => update(rule.key, { source: e.target.value })}
                             style={{ width: '100%' }}
-                          />
+                          >
+                            <option value="">{t('All connectors', 'All connectors')}</option>
+                            {knownSources.map((source) => (
+                              <option key={source} value={source}>
+                                {source}
+                              </option>
+                            ))}
+                            {!scopeKnown ? (
+                              <option value={rule.source}>
+                                {rule.source} — {t('not a connector', 'not a connector')}
+                              </option>
+                            ) : null}
+                          </Select>
                         </td>
                         <td style={{ ...cell, minWidth: 160 }}>
                           <TextInput
@@ -385,7 +493,10 @@ export function AttestivDiscoveryFiltersPage() {
                           {hits === null ? '—' : hits}
                           {previewHits !== null && rule.enabled ? (
                             <div style={{ fontSize: 10.5, color: 'var(--color-status-blue-deep)', fontFamily: 'inherit' }}>
-                              {t('preview: {n}', 'preview: {n}', { n: previewHits })}
+                              {t('{n} in inventory · {m} from connectors', '{n} in inventory · {m} from connectors', {
+                                n: previewHits,
+                                m: connectorHits ?? 0,
+                              })}
                             </div>
                           ) : null}
                         </td>
@@ -409,15 +520,18 @@ export function AttestivDiscoveryFiltersPage() {
                           </button>
                         </td>
                       </tr>
+                      {warning ? (
+                        <tr>
+                          <td colSpan={9} style={{ padding: '0 8px 10px 40px', fontSize: 11.5, color: 'var(--color-status-amber-text)' }}>
+                            <i className="ti ti-alert-triangle" aria-hidden="true" /> {warning}
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     )
                   })}
                 </tbody>
               </table>
-              <datalist id="discovery-filter-sources">
-                {(loaded?.known_sources ?? []).map((source) => (
-                  <option key={source} value={source} />
-                ))}
-              </datalist>
             </div>
           ) : null}
 
@@ -508,8 +622,8 @@ export function AttestivDiscoveryFiltersPage() {
           <CardTitle>{t('Clean up the existing inventory', 'Clean up the existing inventory')}</CardTitle>
           <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 0 }}>
             {t(
-              'A saved filter stops new imports. Assets imported before the filter existed stay in the inventory until you remove them here. Only discovered assets that match the saved, enabled filters are removed, and the removal is recorded in the audit trail.',
-              'A saved filter stops new imports. Assets imported before the filter existed stay in the inventory until you remove them here. Only discovered assets that match the saved, enabled filters are removed, and the removal is recorded in the audit trail.',
+              'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.',
+              'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.',
             )}
           </p>
           {dirty ? (

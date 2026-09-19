@@ -48,7 +48,12 @@ export type DiscoveryPreviewItem = {
 export type DiscoveryPreviewResponse = {
   evaluated: number
   matched: number
+  // Per rule: matches among the inventory rows.
   rule_hits: number[]
+  // Per rule: matches among the assets the connectors report right now —
+  // non-zero for a rule whose matches were already kept out of the
+  // inventory.
+  connector_rule_hits?: number[]
   items: DiscoveryPreviewItem[]
   truncated: boolean
 }
@@ -109,4 +114,27 @@ export function firstRuleProblem(
     if (pattern.length > maxPatternLength) return { index: i, problem: 'too_long' }
   }
   return null
+}
+
+// connectorScopeKnown reports whether a rule's connector scope names a
+// connector the platform knows (the list the server accepts). An empty
+// scope means every connector.
+export function connectorScopeKnown(source: string | undefined, known: string[]): boolean {
+  const value = (source ?? '').trim().toLowerCase()
+  if (!value) return true
+  return known.some((k) => k.toLowerCase() === value)
+}
+
+// ruleMatchesNothing: an enabled rule the preview found no match for,
+// neither in the inventory nor among what the connectors report — it can
+// never exclude anything (typically a sentence typed as the pattern).
+export function ruleMatchesNothing(
+  rule: DiscoveryFilterRule,
+  index: number,
+  preview: DiscoveryPreviewResponse | null,
+): boolean {
+  if (!rule.enabled || !preview) return false
+  const inventory = preview.rule_hits[index] ?? 0
+  const connectors = preview.connector_rule_hits?.[index] ?? 0
+  return inventory === 0 && connectors === 0
 }

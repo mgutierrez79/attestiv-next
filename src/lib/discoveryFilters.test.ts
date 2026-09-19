@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { blankRule, firstRuleProblem, rulesEqual, rulesPayload, toDrafts, type DiscoveryFilterRule } from './discoveryFilters'
+import {
+  blankRule,
+  connectorScopeKnown,
+  firstRuleProblem,
+  ruleMatchesNothing,
+  rulesEqual,
+  rulesPayload,
+  toDrafts,
+  type DiscoveryFilterRule,
+  type DiscoveryPreviewResponse,
+} from './discoveryFilters'
 
 const stored: DiscoveryFilterRule[] = [
   {
@@ -61,5 +71,41 @@ describe('discovery filter drafts', () => {
     expect(firstRuleProblem(stored, 256)).toBeNull()
     expect(firstRuleProblem([...stored, blankRule()], 256)).toEqual({ index: 1, problem: 'empty' })
     expect(firstRuleProblem([{ ...stored[0], pattern: 'x'.repeat(10) }], 5)).toEqual({ index: 0, problem: 'too_long' })
+  })
+})
+
+// The pilot's first rules (2026-09-19) typed a sentence as the pattern and
+// the keyword as the connector; both matched nothing, silently.
+describe('rules that cannot match', () => {
+  const known = ['dynatrace', 'vcenter', 'vcenter:vmware-vcenter-dcb']
+
+  it('flags a connector scope that names no connector', () => {
+    expect(connectorScopeKnown('', known)).toBe(true)
+    expect(connectorScopeKnown('vcenter', known)).toBe(true)
+    expect(connectorScopeKnown('VCenter:VMware-vCenter-DCB', known)).toBe(true)
+    expect(connectorScopeKnown('picking', known)).toBe(false)
+    expect(connectorScopeKnown('vmware', known)).toBe(false)
+  })
+
+  it('flags an enabled rule that matches nothing in the inventory nor at the connectors', () => {
+    const rules: DiscoveryFilterRule[] = [
+      { pattern: 'suprimer les nomes de machines picking', match: 'contains', field: 'any', enabled: true },
+      { pattern: 'picking', match: 'contains', field: 'name', enabled: true },
+      { pattern: 'snapshot', match: 'contains', field: 'name', enabled: false },
+    ]
+    const preview: DiscoveryPreviewResponse = {
+      evaluated: 2111,
+      matched: 0,
+      // PICKING VMs already removed from the inventory…
+      rule_hits: [0, 0, 0],
+      // …but vCenter still reports them.
+      connector_rule_hits: [0, 22, 0],
+      items: [],
+      truncated: false,
+    }
+    expect(ruleMatchesNothing(rules[0], 0, preview)).toBe(true)
+    expect(ruleMatchesNothing(rules[1], 1, preview)).toBe(false)
+    expect(ruleMatchesNothing(rules[2], 2, preview)).toBe(false) // disabled
+    expect(ruleMatchesNothing(rules[0], 0, null)).toBe(false) // nothing known yet
   })
 })

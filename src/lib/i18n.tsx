@@ -357,6 +357,16 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Vendor': 'Vendor',
     'Last heartbeat': 'Last heartbeat',
     'Virtualization manager': 'Virtualization manager',
+    // --- added 2026-09-19 (Discovery filters: connector list, match warnings, save removes) ---
+    'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?': 'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?',
+    'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.': 'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.',
+    'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.': 'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.',
+    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.': 'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
+    'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.': 'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
+    'All connectors': 'All connectors',
+    'not a connector': 'not a connector',
+    '{n} in inventory · {m} from connectors': '{n} in inventory · {m} from connectors',
+    'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.',
   },
   es: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -4071,6 +4081,16 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Vendor': 'Proveedor',
     'Last heartbeat': 'Última señal de actividad',
     'Virtualization manager': 'Gestor de virtualización',
+    // --- added 2026-09-19 (Discovery filters: connector list, match warnings, save removes) ---
+    'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?': 'Al guardar se eliminan del inventario los {n} activos descubiertos que coinciden con estos filtros, y se excluyen de todos los descubrimientos futuros. Los activos introducidos manualmente nunca se eliminan. ¿Continuar?',
+    'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.': 'Guardado. Ningún activo del inventario coincide ahora con estos filtros; se aplican en cada descubrimiento futuro.',
+    'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.': 'Guardado. Se eliminaron {n} activos del inventario; los filtros los excluyen de todos los descubrimientos futuros.',
+    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.': 'No es un conector: este filtro nunca puede coincidir. Elija uno de la lista o deje «Todos los conectores».',
+    'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.': 'Este filtro no coincide con nada: ningún activo del inventario ni informado por un conector contiene este texto. Introduzca solo el texto que se debe buscar (por ejemplo, picking), no una frase.',
+    'All connectors': 'Todos los conectores',
+    'not a connector': 'no es un conector',
+    '{n} in inventory · {m} from connectors': '{n} en el inventario · {m} de los conectores',
+    'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Al guardar ya se elimina lo que coincide con los filtros. Utilice esta opción si todavía aparecen activos que coinciden con los filtros guardados, por ejemplo cuando los filtros se guardaron mediante la API. Solo se eliminan activos descubiertos y la eliminación queda anotada en el registro de auditoría.',
   },
   fr: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -7798,6 +7818,16 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Vendor': 'Éditeur',
     'Last heartbeat': 'Dernier signal de vie',
     'Virtualization manager': 'Gestionnaire de virtualisation',
+    // --- added 2026-09-19 (Discovery filters: connector list, match warnings, save removes) ---
+    'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?': "L'enregistrement retire de l'inventaire les {n} actifs découverts qui correspondent à ces filtres et les écarte de toutes les découvertes suivantes. Les actifs saisis manuellement ne sont jamais retirés. Continuer ?",
+    'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.': "Enregistré. Aucun actif de l'inventaire ne correspond à ces filtres pour l'instant ; ils s'appliquent à chaque découverte future.",
+    'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.': "Enregistré. {n} actifs retirés de l'inventaire ; les filtres les écartent de toutes les découvertes suivantes.",
+    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.': "Ce n'est pas un connecteur : ce filtre ne peut jamais correspondre. Choisissez-en un dans la liste ou laissez « Tous les connecteurs ».",
+    'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.': "Ce filtre ne correspond à rien : aucun actif de l'inventaire ni remonté par un connecteur ne contient ce texte. Saisissez uniquement le texte à rechercher (par exemple picking), pas une phrase.",
+    'All connectors': 'Tous les connecteurs',
+    'not a connector': "n'est pas un connecteur",
+    '{n} in inventory · {m} from connectors': "{n} dans l'inventaire · {m} des connecteurs",
+    'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': "L'enregistrement retire déjà ce que les filtres ciblent. Utilisez cette option si des actifs correspondant aux filtres enregistrés apparaissent encore, par exemple après un enregistrement via l'API. Seuls les actifs découverts sont retirés, et le retrait est consigné dans le journal d'audit.",
   },
   de: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -11483,6 +11513,16 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Vendor': 'Hersteller',
     'Last heartbeat': 'Letztes Lebenszeichen',
     'Virtualization manager': 'Virtualisierungsmanager',
+    // --- added 2026-09-19 (Discovery filters: connector list, match warnings, save removes) ---
+    'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?': 'Beim Speichern werden die {n} erkannten Assets, die diesen Filtern entsprechen, aus dem Bestand entfernt und bei jeder künftigen Erkennung ausgelassen. Manuell erfasste Assets werden nie entfernt. Fortfahren?',
+    'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.': 'Gespeichert. Derzeit entspricht kein Asset im Bestand diesen Filtern; sie gelten für jede künftige Erkennung.',
+    'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.': 'Gespeichert. {n} Assets aus dem Bestand entfernt; die Filter lassen sie bei jeder künftigen Erkennung aus.',
+    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.': 'Kein Konnektor – dieser Filter kann nie greifen. Wählen Sie einen aus der Liste oder belassen Sie „Alle Konnektoren“.',
+    'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.': 'Dieser Filter trifft auf nichts zu: Kein Asset im Bestand und keines, das ein Konnektor meldet, enthält diesen Text. Geben Sie nur den gesuchten Text ein – zum Beispiel picking – keinen Satz.',
+    'All connectors': 'Alle Konnektoren',
+    'not a connector': 'kein Konnektor',
+    '{n} in inventory · {m} from connectors': '{n} im Bestand · {m} von Konnektoren',
+    'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Beim Speichern wird bereits entfernt, was die Filter treffen. Verwenden Sie dies, wenn noch Assets aufgeführt sind, die den gespeicherten Filtern entsprechen – etwa nachdem Filter über die API gespeichert wurden. Entfernt werden nur erkannte Assets, und die Entfernung wird im Audit-Protokoll festgehalten.',
   },
   lt: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -14820,6 +14860,16 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Vendor': 'Tiekėjas',
     'Last heartbeat': 'Paskutinis gyvybės signalas',
     'Virtualization manager': 'Virtualizacijos valdiklis',
+    // --- added 2026-09-19 (Discovery filters: connector list, match warnings, save removes) ---
+    'Saving removes the {n} discovered assets these filters match from the inventory and keeps them out of every future discovery. Hand-entered assets are never removed. Continue?': 'Išsaugojus iš inventoriaus bus pašalinti šiuos filtrus atitinkantys aptikti turto vienetai (iš viso: {n}), ir jie nebus įtraukiami per jokius būsimus aptikimus. Rankiniu būdu įvestas turtas niekada nešalinamas. Tęsti?',
+    'Saved. No asset in the inventory matches these filters now; they apply to every future discovery.': 'Išsaugota. Šiuo metu šių filtrų neatitinka joks inventoriaus turtas; jie taikomi kiekvienam būsimam aptikimui.',
+    'Saved. {n} assets removed from the inventory; the filters keep them out of every future discovery.': 'Išsaugota. Iš inventoriaus pašalinta turto vienetų: {n}; filtrai jų neįtrauks per būsimus aptikimus.',
+    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.': 'Tai ne jungtuvas – šis filtras niekada nesuveiks. Pasirinkite jungtuvą iš sąrašo arba palikite „Visi jungtuvai“.',
+    'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.': 'Šis filtras nieko neatitinka: joks inventoriaus ar jungtuvo pateiktas turtas neturi šio teksto. Įveskite tik ieškomą tekstą, pvz., picking, o ne sakinį.',
+    'All connectors': 'Visi jungtuvai',
+    'not a connector': 'ne jungtuvas',
+    '{n} in inventory · {m} from connectors': 'Inventoriuje: {n} · iš jungtuvų: {m}',
+    'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Išsaugojus jau pašalinama tai, ką atitinka filtrai. Naudokite tai, jei vis dar matomas išsaugotus filtrus atitinkantis turtas, pvz., kai filtrai buvo išsaugoti per API. Šalinamas tik aptiktas turtas, o šalinimas įrašomas į audito žurnalą.',
   },
 }
 
