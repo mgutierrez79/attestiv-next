@@ -270,6 +270,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'Copied': 'Copied',
     'Save secret': 'Save secret',
     // --- added 2026-09-19 (Settings ▸ Discovery filters) ---
+    'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.': 'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.',
     'Exact': 'Exact',
     'Wildcard': 'Wildcard',
     'Regular expression': 'Regular expression',
@@ -3955,6 +3956,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'At least 32 characters': 'Al menos 32 caracteres',
     'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.': 'Copie ahora este secreto en CVE-scan: Configuración → Integraciones → Plataforma Attestiv → Secreto compartido. No se volverá a mostrar.',
     // --- added 2026-09-19 (Settings ▸ Discovery filters) ---
+    'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.': 'Los activos excluidos también quedan fuera de la puntuación de cumplimiento, junto con las vulnerabilidades, el software, los trabajos de copia de seguridad y los demás registros de conectores que se refieren a ellos. Las puntuaciones cambian en la próxima evaluación.',
     'Exact': 'Exacto',
     'Wildcard': 'Comodín',
     'Regular expression': 'Expresión regular',
@@ -7653,6 +7655,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'At least 32 characters': 'Au moins 32 caractères',
     'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.': 'Copiez ce secret dans CVE-scan maintenant : Paramètres → Intégrations → Plateforme Attestiv → Secret partagé. Il ne sera plus affiché.',
     // --- added 2026-09-19 (Settings ▸ Discovery filters) ---
+    'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.': 'Les actifs exclus sont aussi écartés du score de conformité, avec les vulnérabilités, les logiciels, les tâches de sauvegarde et les autres enregistrements de connecteurs qui les concernent. Les scores changent lors de la prochaine évaluation.',
     'Exact': 'Exacte',
     'Wildcard': 'Caractères génériques',
     'Regular expression': 'Expression régulière',
@@ -11309,6 +11312,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'At least 32 characters': 'Mindestens 32 Zeichen',
     'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.': 'Kopieren Sie dieses Geheimnis jetzt in CVE-scan: Einstellungen → Integrationen → Attestiv-Plattform → Gemeinsames Geheimnis. Es wird nicht erneut angezeigt.',
     // --- added 2026-09-19 (Settings ▸ Discovery filters) ---
+    'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.': 'Ausgeschlossene Assets fließen auch nicht in die Compliance-Bewertung ein, ebenso wenig die für sie gemeldeten Schwachstellen, Software, Sicherungsjobs und anderen Konnektor-Datensätze. Die Bewertungen ändern sich beim nächsten Bewertungslauf.',
     'Exact': 'Exakt',
     'Wildcard': 'Platzhalter',
     'Regular expression': 'Regulärer Ausdruck',
@@ -14617,6 +14621,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'At least 32 characters': 'Bent 32 simboliai',
     'Copy this secret into CVE-scan now: Settings → Integrations → Attestiv platform → Shared secret. It is not shown again.': 'Nukopijuokite šią paslaptį į CVE-scan dabar: Nustatymai → Integracijos → Attestiv platforma → Bendra paslaptis. Ji daugiau nebus rodoma.',
     // --- added 2026-09-19 (Settings ▸ Discovery filters) ---
+    'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.': 'Išskirtas turtas taip pat neįtraukiamas į atitikties balą kartu su jam priskirtais pažeidžiamumais, programine įranga, atsarginių kopijų užduotimis ir kitais jungtuvų įrašais. Balai pasikeis per kitą vertinimą.',
     'Exact': 'Tiksliai',
     'Wildcard': 'Pakaitos simboliai',
     'Regular expression': 'Reguliarioji išraiška',

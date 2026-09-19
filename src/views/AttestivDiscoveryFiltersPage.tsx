@@ -266,6 +266,12 @@ export function AttestivDiscoveryFiltersPage() {
               'Connectors report everything they can see, including lab machines, templates and test devices. An asset that matches any enabled filter is left out every time assets are discovered, so it never enters the inventory. Filters are saved on the server and apply to every connector poll and every inventory update. Matching ignores upper and lower case. Hand-entered assets are never filtered.',
             )}
           </p>
+          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 0 }}>
+            {t(
+              'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.',
+              'Excluded assets are also left out of compliance scoring, together with the vulnerabilities, software, backup jobs and other connector records reported for them. Scores change at the next scoring run.',
+            )}
+          </p>
 
           {loaded && drafts.length === 0 ? (
             <EmptyState
