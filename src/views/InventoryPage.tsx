@@ -566,12 +566,16 @@ export function InventoryPage() {
       const imported = body?.imported ?? 0
       const updated = body?.updated ?? 0
       const skipped = body?.skipped ?? 0
+      const excluded = body?.excluded ?? 0
       setInfo(
         t(
           '{imported} new, {updated} updated, {skipped} unchanged.',
           '{imported} new, {updated} updated, {skipped} unchanged.',
           { imported, updated, skipped },
-        ),
+        ) +
+          (excluded > 0
+            ? ' ' + t('{excluded} left out by discovery filters.', '{excluded} left out by discovery filters.', { excluded })
+            : ''),
       )
       await load()
     } catch (err: unknown) {

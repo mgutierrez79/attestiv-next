@@ -49,6 +49,12 @@ describe('resolveNavLocation', () => {
     expect(at.trail.map((n) => n.label)).toEqual(['Settings', 'Integrations'])
   })
 
+  it('lights the Discovery filters entry under Settings', () => {
+    const at = resolveNavLocation('/settings/discovery-filters')
+    expect(at.item?.label).toBe('Discovery filters')
+    expect(at.trail.map((n) => n.label)).toEqual(['Settings', 'Discovery filters'])
+  })
+
   // Regression: usePathname() drops the query, so every filter
   // deep-link left "All assets" lit instead of the entry the user
   // clicked.

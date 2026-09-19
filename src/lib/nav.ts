@@ -335,6 +335,7 @@ export const sections: Record<SectionKey, Section> = {
       { to: '/settings/trust-store', label: 'Trust store',    icon: 'ti-certificate' },
       { to: '/settings/integrations', label: 'Integrations',  icon: 'ti-apps' },
       { to: '/settings/connectors',  label: 'Connector poll', icon: 'ti-refresh' },
+      { to: '/settings/discovery-filters', label: 'Discovery filters', icon: 'ti-filter' },
       { to: '/settings/scoring',     label: 'Scoring poll',     icon: 'ti-gauge' },
       { to: '/settings/retention',     label: 'Retention policy', icon: 'ti-clock-hour-4' },
       { to: '/settings/dr-drill',      label: 'DR drill status',  icon: 'ti-shield-check' },
