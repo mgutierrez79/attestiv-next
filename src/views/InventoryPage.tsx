@@ -40,6 +40,7 @@ import { apiFetch } from '../lib/api'
 import { useBackgroundTasks } from '../components/BackgroundTasks'
 import { AssetExpandedPanel, type EnrichedAsset } from '../components/AssetConnectorDetail'
 
+import { hardwareSummary } from '../lib/hardwareFacts'
 import { useI18n } from '../lib/i18n'
 
 type InventoryExternalRef = { source: string; external_id: string }
@@ -1161,6 +1162,13 @@ function AssetRow({
   // (full Primary count) alongside top_volumes during the PowerStore poll.
   const isStorageArray = assetType === 'storage_array'
   const arrayVolumeCount = isStorageArray ? Number(asset.metadata?.['volume_count'] ?? 0) : 0
+  // Hardware assets (servers, ESXi hosts, storage arrays, backup
+  // appliances): a one-line model + patch-level hint under the name —
+  // "PowerEdge R650xs · BIOS 1.14.1 · iDRAC9 7.00.00.181" — from the facts
+  // the hardware connectors stamp. List rows carry the full metadata, so
+  // no detail fetch is needed. Empty for everything else.
+  const hardwareHint = hardwareSummary(asset.metadata, assetType)
+  const isStorageBox = isStorageArray || assetType === 'backup_appliance'
   // Cluster row metadata: effective_sites + stretched flag the
   // backend recomputes after every poll.
   const isCluster = assetType === 'cluster'
@@ -1276,6 +1284,15 @@ function AssetRow({
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)', opacity: 0.8 }}>
           {asset.asset_id}
         </div>
+        {hardwareHint ? (
+          <div
+            style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}
+            title={t('Hardware & firmware', 'Hardware & firmware')}
+          >
+            <i className={`ti ${isStorageBox ? 'ti-database' : 'ti-server'}`} aria-hidden="true" style={{ fontSize: 11, marginRight: 4 }} />
+            {hardwareHint}
+          </div>
+        ) : null}
         {isStorageArray && arrayVolumeCount > 0 ? (
           <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginTop: 2 }}>
             <i className="ti ti-stack-2" aria-hidden="true" style={{ fontSize: 11, marginRight: 4 }} />

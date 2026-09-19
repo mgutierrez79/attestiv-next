@@ -36,6 +36,8 @@ import {
   type AssetVulnResponse,
 } from '../lib/vulnerabilities'
 import { displayableMetaString } from '../lib/displayMeta'
+import { deviceFieldsCovered, hardwareFacts } from '../lib/hardwareFacts'
+import { HardwareFirmwareCard } from './HardwareFirmwareCard'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
 import { useBreadcrumbLeaf } from '../components/Breadcrumb'
@@ -620,18 +622,50 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // Friendly cluster name resolved from the MoRef (hostClusterName), falling
   // back to the raw vcenter_cluster MoRef when the cluster asset wasn't found.
   const clusterDisplay = hostClusterName ?? (vcenterCluster || '')
+  // Storage arrays / backup appliances never take the Server-details path:
+  // PowerStore now stamps manufacturer + service_tag on the array too, and
+  // the manufacturer/service_tag fallback below would otherwise give it a
+  // server card listing every data-path IP. The Storage array and Hardware
+  // & firmware cards own those boxes.
+  const isStorageBox = ['storage_array', 'backup_appliance'].includes(assetTypeLower)
   const isPhysicalHost =
     !isVM &&
     !isHypervisorHost &&
+    !isStorageBox &&
     (['server', 'host', 'hypervisor_host'].includes(assetTypeLower) ||
       ((Boolean(manufacturer) || Boolean(serviceTag)) && !guest))
+  // Storage array card (management endpoint, capacity, LLDP uplinks, top
+  // volumes). management_address alone is no array signal: OpenManage
+  // stamps it (the iDRAC address) on every server it manages and the host
+  // enricher on ESXi hosts, whose Device card already shows it — so
+  // servers, hypervisor hosts and VMs never get a "Storage array" card.
+  const showStorageArrayCard =
+    !isVM &&
+    !isHypervisorHost &&
+    !isPhysicalHost &&
+    (Boolean(arrayMgmtIP) ||
+      hasCapacity ||
+      (arrayUplinks && arrayUplinks.length > 0) ||
+      (topVolumes && topVolumes.length > 0))
+  // Hardware & firmware card: identity, BIOS / management controller /
+  // OS / storage-OS versions and the installed firmware the hardware
+  // connectors stamp (OpenManage, Redfish, vCenter ESXi hosts, PowerStore).
+  // hardwareFacts() already refuses guest and network-gear types; !isVM
+  // also keeps it off a guest-shaped asset whose type says otherwise. It
+  // renders beside the Server details / Hypervisor host / Storage array
+  // cards, not instead of them, and owns the facts it shows: Server
+  // details drops its manufacturer / model / service tag (and its OS when
+  // the card has one), and the Device card drops the rows it repeats.
+  const hwFacts = hardwareFacts(asset?.metadata, asset?.asset_type)
+  const showHardwareCard = !isVM && (hwFacts.rows.length > 0 || hwFacts.firmware.length > 0)
+  const hardwareCardHasOS = showHardwareCard && hwFacts.rows.some((row) => row.key === 'operating_system' || row.key === 'storage_os')
+  const serverOS = hardwareCardHasOS ? '' : hostOS
+  const serverShowsIdentity = !showHardwareCard
   const hasServerDetails =
     isPhysicalHost &&
-    (Boolean(hostOS) ||
+    (Boolean(serverOS) ||
       (hostIPs && hostIPs.length > 0) ||
-      Boolean(manufacturer) ||
-      Boolean(model) ||
-      Boolean(serviceTag) ||
+      (serverShowsIdentity && (Boolean(manufacturer) || Boolean(model) || Boolean(serviceTag))) ||
       Boolean(powerState) ||
       Boolean(health))
 
@@ -1030,10 +1064,10 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
                   {t('Server details', 'Server details')}
                 </CardTitle>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8, fontSize: 13 }}>
-                  {hostOS ? <Stat label={t('OS', 'OS')} value={hostOS} /> : null}
-                  {manufacturer ? <Stat label={t('Manufacturer', 'Manufacturer')} value={manufacturer} /> : null}
-                  {model ? <Stat label={t('Model', 'Model')} value={model} /> : null}
-                  {serviceTag ? <Stat label={t('Service tag', 'Service tag')} value={serviceTag} mono /> : null}
+                  {serverOS ? <Stat label={t('OS', 'OS')} value={serverOS} /> : null}
+                  {serverShowsIdentity && manufacturer ? <Stat label={t('Manufacturer', 'Manufacturer')} value={manufacturer} /> : null}
+                  {serverShowsIdentity && model ? <Stat label={t('Model', 'Model')} value={model} /> : null}
+                  {serverShowsIdentity && serviceTag ? <Stat label={t('Service tag', 'Service tag')} value={serviceTag} mono /> : null}
                   {powerState ? <Stat label={t('Power state', 'Power state')} value={powerState} /> : null}
                   {health ? <Stat label={t('Health', 'Health')} value={health} /> : null}
                 </div>
@@ -1075,10 +1109,7 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </Card>
             ) : null}
 
-            {arrayMgmtIP ||
-            hasCapacity ||
-            (arrayUplinks && arrayUplinks.length > 0) ||
-            (topVolumes && topVolumes.length > 0) ? (
+            {showStorageArrayCard ? (
               <Card>
                 <CardTitle>{t('Storage array', 'Storage array')}</CardTitle>
                 {arrayMgmtIP ? (
@@ -1181,6 +1212,8 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
               </Card>
             ) : null}
 
+            {showHardwareCard ? <HardwareFirmwareCard facts={hwFacts} /> : null}
+
             {asset.asset_type === 'network_link' ? (
               <NetworkLinkDetails
                 asset={asset}
@@ -1190,7 +1223,11 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             ) : null}
 
             {asset.asset_type === 'network_device' || asset.asset_type === 'switch' || asset.asset_type === 'router' || asset.asset_type === 'firewall' || asset.asset_type === 'firewall_manager' || asset.asset_type === 'host' || asset.asset_type === 'hypervisor_host' || asset.asset_type === 'server' ? (
-              <NetworkDeviceDetails asset={asset} relatedLinks={relatedLinks} />
+              <NetworkDeviceDetails
+                asset={asset}
+                relatedLinks={relatedLinks}
+                omit={showHardwareCard ? deviceFieldsCovered(hwFacts) : undefined}
+              />
             ) : null}
 
             {lastBackup || replication || lastRestore ? (

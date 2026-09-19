@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { Badge, Skeleton } from './AttestivUi'
 import { ConnectorLogo, hasConnectorLogo } from './ConnectorLogo'
 import { apiFetch } from '../lib/api'
+import { hardwareFacts } from '../lib/hardwareFacts'
 import { useI18n } from '../lib/i18n'
 
 export type EnrichedAsset = {
@@ -447,6 +448,17 @@ function compactFacts(asset: EnrichedAsset, t: (k: string, d?: string) => string
   if (cluster) facts.push({ label: t('Cluster', 'Cluster'), value: cluster, mono: true })
   const host = String(meta['vcenter_host'] ?? '')
   if (host) facts.push({ label: t('Host', 'Host'), value: host, mono: true })
+  // Hardware facts for a server / ESXi host / storage array — the rows of
+  // the detail page's Hardware & firmware card plus the firmware count,
+  // under the same not-a-guest gate that page applies.
+  const guestShaped = Boolean(guest) || Boolean(host) || Boolean(hardware?.cpu) || Boolean(hardware?.memory)
+  if (!guestShaped) {
+    const hw = hardwareFacts(meta, asset.asset_type)
+    for (const row of hw.rows) facts.push({ label: t(row.label, row.label), value: row.value, mono: row.mono })
+    if (hw.firmware.length > 0) {
+      facts.push({ label: t('Firmware components', 'Firmware components'), value: String(hw.firmware.length) })
+    }
+  }
   if (asset.criticality) facts.push({ label: t('Criticality', 'Criticality'), value: asset.criticality })
   if (asset.datacenter_id) facts.push({ label: t('Site', 'Site'), value: asset.datacenter_id })
   const lastFailover = meta['last_failover'] as { at?: string; from_state?: string; to_state?: string } | undefined

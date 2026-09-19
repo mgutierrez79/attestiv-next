@@ -11,6 +11,7 @@
 // field rather than hard-coding a single key.
 
 import { Badge, Card, CardTitle } from '../components/AttestivUi'
+import type { DeviceIdentityField } from '../lib/hardwareFacts'
 import { useI18n } from '../lib/i18n'
 
 type InventoryAsset = {
@@ -26,11 +27,17 @@ type InventoryAsset = {
 export function NetworkDeviceDetails({
   asset,
   relatedLinks,
+  omit,
 }: {
   asset: InventoryAsset
   relatedLinks: InventoryAsset[]
+  // Identity rows another card on the page already shows — for a server
+  // or host, the Hardware & firmware card's manufacturer / model / serial /
+  // OS (deviceFieldsCovered in src/lib/hardwareFacts.ts).
+  omit?: ReadonlyArray<DeviceIdentityField>
 }) {
   const { t } = useI18n()
+  const omitted = new Set(omit ?? [])
   const metadata = asset.metadata ?? {}
   const raw = (metadata['raw'] as Record<string, unknown> | undefined) ?? {}
 
@@ -158,11 +165,11 @@ export function NetworkDeviceDetails({
         </CardTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginTop: 8 }}>
           {hostname && <DeviceStat label={t('Hostname', 'Hostname')} value={hostname} mono />}
-          {vendor && <DeviceStat label={t('Vendor', 'Vendor')} value={vendor} />}
-          {platform && <DeviceStat label={t('Model', 'Model')} value={platform} mono />}
+          {vendor && !omitted.has('vendor') && <DeviceStat label={t('Vendor', 'Vendor')} value={vendor} />}
+          {platform && !omitted.has('model') && <DeviceStat label={t('Model', 'Model')} value={platform} mono />}
           {family && <DeviceStat label={t('Family', 'Family')} value={family} />}
-          {software && <DeviceStat label={t('Software', 'Software')} value={software} mono />}
-          {serial && <DeviceStat label={t('Serial', 'Serial')} value={serial} mono />}
+          {software && !omitted.has('software') && <DeviceStat label={t('Software', 'Software')} value={software} mono />}
+          {serial && !omitted.has('serial') && <DeviceStat label={t('Serial', 'Serial')} value={serial} mono />}
           {role && <DeviceStat label={t('HA role', 'HA role')} value={role} />}
           {power && <DeviceStat label={t('Power', 'Power')} value={power} />}
           {mgmtIP && <DeviceStat label={t('Management IP', 'Management IP')} value={mgmtIP} mono />}
