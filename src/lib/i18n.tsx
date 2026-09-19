@@ -367,6 +367,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'not a connector': 'not a connector',
     '{n} in inventory · {m} from connectors': '{n} in inventory · {m} from connectors',
     'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.',
+    // --- added 2026-09-19 (Discovery filters: one labelled form per filter) ---
+    'Filter {n}: enter the text to exclude.': 'Filter {n}: enter the text to exclude.',
+    'Filter {n}': 'Filter {n}',
+    'Text to exclude': 'Text to exclude',
+    'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.': 'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.',
+    'How to match': 'How to match',
+    'Look in': 'Look in',
+    'Reason (optional)': 'Reason (optional)',
   },
   es: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -4091,6 +4099,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'not a connector': 'no es un conector',
     '{n} in inventory · {m} from connectors': '{n} en el inventario · {m} de los conectores',
     'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Al guardar ya se elimina lo que coincide con los filtros. Utilice esta opción si todavía aparecen activos que coinciden con los filtros guardados, por ejemplo cuando los filtros se guardaron mediante la API. Solo se eliminan activos descubiertos y la eliminación queda anotada en el registro de auditoría.',
+    // --- added 2026-09-19 (Discovery filters: one labelled form per filter) ---
+    'Filter {n}: enter the text to exclude.': 'Filtro {n}: introduzca el texto que se excluye.',
+    'Filter {n}': 'Filtro {n}',
+    'Text to exclude': 'Texto que se excluye',
+    'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.': 'Escriba solo el texto que se busca, por ejemplo picking, no una frase. Todo activo descubierto que lo contenga queda fuera del inventario. Indique el porqué en Motivo.',
+    'How to match': 'Tipo de coincidencia',
+    'Look in': 'Buscar en',
+    'Reason (optional)': 'Motivo (opcional)',
   },
   fr: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -7828,6 +7844,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'not a connector': "n'est pas un connecteur",
     '{n} in inventory · {m} from connectors': "{n} dans l'inventaire · {m} des connecteurs",
     'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': "L'enregistrement retire déjà ce que les filtres ciblent. Utilisez cette option si des actifs correspondant aux filtres enregistrés apparaissent encore, par exemple après un enregistrement via l'API. Seuls les actifs découverts sont retirés, et le retrait est consigné dans le journal d'audit.",
+    // --- added 2026-09-19 (Discovery filters: one labelled form per filter) ---
+    'Filter {n}: enter the text to exclude.': 'Filtre {n} : saisissez le texte à exclure.',
+    'Filter {n}': 'Filtre {n}',
+    'Text to exclude': 'Texte à exclure',
+    'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.': "Saisissez uniquement le texte à rechercher, par exemple picking, pas une phrase. Tout actif découvert qui le contient est écarté de l'inventaire. Indiquez pourquoi dans Raison.",
+    'How to match': 'Type de correspondance',
+    'Look in': 'Rechercher dans',
+    'Reason (optional)': 'Raison (facultatif)',
   },
   de: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -11523,6 +11547,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'not a connector': 'kein Konnektor',
     '{n} in inventory · {m} from connectors': '{n} im Bestand · {m} von Konnektoren',
     'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Beim Speichern wird bereits entfernt, was die Filter treffen. Verwenden Sie dies, wenn noch Assets aufgeführt sind, die den gespeicherten Filtern entsprechen – etwa nachdem Filter über die API gespeichert wurden. Entfernt werden nur erkannte Assets, und die Entfernung wird im Audit-Protokoll festgehalten.',
+    // --- added 2026-09-19 (Discovery filters: one labelled form per filter) ---
+    'Filter {n}: enter the text to exclude.': 'Filter {n}: Geben Sie den auszuschließenden Text ein.',
+    'Filter {n}': 'Filter {n}',
+    'Text to exclude': 'Auszuschließender Text',
+    'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.': 'Geben Sie nur den gesuchten Text ein, zum Beispiel picking, keinen Satz. Jedes erkannte Asset, das ihn enthält, bleibt aus dem Bestand. Den Grund tragen Sie unter Grund ein.',
+    'How to match': 'Vergleichsart',
+    'Look in': 'Suchen in',
+    'Reason (optional)': 'Grund (optional)',
   },
   lt: {
     // --- added 2026-08-19 (UX audit fixes: manifests, freshness, dashboard honesty) ---
@@ -14870,6 +14902,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     'not a connector': 'ne jungtuvas',
     '{n} in inventory · {m} from connectors': 'Inventoriuje: {n} · iš jungtuvų: {m}',
     'Saving already removes what the filters match. Use this if assets the saved filters match are still listed, for example after filters were saved through the API. Only discovered assets are removed, and the removal is recorded in the audit trail.': 'Išsaugojus jau pašalinama tai, ką atitinka filtrai. Naudokite tai, jei vis dar matomas išsaugotus filtrus atitinkantis turtas, pvz., kai filtrai buvo išsaugoti per API. Šalinamas tik aptiktas turtas, o šalinimas įrašomas į audito žurnalą.',
+    // --- added 2026-09-19 (Discovery filters: one labelled form per filter) ---
+    'Filter {n}: enter the text to exclude.': 'Filtras {n}: įveskite išskiriamą tekstą.',
+    'Filter {n}': 'Filtras {n}',
+    'Text to exclude': 'Išskiriamas tekstas',
+    'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.': 'Įveskite tik ieškomą tekstą, pvz., picking, o ne sakinį. Joks aptiktas turtas, kuriame yra šis tekstas, nepateks į inventorių. Priežastį nurodykite lauke „Priežastis“.',
+    'How to match': 'Atitikties būdas',
+    'Look in': 'Ieškoti',
+    'Reason (optional)': 'Priežastis (neprivaloma)',
   },
 }
 

@@ -10,7 +10,7 @@
 //
 // API shapes live in src/lib/discoveryFilters.ts.
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import {
@@ -18,7 +18,6 @@ import {
   Banner,
   Card,
   CardTitle,
-  EmptyState,
   GhostButton,
   PrimaryButton,
   Select,
@@ -35,8 +34,10 @@ import {
   ruleMatchesNothing,
   rulesEqual,
   rulesPayload,
+  rulesToSave,
   toDrafts,
   type DiscoveryField,
+  type DiscoveryFilterRule,
   type DiscoveryFiltersResponse,
   type DiscoveryMatchMode,
   type DiscoveryPreviewResponse,
@@ -54,6 +55,13 @@ async function readBody<T>(response: Response): Promise<T> {
 
 const cell = { padding: '6px 8px', verticalAlign: 'top' as const }
 const head = { padding: '6px 8px', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)' }
+const fieldLabel = { display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 4 }
+
+// editorRows always leaves a row to type into: with no filters saved the
+// page opens on an empty one instead of a bare "Add filter" button.
+function editorRows(rules: DiscoveryFilterRule[]): DraftRule[] {
+  return rules.length > 0 ? toDrafts(rules) : [blankRule()]
+}
 
 export function AttestivDiscoveryFiltersPage() {
   const { t } = useI18n()
@@ -83,7 +91,7 @@ export function AttestivDiscoveryFiltersPage() {
 
   const adopt = useCallback((body: DiscoveryFiltersResponse) => {
     setLoaded(body)
-    setDrafts(toDrafts(body.rules))
+    setDrafts(editorRows(body.rules))
   }, [])
 
   // previewSaved shows what each SAVED rule matches — in the inventory and
@@ -120,7 +128,15 @@ export function AttestivDiscoveryFiltersPage() {
     void refresh()
   }, [refresh])
 
-  const dirty = useMemo(() => (loaded ? !rulesEqual(drafts, loaded.rules) : false), [drafts, loaded])
+  // saveable is what a save or a test sends: the rows minus a new one left
+  // empty. Preview counts come back per saveable rule; saveIndex maps a row
+  // to its position there.
+  const saveable = useMemo(() => rulesToSave(drafts), [drafts])
+  const saveIndex = useMemo(() => new Map(saveable.map((rule, i) => [rule.key, i])), [saveable])
+  const dirty = useMemo(() => (loaded ? !rulesEqual(saveable, loaded.rules) : false), [saveable, loaded])
+  // ruleNumber turns a position in saveable (what preview counts refer to)
+  // into the "Filter n" the page shows.
+  const ruleNumber = (at: number) => drafts.findIndex((rule) => rule.key === saveable[at]?.key) + 1 || at + 1
   const maxRules = loaded?.limits.max_rules ?? 200
   const maxPattern = loaded?.limits.max_pattern_length ?? 256
   const savedEnabled = loaded?.rules.filter((r) => r.enabled).length ?? 0
@@ -132,7 +148,10 @@ export function AttestivDiscoveryFiltersPage() {
   }
 
   function remove(key: string) {
-    setDrafts((current) => current.filter((rule) => rule.key !== key))
+    setDrafts((current) => {
+      const rest = current.filter((rule) => rule.key !== key)
+      return rest.length > 0 ? rest : [blankRule()]
+    })
     setPreview(null)
   }
 
@@ -144,12 +163,13 @@ export function AttestivDiscoveryFiltersPage() {
   // localProblem stops a request the server would refuse anyway, with a
   // message that names the row.
   function localProblem(): string | null {
-    const problem = firstRuleProblem(drafts, maxPattern)
+    const problem = firstRuleProblem(saveable, maxPattern)
     if (!problem) return null
+    const n = ruleNumber(problem.index)
     return problem.problem === 'empty'
-      ? t('Filter {n}: enter a pattern.', 'Filter {n}: enter a pattern.', { n: problem.index + 1 })
+      ? t('Filter {n}: enter the text to exclude.', 'Filter {n}: enter the text to exclude.', { n })
       : t('Filter {n}: the pattern is longer than {max} characters.', 'Filter {n}: the pattern is longer than {max} characters.', {
-          n: problem.index + 1,
+          n,
           max: maxPattern,
         })
   }
@@ -169,12 +189,12 @@ export function AttestivDiscoveryFiltersPage() {
       // imported before the filter in place. Check what that is first and
       // say it before anything is saved.
       const planned =
-        drafts.length > 0
+        saveable.length > 0
           ? await readBody<DiscoveryPreviewResponse>(
               await apiFetch('/settings/discovery-filters/preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(rulesPayload(drafts)),
+                body: JSON.stringify(rulesPayload(saveable)),
               }),
             )
           : null
@@ -194,7 +214,7 @@ export function AttestivDiscoveryFiltersPage() {
         await apiFetch('/settings/discovery-filters', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(rulesPayload(drafts)),
+          body: JSON.stringify(rulesPayload(saveable)),
         }),
       )
       adopt(body)
@@ -241,7 +261,7 @@ export function AttestivDiscoveryFiltersPage() {
   }
 
   function discard() {
-    if (loaded) setDrafts(toDrafts(loaded.rules))
+    if (loaded) setDrafts(editorRows(loaded.rules))
     setPreview(null)
     setError(null)
     setInfo(null)
@@ -262,7 +282,7 @@ export function AttestivDiscoveryFiltersPage() {
           await apiFetch('/settings/discovery-filters/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(rulesPayload(drafts)),
+            body: JSON.stringify(rulesPayload(saveable)),
           }),
         ),
       )
@@ -357,183 +377,191 @@ export function AttestivDiscoveryFiltersPage() {
             )}
           </p>
 
-          {loaded && drafts.length === 0 ? (
-            <EmptyState
-              icon="ti-filter"
-              title={t('No discovery filters yet', 'No discovery filters yet')}
-              description={t(
+          {loaded && loaded.rules.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '4px 0 10px' }}>
+              <strong>{t('No discovery filters yet', 'No discovery filters yet')}.</strong>{' '}
+              {t(
                 'Every asset the connectors discover is imported. Add a filter to leave out the ones you do not assess.',
                 'Every asset the connectors discover is imported. Add a filter to leave out the ones you do not assess.',
               )}
-            />
-          ) : null}
-
-          {drafts.length > 0 ? (
-            <div style={{ overflowX: 'auto', marginTop: 8 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left' }}>
-                    <th style={head}>#</th>
-                    <th style={head}>{t('On', 'On')}</th>
-                    <th style={head}>{t('Pattern', 'Pattern')}</th>
-                    <th style={head}>{t('Match', 'Match')}</th>
-                    <th style={head}>{t('Field', 'Field')}</th>
-                    <th style={head}>{t('Connector', 'Connector')}</th>
-                    <th style={head}>{t('Note', 'Note')}</th>
-                    <th style={head} title={t('Assets this filter kept out during the last discovery', 'Assets this filter kept out during the last discovery')}>
-                      {t('Last run', 'Last run')}
-                    </th>
-                    <th style={head} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {drafts.map((rule, index) => {
-                    const hits = rule.id && lastRun ? lastRun.rule_hits[rule.id] ?? 0 : null
-                    const previewHits = preview ? preview.rule_hits[index] : null
-                    const connectorHits = preview?.connector_rule_hits ? preview.connector_rule_hits[index] : null
-                    const scopeKnown = connectorScopeKnown(rule.source, knownSources)
-                    const warning = !scopeKnown
-                      ? t(
-                          'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
-                          'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
-                        )
-                      : ruleMatchesNothing(rule, index, preview)
-                        ? t(
-                            'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
-                            'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
-                          )
-                        : ''
-                    return (
-                      <Fragment key={rule.key}>
-                      <tr style={{ borderTop: '1px solid var(--color-border-tertiary)', opacity: rule.enabled ? 1 : 0.6 }}>
-                        <td style={{ ...cell, paddingTop: 12, color: 'var(--color-text-tertiary)' }}>{index + 1}</td>
-                        <td style={{ ...cell, paddingTop: 10 }}>
-                          <input
-                            type="checkbox"
-                            checked={rule.enabled}
-                            disabled={busy}
-                            aria-label={t('Filter {n} enabled', 'Filter {n} enabled', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { enabled: e.target.checked })}
-                          />
-                        </td>
-                        <td style={{ ...cell, minWidth: 200 }}>
-                          <TextInput
-                            value={rule.pattern}
-                            disabled={busy}
-                            maxLength={maxPattern}
-                            placeholder={rule.match === 'glob' ? '*.lab.local' : rule.match === 'regex' ? '^tmpl-\\d+$' : 'picking'}
-                            aria-label={t('Filter {n} pattern', 'Filter {n} pattern', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { pattern: e.target.value })}
-                            style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-                          />
-                        </td>
-                        <td style={cell}>
-                          <Select
-                            value={rule.match}
-                            disabled={busy}
-                            aria-label={t('Filter {n} match', 'Filter {n} match', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { match: e.target.value as DiscoveryMatchMode })}
-                            style={{ minWidth: 170 }}
-                          >
-                            {MATCH_MODES.map((mode) => (
-                              <option key={mode} value={mode}>
-                                {matchLabels[mode]}
-                              </option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td style={cell}>
-                          <Select
-                            value={rule.field}
-                            disabled={busy}
-                            aria-label={t('Filter {n} field', 'Filter {n} field', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { field: e.target.value as DiscoveryField })}
-                            style={{ minWidth: 170 }}
-                          >
-                            {FIELDS.map((field) => (
-                              <option key={field} value={field}>
-                                {fieldLabels[field]}
-                              </option>
-                            ))}
-                          </Select>
-                        </td>
-                        <td style={{ ...cell, minWidth: 160 }}>
-                          <Select
-                            value={rule.source ?? ''}
-                            disabled={busy}
-                            aria-label={t('Filter {n} connector', 'Filter {n} connector', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { source: e.target.value })}
-                            style={{ width: '100%' }}
-                          >
-                            <option value="">{t('All connectors', 'All connectors')}</option>
-                            {knownSources.map((source) => (
-                              <option key={source} value={source}>
-                                {source}
-                              </option>
-                            ))}
-                            {!scopeKnown ? (
-                              <option value={rule.source}>
-                                {rule.source} — {t('not a connector', 'not a connector')}
-                              </option>
-                            ) : null}
-                          </Select>
-                        </td>
-                        <td style={{ ...cell, minWidth: 160 }}>
-                          <TextInput
-                            value={rule.note ?? ''}
-                            disabled={busy}
-                            maxLength={loaded?.limits.max_note_length ?? 500}
-                            placeholder={t('why this is excluded', 'why this is excluded')}
-                            aria-label={t('Filter {n} note', 'Filter {n} note', { n: index + 1 })}
-                            onChange={(e) => update(rule.key, { note: e.target.value })}
-                            style={{ width: '100%' }}
-                          />
-                        </td>
-                        <td style={{ ...cell, paddingTop: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                          {hits === null ? '—' : hits}
-                          {previewHits !== null && rule.enabled ? (
-                            <div style={{ fontSize: 10.5, color: 'var(--color-status-blue-deep)', fontFamily: 'inherit' }}>
-                              {t('{n} in inventory · {m} from connectors', '{n} in inventory · {m} from connectors', {
-                                n: previewHits,
-                                m: connectorHits ?? 0,
-                              })}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td style={{ ...cell, paddingTop: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => remove(rule.key)}
-                            disabled={busy}
-                            aria-label={t('Remove filter {n}', 'Remove filter {n}', { n: index + 1 })}
-                            title={t('Remove filter {n}', 'Remove filter {n}', { n: index + 1 })}
-                            style={{
-                              background: 'none',
-                              border: '1px solid var(--color-border-secondary)',
-                              borderRadius: 'var(--border-radius-md)',
-                              padding: '5px 8px',
-                              cursor: busy ? 'default' : 'pointer',
-                              color: 'var(--color-text-secondary)',
-                            }}
-                          >
-                            <i className="ti ti-trash" aria-hidden="true" />
-                          </button>
-                        </td>
-                      </tr>
-                      {warning ? (
-                        <tr>
-                          <td colSpan={9} style={{ padding: '0 8px 10px 40px', fontSize: 11.5, color: 'var(--color-status-amber-text)' }}>
-                            <i className="ti ti-alert-triangle" aria-hidden="true" /> {warning}
-                          </td>
-                        </tr>
-                      ) : null}
-                      </Fragment>
-                    )
-                  })}
-                </tbody>
-              </table>
             </div>
           ) : null}
+
+          <div style={{ display: 'grid', gap: 12, marginTop: 8 }}>
+            {drafts.map((rule, index) => {
+              const n = index + 1
+              const at = saveIndex.get(rule.key)
+              const hits = rule.id && lastRun ? lastRun.rule_hits[rule.id] ?? 0 : null
+              const previewHits = preview && at !== undefined ? preview.rule_hits[at] ?? null : null
+              const connectorHits = preview?.connector_rule_hits && at !== undefined ? preview.connector_rule_hits[at] ?? 0 : 0
+              const scopeKnown = connectorScopeKnown(rule.source, knownSources)
+              // A disabled rule matches nothing by choice; the server takes
+              // it as is, so warn only once it is switched on.
+              const warning = !rule.enabled
+                ? ''
+                : !scopeKnown
+                ? t(
+                    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
+                    'Not a connector — this filter can never match. Pick one from the list or leave it on All connectors.',
+                  )
+                : at !== undefined && ruleMatchesNothing(rule, at, preview)
+                  ? t(
+                      'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
+                      'This filter matches nothing: no asset in the inventory or reported by a connector contains this text. Enter only the text to look for — for example picking — not a sentence.',
+                    )
+                  : ''
+              const textId = `discovery-filter-text-${rule.key}`
+              return (
+                <div
+                  key={rule.key}
+                  style={{
+                    border: '1px solid var(--color-border-secondary)',
+                    borderRadius: 'var(--border-radius-lg)',
+                    padding: 12,
+                    background: rule.enabled ? 'var(--color-background-primary)' : 'var(--color-background-secondary)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <strong style={{ fontSize: 12.5 }}>{t('Filter {n}', 'Filter {n}', { n })}</strong>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: busy ? 'default' : 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={rule.enabled}
+                        disabled={busy}
+                        aria-label={t('Filter {n} enabled', 'Filter {n} enabled', { n })}
+                        onChange={(e) => update(rule.key, { enabled: e.target.checked })}
+                      />
+                      {t('Enabled', 'Enabled')}
+                    </label>
+                    <div style={{ flex: 1 }} />
+                    {previewHits !== null && rule.enabled ? (
+                      <span style={{ fontSize: 11, color: 'var(--color-status-blue-deep)' }}>
+                        {t('{n} in inventory · {m} from connectors', '{n} in inventory · {m} from connectors', {
+                          n: previewHits,
+                          m: connectorHits,
+                        })}
+                      </span>
+                    ) : null}
+                    {hits !== null ? (
+                      <span
+                        style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}
+                        title={t('Assets this filter kept out during the last discovery', 'Assets this filter kept out during the last discovery')}
+                      >
+                        {t('Last run', 'Last run')}: {hits}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => remove(rule.key)}
+                      disabled={busy}
+                      aria-label={t('Remove filter {n}', 'Remove filter {n}', { n })}
+                      title={t('Remove filter {n}', 'Remove filter {n}', { n })}
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--color-border-secondary)',
+                        borderRadius: 'var(--border-radius-md)',
+                        padding: '4px 8px',
+                        cursor: busy ? 'default' : 'pointer',
+                        color: 'var(--color-text-secondary)',
+                      }}
+                    >
+                      <i className="ti ti-trash" aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  <label htmlFor={textId} style={{ ...fieldLabel, fontSize: 12, color: 'var(--color-text-primary)' }}>
+                    {t('Text to exclude', 'Text to exclude')}
+                  </label>
+                  <TextInput
+                    id={textId}
+                    value={rule.pattern}
+                    disabled={busy}
+                    maxLength={maxPattern}
+                    placeholder={rule.match === 'glob' ? '*.lab.local' : rule.match === 'regex' ? '^tmpl-\\d+$' : 'picking'}
+                    onChange={(e) => update(rule.key, { pattern: e.target.value })}
+                    style={{ width: '100%', fontSize: 14, padding: '8px 10px', fontFamily: 'var(--font-mono)' }}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
+                    {t(
+                      'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.',
+                      'Type only the text to look for — for example picking, not a sentence. Every discovered asset that contains it is kept out of the inventory. Write why in Reason.',
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginTop: 12 }}>
+                    <label>
+                      <span style={fieldLabel}>{t('How to match', 'How to match')}</span>
+                      <Select
+                        value={rule.match}
+                        disabled={busy}
+                        onChange={(e) => update(rule.key, { match: e.target.value as DiscoveryMatchMode })}
+                        style={{ width: '100%' }}
+                      >
+                        {MATCH_MODES.map((mode) => (
+                          <option key={mode} value={mode}>
+                            {matchLabels[mode]}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <label>
+                      <span style={fieldLabel}>{t('Look in', 'Look in')}</span>
+                      <Select
+                        value={rule.field}
+                        disabled={busy}
+                        onChange={(e) => update(rule.key, { field: e.target.value as DiscoveryField })}
+                        style={{ width: '100%' }}
+                      >
+                        {FIELDS.map((field) => (
+                          <option key={field} value={field}>
+                            {fieldLabels[field]}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <label>
+                      <span style={fieldLabel}>{t('Connector', 'Connector')}</span>
+                      <Select
+                        value={rule.source ?? ''}
+                        disabled={busy}
+                        onChange={(e) => update(rule.key, { source: e.target.value })}
+                        style={{ width: '100%' }}
+                      >
+                        <option value="">{t('All connectors', 'All connectors')}</option>
+                        {knownSources.map((source) => (
+                          <option key={source} value={source}>
+                            {source}
+                          </option>
+                        ))}
+                        {!scopeKnown ? (
+                          <option value={rule.source}>
+                            {rule.source} — {t('not a connector', 'not a connector')}
+                          </option>
+                        ) : null}
+                      </Select>
+                    </label>
+                    <label>
+                      <span style={fieldLabel}>{t('Reason (optional)', 'Reason (optional)')}</span>
+                      <TextInput
+                        value={rule.note ?? ''}
+                        disabled={busy}
+                        maxLength={loaded?.limits.max_note_length ?? 500}
+                        placeholder={t('why this is excluded', 'why this is excluded')}
+                        onChange={(e) => update(rule.key, { note: e.target.value })}
+                        style={{ width: '100%' }}
+                      />
+                    </label>
+                  </div>
+
+                  {warning ? (
+                    <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--color-status-amber-text)' }}>
+                      <i className="ti ti-alert-triangle" aria-hidden="true" /> {warning}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
 
           <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginTop: 10, lineHeight: 1.6 }}>
             <div>
@@ -548,16 +576,13 @@ export function AttestivDiscoveryFiltersPage() {
             <div>
               <strong>{matchLabels.regex}</strong>: {t('RE2 syntax, as used by Go.', 'RE2 syntax, as used by Go.')}
             </div>
-            <div>
-              <strong>{t('Connector', 'Connector')}</strong>: {t('leave empty for every connector, or name one (vcenter) or one instance (vcenter:dca).', 'leave empty for every connector, or name one (vcenter) or one instance (vcenter:dca).')}
-            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
             <GhostButton onClick={add} disabled={busy || !loaded || drafts.length >= maxRules}>
               <i className="ti ti-plus" aria-hidden="true" /> {t('Add filter', 'Add filter')}
             </GhostButton>
-            <GhostButton onClick={runPreview} disabled={busy || drafts.length === 0}>
+            <GhostButton onClick={runPreview} disabled={busy || saveable.length === 0}>
               <i className="ti ti-eye" aria-hidden="true" /> {t('Test against inventory', 'Test against inventory')}
             </GhostButton>
             <div style={{ flex: 1 }} />
@@ -603,7 +628,7 @@ export function AttestivDiscoveryFiltersPage() {
                         </td>
                         <td style={cell}>{item.asset_type || '—'}</td>
                         <td style={{ ...cell, fontFamily: 'var(--font-mono)' }}>{item.sources.join(', ') || '—'}</td>
-                        <td style={{ ...cell, fontFamily: 'var(--font-mono)' }}>{item.rules.map((i) => `#${i + 1}`).join(', ')}</td>
+                        <td style={{ ...cell, fontFamily: 'var(--font-mono)' }}>{item.rules.map((i) => `#${ruleNumber(i)}`).join(', ')}</td>
                       </tr>
                     ))}
                   </tbody>

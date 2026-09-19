@@ -91,6 +91,14 @@ function editable(rule: DiscoveryFilterRule) {
   }
 }
 
+// rulesToSave drops new rows left empty — the editor always offers a blank
+// row to type into, and an untouched one is not a change. A saved rule
+// whose text was cleared stays, so a save reports it instead of silently
+// deleting the rule.
+export function rulesToSave<T extends DiscoveryFilterRule>(rules: T[]): T[] {
+  return rules.filter((rule) => Boolean(rule.id) || rule.pattern.trim() !== '')
+}
+
 export function rulesPayload(rules: DiscoveryFilterRule[]) {
   return { rules: rules.map(editable) }
 }

@@ -7,6 +7,7 @@ import {
   ruleMatchesNothing,
   rulesEqual,
   rulesPayload,
+  rulesToSave,
   toDrafts,
   type DiscoveryFilterRule,
   type DiscoveryPreviewResponse,
@@ -71,6 +72,19 @@ describe('discovery filter drafts', () => {
     expect(firstRuleProblem(stored, 256)).toBeNull()
     expect(firstRuleProblem([...stored, blankRule()], 256)).toEqual({ index: 1, problem: 'empty' })
     expect(firstRuleProblem([{ ...stored[0], pattern: 'x'.repeat(10) }], 5)).toEqual({ index: 0, problem: 'too_long' })
+  })
+
+  it('ignores a new row left empty but keeps a saved rule whose text was cleared', () => {
+    const drafts = [...toDrafts(stored), blankRule()]
+    expect(rulesToSave(drafts)).toHaveLength(1)
+    expect(rulesEqual(rulesToSave(drafts), stored)).toBe(true)
+    drafts[1].pattern = '  '
+    expect(rulesToSave(drafts)).toHaveLength(1)
+    drafts[1].pattern = 'picking'
+    expect(rulesToSave(drafts)).toHaveLength(2)
+    drafts[0].pattern = ''
+    // Still sent, so the save reports the empty text instead of deleting.
+    expect(rulesToSave(drafts).map((r) => r.id)).toEqual(['df_1', undefined])
   })
 })
 
