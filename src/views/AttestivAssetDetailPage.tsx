@@ -38,6 +38,8 @@ import {
 import { displayableMetaString } from '../lib/displayMeta'
 import { deviceFieldsCovered, hardwareFacts } from '../lib/hardwareFacts'
 import { HardwareFirmwareCard } from './HardwareFirmwareCard'
+import { VCenterServerCard } from './VCenterServerCard'
+import { hasVCenterServerFacts, isVCenterServer, vcenterServerFacts } from '../lib/vcenterServer'
 import { NetworkDeviceDetails } from './NetworkDeviceDetails'
 import { HealthChips, ConnectorProvenance } from '../components/AssetConnectorDetail'
 import { useBreadcrumbLeaf } from '../components/Breadcrumb'
@@ -639,10 +641,12 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // stamps it (the iDRAC address) on every server it manages and the host
   // enricher on ESXi hosts, whose Device card already shows it — so
   // servers, hypervisor hosts and VMs never get a "Storage array" card.
+  // Nor does the vCenter Server: its own card shows its address.
   const showStorageArrayCard =
     !isVM &&
     !isHypervisorHost &&
     !isPhysicalHost &&
+    !isVCenterServer(asset?.asset_type) &&
     (Boolean(arrayMgmtIP) ||
       hasCapacity ||
       (arrayUplinks && arrayUplinks.length > 0) ||
@@ -657,6 +661,10 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
   // details drops its manufacturer / model / service tag (and its OS when
   // the card has one), and the Device card drops the rows it repeats.
   const hwFacts = hardwareFacts(asset?.metadata, asset?.asset_type)
+  // vCenter Server card: the release and registered plugins the vCenter
+  // connector reports about vCenter itself (virtualization_manager assets).
+  const vcFacts = isVCenterServer(asset?.asset_type) ? vcenterServerFacts(asset?.metadata) : null
+  const showVCenterCard = vcFacts !== null && hasVCenterServerFacts(vcFacts)
   const showHardwareCard = !isVM && (hwFacts.rows.length > 0 || hwFacts.firmware.length > 0)
   const hardwareCardHasOS = showHardwareCard && hwFacts.rows.some((row) => row.key === 'operating_system' || row.key === 'storage_os')
   const serverOS = hardwareCardHasOS ? '' : hostOS
@@ -1213,6 +1221,8 @@ export function AttestivAssetDetailPage({ assetID }: { assetID: string }) {
             ) : null}
 
             {showHardwareCard ? <HardwareFirmwareCard facts={hwFacts} /> : null}
+
+            {showVCenterCard && vcFacts ? <VCenterServerCard facts={vcFacts} /> : null}
 
             {asset.asset_type === 'network_link' ? (
               <NetworkLinkDetails
